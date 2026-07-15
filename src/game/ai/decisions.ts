@@ -1,7 +1,7 @@
 import type { Card, Rank } from '../cards'
 import { isRedThree, isWildCard } from '../cards'
 import type { Book } from '../books'
-import { canAddToBook, canStartBook, naturalRank } from '../books'
+import { bookWildCount, canAddToBook, canStartBook, countWildsInCards, naturalRank } from '../books'
 import { sumCardPoints, cardPointValue } from '../scoring'
 
 export type AiAction =
@@ -64,7 +64,13 @@ export function findStartBookActions(hand: Card[], teamBooks: Book[]): AiAction[
   return actions
 }
 
-export function findAddToBookActions(hand: Card[], teamBooks: Book[]): Extract<AiAction, { type: 'addToBook' }>[] {
+export function findAddToBookActions(
+  hand: Card[],
+  teamBooks: Book[],
+  isPlayingFoot = false,
+): Extract<AiAction, { type: 'addToBook' }>[] {
+  if (isPlayingFoot && hand.length === 1) return []
+
   const actions: Extract<AiAction, { type: 'addToBook' }>[] = []
   const playable = hand.filter((c) => !isRedThree(c))
 
@@ -74,9 +80,15 @@ export function findAddToBookActions(hand: Card[], teamBooks: Book[]): Extract<A
         const check = canAddToBook(book, combo)
         if (!check.ok) continue
         const newSize = book.cards.length + combo.length
-        const priority =
-          (newSize >= 7 ? 100 : newSize * 10) +
-          (isWildCard(combo[0]) && combo.length === 1 ? 5 : combo.length)
+        const wildsInCombo = countWildsInCards(combo)
+        const bookIsClean = bookWildCount(book) === 0
+        let priority =
+          (newSize >= 7 ? 100 : newSize * 10) + combo.length
+        if (bookIsClean && wildsInCombo > 0) {
+          priority -= 500
+        } else if (wildsInCombo === 0) {
+          priority += 25
+        }
         actions.push({
           type: 'addToBook',
           bookId: book.id,
@@ -92,7 +104,7 @@ export function findAddToBookActions(hand: Card[], teamBooks: Book[]): Extract<A
 
 export function pickDiscardCard(
   hand: Card[],
-  difficulty: 'easy' | 'medium' | 'difficult',
+  difficulty: 'normal' | 'expert',
   goingOut: boolean,
 ): string {
   if (hand.length === 0) return ''
@@ -112,7 +124,7 @@ export function pickDiscardCard(
       return b.penalty - a.penalty
     })
 
-  if (difficulty === 'easy' && Math.random() < 0.25) {
+  if (difficulty === 'normal' && Math.random() < 0.2) {
     const nonWild = hand.filter((c) => !isWildCard(c) && !isRedThree(c))
     if (nonWild.length > 0) {
       return nonWild[Math.floor(Math.random() * nonWild.length)].id
@@ -142,7 +154,7 @@ export function bestStartBook(
   actions: AiAction[],
   hand: Card[],
   allBooks: Book[],
-  difficulty: 'easy' | 'medium' | 'difficult',
+  difficulty: 'normal' | 'expert',
   needPoints: number,
 ): AiAction | null {
   const starts = actions.filter((a) => a.type === 'startBook') as Extract<
@@ -158,7 +170,7 @@ export function bestStartBook(
     let value = action.score
     if (rank) {
       value += rankStrengthInHand(hand, rank) * 5
-      if (difficulty === 'difficult' && !seen.has(rank)) value += 8
+      if (difficulty === 'expert' && !seen.has(rank)) value += 8
     }
     if (action.score >= needPoints) value += 50
     return { action, value }
@@ -166,7 +178,7 @@ export function bestStartBook(
 
   scored.sort((a, b) => b.value - a.value)
 
-  if (difficulty === 'easy' && Math.random() < 0.2 && scored.length > 1) {
+  if (difficulty === 'normal' && Math.random() < 0.15 && scored.length > 1) {
     return scored[1].action
   }
 
@@ -175,11 +187,11 @@ export function bestStartBook(
 
 export function bestAddToBook(
   actions: Extract<AiAction, { type: 'addToBook' }>[],
-  difficulty: 'easy' | 'medium' | 'difficult',
+  difficulty: 'normal' | 'expert',
 ): Extract<AiAction, { type: 'addToBook' }> | null {
   if (actions.length === 0) return null
 
-  if (difficulty === 'easy' && Math.random() < 0.15) return null
+  if (difficulty === 'normal' && Math.random() < 0.1) return null
 
   return actions[0]
 }

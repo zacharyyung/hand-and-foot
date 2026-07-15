@@ -8,7 +8,7 @@ import { shuffleDeck } from './shuffle'
 import type { Book } from './books'
 import { teamIdForSeat, type PlayerCount } from './teams'
 
-export type AiDifficulty = 'easy' | 'medium' | 'difficult'
+export type AiDifficulty = 'normal' | 'expert'
 
 export interface PlayerProfile {
   seatIndex: number
@@ -27,6 +27,16 @@ export interface PlayerState {
   isPlayingFoot: boolean
   /** Foot was picked up but cannot be played until next turn (discarded into foot). */
   footOnHold: boolean
+}
+
+/** Hand pile count for UI — 0 once the player has moved on to their foot. */
+export function playerHandCount(player: PlayerState): number {
+  return player.isPlayingFoot ? 0 : player.hand.length
+}
+
+/** Foot pile count for UI — while playing foot, cards live in hand internally. */
+export function playerFootCount(player: PlayerState): number {
+  return player.isPlayingFoot ? player.hand.length : player.foot.length
 }
 
 export interface TeamState {

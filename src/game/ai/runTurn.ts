@@ -5,15 +5,14 @@ import {
   discardCard,
   drawCards,
   getCurrentPlayer,
-  getTeam,
   startBook,
 } from '../actions'
 import type { GameState } from '../deal'
-import { meldThreshold } from '../scoring'
-import { teamHasCleanAndDirtyBooks } from '../books'
 import { findAddToBookActions } from './decisions'
+import { buildAiPublicState } from './publicState'
 import {
   meldUrgency,
+  pickBestAddToBook,
   pickBestStartWhenUnlocked,
   pickDiscardCard,
   planInitialMeld,
@@ -23,7 +22,7 @@ export function runAiTurn(state: GameState): GameState {
   const player = getCurrentPlayer(state)
   if (player.profile.isHuman) return state
 
-  const difficulty = player.profile.aiDifficulty ?? 'medium'
+  const difficulty = player.profile.aiDifficulty ?? 'normal'
   let current = state
 
   if (current.turnPhase === 'draw') {
@@ -32,25 +31,24 @@ export function runAiTurn(state: GameState): GameState {
 
   if (current.phase !== 'playing') return current
 
-  const maxPlays = difficulty === 'difficult' ? 14 : difficulty === 'medium' ? 10 : 7
+  const maxPlays = difficulty === 'expert' ? 14 : 10
 
   for (let i = 0; i < maxPlays; i++) {
     if (current.turnPhase !== 'play') break
     if (canGoOut(current)) break
 
-    const aiPlayer = getCurrentPlayer(current)
-    const team = getTeam(current, aiPlayer.profile.teamId)
-    const urgency = meldUrgency(team.score)
-    const required = meldThreshold(team.score)
+    const pub = buildAiPublicState(current, current.currentPlayerIndex)
+    const urgency = meldUrgency(pub.teamScore)
 
     let played = false
 
-    if (!team.meldThresholdMet) {
+    if (!pub.teamMeldThresholdMet) {
       const plan = planInitialMeld(
-        aiPlayer.hand,
-        team.books,
-        Math.max(0, required - current.meldPointsThisTurn),
+        pub.myHand,
+        pub.myTeamBooks,
+        Math.max(0, pub.requiredMeld - pub.meldPointsThisTurn),
         urgency,
+        difficulty,
       )
 
       if (plan && plan.length > 0) {
@@ -61,31 +59,37 @@ export function runAiTurn(state: GameState): GameState {
         }
       }
     } else {
-      const updated = getCurrentPlayer(current)
-      const updatedTeam = getTeam(current, updated.profile.teamId)
-      const addActions = findAddToBookActions(updated.hand, updatedTeam.books)
+      const addActions = findAddToBookActions(pub.myHand, pub.myTeamBooks, pub.isPlayingFoot)
+      const triedAdds = new Set<string>()
 
-      if (addActions.length > 0) {
-        const skipAdd = difficulty === 'easy' && Math.random() < 0.1
-        if (!skipAdd) {
-          const result = addToBook(
-            current,
-            addActions[0].bookId,
-            addActions[0].cardIds,
-          )
-          if (!result.error) {
-            current = result.state
-            played = true
-          }
+      for (let attempt = 0; attempt < 2 && !played; attempt++) {
+        const remaining = addActions.filter(
+          (a) => !triedAdds.has(`${a.bookId}:${a.cardIds.join(',')}`),
+        )
+        const bestAdd = pickBestAddToBook(
+          remaining,
+          pub.myHand,
+          pub.myTeamBooks,
+          difficulty,
+        )
+        if (!bestAdd) break
+
+        triedAdds.add(`${bestAdd.bookId}:${bestAdd.cardIds.join(',')}`)
+        const skipAdd = difficulty === 'normal' && Math.random() < 0.08
+        if (skipAdd) continue
+
+        const result = addToBook(current, bestAdd.bookId, bestAdd.cardIds)
+        if (!result.error) {
+          current = result.state
+          played = true
         }
       }
 
       if (!played) {
-        const updated2 = getCurrentPlayer(current)
-        const updatedTeam2 = getTeam(current, updated2.profile.teamId)
+        const refreshed = buildAiPublicState(current, current.currentPlayerIndex)
         const startIds = pickBestStartWhenUnlocked(
-          updated2.hand,
-          updatedTeam2.books,
+          refreshed.myHand,
+          refreshed.myTeamBooks,
           urgency,
           difficulty,
         )
@@ -97,36 +101,20 @@ export function runAiTurn(state: GameState): GameState {
           }
         }
       }
-
-      if (!played && addActions.length > 1) {
-        const result = addToBook(
-          current,
-          addActions[1].bookId,
-          addActions[1].cardIds,
-        )
-        if (!result.error) {
-          current = result.state
-          played = true
-        }
-      }
     }
 
     if (!played) break
 
-    if (difficulty === 'easy' && Math.random() < 0.12) break
+    if (difficulty === 'normal' && Math.random() < 0.1) break
   }
 
   if (current.turnPhase === 'play') {
-    const updatedPlayer = getCurrentPlayer(current)
-    const team = getTeam(current, updatedPlayer.profile.teamId)
-    const goingOut =
-      updatedPlayer.hand.length === 1 &&
-      teamHasCleanAndDirtyBooks(team.books) &&
-      team.meldThresholdMet
+    const pub = buildAiPublicState(current, current.currentPlayerIndex)
+    const goingOut = canGoOut(current)
 
     const cardId = pickDiscardCard(
-      updatedPlayer.hand,
-      team.books,
+      pub.myHand,
+      pub.myTeamBooks,
       difficulty,
       goingOut,
     )

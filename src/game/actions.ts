@@ -8,6 +8,7 @@ import {
 import type { GameState, PlayerState } from './deal'
 import { shuffleDeck } from './shuffle'
 import { meldThreshold, sumCardPoints } from './scoring'
+import { applyRoundScores } from './roundScoring'
 import { nextSeatCounterClockwise, type PlayerCount } from './teams'
 
 export function getActiveCards(player: PlayerState): Card[] {
@@ -99,6 +100,36 @@ function beginFootTurn(player: PlayerState): PlayerState {
   }
 }
 
+function playerHasCards(player: PlayerState): boolean {
+  return player.hand.length > 0 || player.foot.length > 0 || player.footOnHold
+}
+
+function advanceTurn(state: GameState, fromPlayerIndex: number): GameState {
+  const playerCount = state.playerCount as PlayerCount
+  let next = state
+  let nextIndex = fromPlayerIndex
+
+  for (let i = 0; i < playerCount; i++) {
+    nextIndex = nextSeatCounterClockwise(nextIndex, playerCount)
+    if (playerHasCards(next.players[nextIndex])) break
+  }
+
+  let nextPlayer = next.players[nextIndex]
+  if (nextPlayer.footOnHold) {
+    const activated = beginFootTurn(nextPlayer)
+    const updated = [...next.players]
+    updated[nextIndex] = activated
+    next = { ...next, players: updated }
+  }
+
+  return {
+    ...next,
+    currentPlayerIndex: nextIndex,
+    turnPhase: 'draw',
+    meldPointsThisTurn: 0,
+  }
+}
+
 export function commitStagedMelds(
   state: GameState,
   stagedGroups: string[][],
@@ -113,6 +144,9 @@ export function commitStagedMelds(
 
   const playerIndex = state.currentPlayerIndex
   const player = state.players[playerIndex]
+  const meldCheck = rejectLastFootMeld(player)
+  if (!meldCheck.ok) return { state, error: meldCheck.error }
+
   const team = getTeam(state, player.profile.teamId)
 
   if (team.meldThresholdMet) {
@@ -225,6 +259,9 @@ export function startBook(
 
   const playerIndex = state.currentPlayerIndex
   const player = state.players[playerIndex]
+  const meldCheck = rejectLastFootMeld(player)
+  if (!meldCheck.ok) return { state, error: meldCheck.error }
+
   const team = getTeam(state, player.profile.teamId)
   const selected = player.hand.filter((c) => cardIds.includes(c.id))
 
@@ -296,6 +333,9 @@ export function addToBook(
 
   const playerIndex = state.currentPlayerIndex
   const player = state.players[playerIndex]
+  const meldCheck = rejectLastFootMeld(player)
+  if (!meldCheck.ok) return { state, error: meldCheck.error }
+
   const team = getTeam(state, player.profile.teamId)
 
   if (!team.meldThresholdMet) {
@@ -354,16 +394,24 @@ export function discardCard(
 
   const team = getTeam(state, player.profile.teamId)
   const willBeEmpty = player.hand.length === 1
-  const goingOut =
+  const canGoOutNow =
     willBeEmpty &&
+    player.isPlayingFoot &&
+    player.foot.length === 0 &&
+    !player.footOnHold &&
     teamHasCleanAndDirtyBooks(team.books) &&
     team.meldThresholdMet
+  const goingOut = canGoOutNow
 
   const newHand = removeCardsFromHand(player.hand, [cardId])
   let updatedPlayer: PlayerState = { ...player, hand: newHand }
 
   if (willBeEmpty && !player.isPlayingFoot && player.foot.length > 0 && !goingOut) {
     updatedPlayer = activateFootOnHold({ ...updatedPlayer, hand: newHand })
+  }
+
+  if (willBeEmpty && player.isPlayingFoot && !goingOut) {
+    updatedPlayer = { ...updatedPlayer, isPlayingFoot: false }
   }
 
   const players = [...state.players]
@@ -378,40 +426,64 @@ export function discardCard(
   }
 
   if (goingOut) {
-    return {
-      state: {
-        ...next,
-        phase: 'roundEnd',
-        wentOutTeamId: team.id,
-      },
-    }
-  }
-
-  const playerCount = state.playerCount as PlayerCount
-  let nextIndex = nextSeatCounterClockwise(playerIndex, playerCount)
-  let nextPlayer = next.players[nextIndex]
-
-  if (nextPlayer.footOnHold) {
-    const activated = beginFootTurn(nextPlayer)
-    const updated = [...next.players]
-    updated[nextIndex] = activated
-    next = { ...next, players: updated }
-  }
-
-  return {
-    state: {
+    const roundEndState: GameState = {
       ...next,
-      currentPlayerIndex: nextIndex,
-    },
+      phase: 'roundEnd',
+      wentOutTeamId: team.id,
+    }
+    return { state: applyRoundScores(roundEndState) }
   }
+
+  return { state: advanceTurn(next, playerIndex) }
 }
 
 export function canGoOut(state: GameState): boolean {
   const player = getCurrentPlayer(state)
   const team = getTeam(state, player.profile.teamId)
+
+  if (player.hand.length !== 1) return false
+  if (!player.isPlayingFoot) return false
+  if (player.foot.length > 0 || player.footOnHold) return false
+
+  return teamHasCleanAndDirtyBooks(team.books) && team.meldThresholdMet
+}
+
+/** Last card while playing the foot — must be discarded to go out, never melded. */
+export function isLastFootCard(player: PlayerState): boolean {
+  return (
+    player.isPlayingFoot &&
+    player.hand.length === 1 &&
+    player.foot.length === 0 &&
+    !player.footOnHold
+  )
+}
+
+const LAST_FOOT_CARD_MELD_ERROR =
+  'Your last foot card must be discarded to go out — you cannot meld it into a book.'
+
+function rejectLastFootMeld(player: PlayerState): { ok: false; error: string } | { ok: true } {
+  if (isLastFootCard(player)) {
+    return { ok: false, error: LAST_FOOT_CARD_MELD_ERROR }
+  }
+  return { ok: true }
+}
+
+/** Discarding the last hand card while the foot pile is still waiting. */
+export function canGoToFoot(player: PlayerState): boolean {
   return (
     player.hand.length === 1 &&
-    teamHasCleanAndDirtyBooks(team.books) &&
-    team.meldThresholdMet
+    !player.isPlayingFoot &&
+    player.foot.length > 0
+  )
+}
+
+/** Melding/adding every selected card empties the hand with foot still waiting. */
+export function willSkipAndRun(player: PlayerState, cardIds: string[]): boolean {
+  return (
+    !player.isPlayingFoot &&
+    player.foot.length > 0 &&
+    player.hand.length > 1 &&
+    cardIds.length > 0 &&
+    cardIds.length === player.hand.length
   )
 }

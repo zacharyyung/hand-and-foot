@@ -5,15 +5,33 @@ import {
   teamIdForSeat,
   type PlayerCount,
 } from '../game/teams'
+import { playSound } from '../game/audio'
+import { SoundToggle } from './SoundToggle'
 
-export const AVATARS = ['🐶', '🐱', '🐻', '🦊', '🐼', '🐨', '🦁', '🐯', '🐸', '🐙', '🦄', '🐲'] as const
+export const AI_AVATAR = '🤖'
+
+export const HUMAN_AVATARS = [
+  '🐶',
+  '🐱',
+  '🐻',
+  '🦊',
+  '🐼',
+  '🐨',
+  '🦁',
+  '🐯',
+  '🐸',
+  '🐙',
+  '🦄',
+  '🐲',
+] as const
+
+export const AVATARS = [...HUMAN_AVATARS, AI_AVATAR] as const
 
 export type Avatar = (typeof AVATARS)[number]
 
 export const AI_DIFFICULTIES: { value: AiDifficulty; label: string }[] = [
-  { value: 'easy', label: 'Easy' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'difficult', label: 'Difficult' },
+  { value: 'normal', label: 'Normal' },
+  { value: 'expert', label: 'Expert' },
 ]
 
 export interface SetupPlayer {
@@ -38,9 +56,9 @@ export function createDefaultSetupPlayers(count: number, humans = 1): SetupPlaye
   return Array.from({ length: count }, (_, i) => ({
     name: i < humans ? '' : `AI ${i + 1}`,
     age: i < humans ? 0 : 0,
-    avatar: AVATARS[i % AVATARS.length],
+    avatar: i < humans ? HUMAN_AVATARS[i % HUMAN_AVATARS.length] : AI_AVATAR,
     isHuman: i < humans,
-    aiDifficulty: 'medium' as AiDifficulty,
+    aiDifficulty: 'normal' as AiDifficulty,
   }))
 }
 
@@ -60,6 +78,7 @@ export function SetupScreen({
   }
 
   function setHumanCount(count: number) {
+    playSound('button')
     onHumanCountChange(count)
     const next = players.map((p, i) => {
       const isHuman = i < count
@@ -68,17 +87,24 @@ export function SetupScreen({
         isHuman,
         name: isHuman ? (p.isHuman ? p.name : '') : `AI ${i + 1}`,
         age: isHuman ? (p.isHuman ? p.age : 0) : 0,
+        avatar: isHuman
+          ? p.isHuman
+            ? p.avatar
+            : HUMAN_AVATARS[i % HUMAN_AVATARS.length]
+          : AI_AVATAR,
       }
     })
     onPlayersChange(next)
   }
 
   function toggleHuman(index: number) {
+    playSound('button')
     const isHuman = !players[index].isHuman
     updatePlayer(index, {
       isHuman,
       name: isHuman ? '' : `AI ${index + 1}`,
       age: isHuman ? 0 : 0,
+      avatar: isHuman ? HUMAN_AVATARS[index % HUMAN_AVATARS.length] : AI_AVATAR,
     })
     const newHumanCount = players.filter((p, i) =>
       i === index ? isHuman : p.isHuman,
@@ -92,66 +118,98 @@ export function SetupScreen({
   const canStart = humansValid
 
   return (
-    <div className="mx-auto max-w-2xl px-6 py-10">
-      <h1 className="mb-8 text-3xl font-bold text-white">Hand and Foot</h1>
+    <div className="relative mx-auto max-w-2xl px-6 py-12 sm:py-16">
+      <div className="absolute right-6 top-6">
+        <SoundToggle />
+      </div>
 
-      <div className="mb-6">
-        <label className="mb-2 block text-sm font-medium text-white/80">Total players</label>
-        <div className="flex flex-wrap gap-3">
+      <header className="mb-10 text-center sm:mb-12">
+        <p className="mb-2 font-sans text-[11px] uppercase tracking-[0.22em] text-ink-faint">
+          Tabletop
+        </p>
+        <h1 className="font-display text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
+          Hand &amp; Foot
+        </h1>
+        <p className="mx-auto mt-3 max-w-md text-sm text-ink-muted">
+          A calm, premium take on the classic team rummy game.
+        </p>
+      </header>
+
+      <section className="mb-8">
+        <label className="mb-3 block text-center text-[11px] font-medium uppercase tracking-[0.14em] text-ink-muted">
+          Players
+        </label>
+        <div className="flex flex-wrap justify-center gap-2">
           {PLAYER_COUNT_OPTIONS.map((count) => (
             <button
               key={count}
-              onClick={() => onPlayerCountChange(count)}
-              className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+              onClick={() => {
+                playSound('button')
+                onPlayerCountChange(count)
+              }}
+              className={`min-w-[4.5rem] rounded-xl px-4 py-2.5 transition-all duration-150 ease-press ${
                 playerCount === count
-                  ? 'bg-amber-500 text-amber-950'
-                  : 'bg-white/10 text-white hover:bg-white/20'
+                  ? 'bg-accent text-felt-deep shadow-md'
+                  : 'bg-white/10 text-ink-soft hover:bg-white/15'
               }`}
             >
-              {count} ({count / 2} teams)
+              <span className="block font-display text-lg font-semibold leading-none">
+                {count}
+              </span>
+              <span
+                className={`mt-0.5 block text-[10px] ${
+                  playerCount === count ? 'text-felt-deep/70' : 'text-ink-faint'
+                }`}
+              >
+                {count / 2} teams
+              </span>
             </button>
           ))}
         </div>
-      </div>
+      </section>
 
-      <div className="mb-8">
-        <label className="mb-2 block text-sm font-medium text-white/80">
-          Human players ({humanCount} of {playerCount})
+      <section className="mb-10">
+        <label className="mb-3 block text-center text-[11px] font-medium uppercase tracking-[0.14em] text-ink-muted">
+          Humans at the table
         </label>
-        <input
-          type="range"
-          min={0}
-          max={playerCount}
-          value={humanCount}
-          onChange={(e) => setHumanCount(Number(e.target.value))}
-          className="w-full accent-amber-500"
-        />
-        <div className="mt-1 flex justify-between text-xs text-white/50">
-          <span>All AI</span>
-          <span>All human</span>
+        <div className="flex flex-wrap justify-center gap-2">
+          {Array.from({ length: playerCount + 1 }, (_, i) => i).map((count) => (
+            <button
+              key={count}
+              type="button"
+              onClick={() => setHumanCount(count)}
+              className={`min-w-[3rem] rounded-xl px-3 py-2 transition-all duration-150 ${
+                humanCount === count
+                  ? 'bg-accent text-felt-deep'
+                  : 'bg-white/10 text-ink-soft hover:bg-white/15'
+              }`}
+            >
+              <span className="font-display text-base font-semibold">{count}</span>
+            </button>
+          ))}
         </div>
-      </div>
+      </section>
 
-      <div className="space-y-4">
+      <div className="space-y-3">
         {players.map((player, index) => (
           <div
             key={index}
-            className="rounded-xl border border-white/10 bg-black/20 p-4"
+            className="rounded-2xl bg-black/25 px-4 py-3.5 backdrop-blur-sm"
           >
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm font-semibold text-white">
+              <p className="text-sm font-medium text-ink">
                 Seat {index + 1}
-                <span className="ml-2 text-xs font-normal text-white/50">
-                  team {teamIdForSeat(index, playerCount) + 1} · partner seat{' '}
+                <span className="ml-2 text-[11px] font-normal text-ink-faint">
+                  team {teamIdForSeat(index, playerCount) + 1} · partner{' '}
                   {partnerSeat(index, playerCount) + 1}
                 </span>
               </p>
               <button
                 onClick={() => toggleHuman(index)}
-                className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold ${
                   player.isHuman
-                    ? 'bg-sky-500/30 text-sky-200'
-                    : 'bg-violet-500/30 text-violet-200'
+                    ? 'bg-sky-500/20 text-sky-200'
+                    : 'bg-white/10 text-ink-muted'
                 }`}
               >
                 {player.isHuman ? 'Human' : 'AI'}
@@ -160,15 +218,18 @@ export function SetupScreen({
 
             <div className="flex flex-wrap items-end gap-4">
               <div className="flex flex-col gap-1">
-                <span className="text-xs text-white/60">Avatar</span>
+                <span className="text-[10px] text-ink-faint">Avatar</span>
                 <div className="flex flex-wrap gap-1">
                   {AVATARS.map((avatar) => (
                     <button
                       key={avatar}
-                      onClick={() => updatePlayer(index, { avatar })}
-                      className={`rounded-lg px-2 py-1 text-xl ${
+                      onClick={() => {
+                        playSound('select')
+                        updatePlayer(index, { avatar })
+                      }}
+                      className={`rounded-lg px-1.5 py-1 text-lg transition ${
                         player.avatar === avatar
-                          ? 'bg-amber-500/30 ring-2 ring-amber-400'
+                          ? 'bg-accent/25 ring-1 ring-accent/60'
                           : 'bg-white/5 hover:bg-white/10'
                       }`}
                     >
@@ -181,38 +242,40 @@ export function SetupScreen({
               {player.isHuman ? (
                 <>
                   <label className="flex flex-col gap-1">
-                    <span className="text-xs text-white/60">Name</span>
+                    <span className="text-[10px] text-ink-faint">Name</span>
                     <input
                       value={player.name}
                       onChange={(e) => updatePlayer(index, { name: e.target.value })}
                       placeholder={`Player ${index + 1}`}
-                      className="rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white placeholder:text-white/30"
+                      className="rounded-xl border-0 bg-white/10 px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:ring-1 focus:ring-accent/50"
                     />
                   </label>
                   <label className="flex flex-col gap-1">
-                    <span className="text-xs text-white/60">Age</span>
+                    <span className="text-[10px] text-ink-faint">Age</span>
                     <input
                       type="number"
                       min={1}
                       max={120}
                       value={player.age || ''}
-                      onChange={(e) => updatePlayer(index, { age: Number(e.target.value) })}
-                      className="w-20 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white"
+                      onChange={(e) =>
+                        updatePlayer(index, { age: Number(e.target.value) })
+                      }
+                      className="w-20 rounded-xl border-0 bg-white/10 px-3 py-2 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-accent/50"
                     />
                   </label>
                 </>
               ) : (
                 <>
                   <label className="flex flex-col gap-1">
-                    <span className="text-xs text-white/60">AI name</span>
+                    <span className="text-[10px] text-ink-faint">AI name</span>
                     <input
                       value={player.name}
                       onChange={(e) => updatePlayer(index, { name: e.target.value })}
-                      className="rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-white"
+                      className="rounded-xl border-0 bg-white/10 px-3 py-2 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-accent/50"
                     />
                   </label>
                   <label className="flex flex-col gap-1">
-                    <span className="text-xs text-white/60">Expertise</span>
+                    <span className="text-[10px] text-ink-faint">Expertise</span>
                     <select
                       value={player.aiDifficulty}
                       onChange={(e) =>
@@ -220,7 +283,7 @@ export function SetupScreen({
                           aiDifficulty: e.target.value as AiDifficulty,
                         })
                       }
-                      className="rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm text-white"
+                      className="rounded-xl border-0 bg-white/10 px-3 py-2 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-accent/50"
                     >
                       {AI_DIFFICULTIES.map((d) => (
                         <option key={d.value} value={d.value} className="bg-felt-dark">
@@ -239,9 +302,9 @@ export function SetupScreen({
       <button
         onClick={onStart}
         disabled={!canStart}
-        className="mt-8 w-full rounded-lg bg-amber-500 px-4 py-3 text-sm font-semibold text-amber-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-40"
+        className="btn-primary mt-10 w-full py-3.5 text-sm disabled:opacity-40"
       >
-        Start Game
+        Sit down &amp; deal
       </button>
     </div>
   )

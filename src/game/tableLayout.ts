@@ -20,14 +20,14 @@ export function getViewerSeat(
 export type CompassSide = 'north' | 'south' | 'east' | 'west' | 'ne' | 'nw' | 'se' | 'sw'
 
 const COMPASS_COORDS: Record<CompassSide, { left: number; top: number }> = {
-  south: { left: 50, top: 90 },
-  north: { left: 50, top: 10 },
-  west: { left: 10, top: 50 },
-  east: { left: 90, top: 50 },
-  nw: { left: 22, top: 16 },
-  ne: { left: 78, top: 16 },
-  sw: { left: 22, top: 84 },
-  se: { left: 78, top: 84 },
+  south: { left: 50, top: 78 },
+  north: { left: 50, top: 6 },
+  west: { left: 6, top: 50 },
+  east: { left: 94, top: 50 },
+  nw: { left: 12, top: 14 },
+  ne: { left: 88, top: 14 },
+  sw: { left: 12, top: 78 },
+  se: { left: 88, top: 78 },
 }
 
 /** Map relative seat offset to compass position from viewer's perspective. */
@@ -106,24 +106,51 @@ export function seatRole(
   return 'opponent'
 }
 
-/** Books render toward the table center from each seat. */
-export function booksTowardCenter(side: CompassSide): string {
+/** Chip on the outer edge; books sit between chip and table center. */
+export function seatPanelLayout(side: CompassSide): string {
   switch (side) {
     case 'north':
-      return 'flex-col-reverse'
-    case 'south':
-      return 'flex-col'
-    case 'west':
-      return 'flex-row-reverse items-center'
-    case 'east':
-      return 'flex-row items-center'
-    case 'ne':
-    case 'nw':
-      return 'flex-col-reverse items-center'
-    case 'se':
-    case 'sw':
       return 'flex-col items-center'
+    case 'south':
+      return 'flex-col items-center'
+    case 'west':
+      return 'flex-row items-center'
+    case 'east':
+      return 'flex-row-reverse items-center'
+    case 'nw':
+      return 'flex-col items-start'
+    case 'ne':
+      return 'flex-col items-end'
+    case 'sw':
+      return 'flex-col-reverse items-start'
+    case 'se':
+      return 'flex-col-reverse items-end'
     default:
-      return 'flex-col'
+      return 'flex-col items-center'
+  }
+}
+
+/** Books grow toward the center in an organized row/column. */
+export function booksGrowClasses(side: CompassSide): string {
+  const base = 'shrink-0'
+  switch (side) {
+    case 'north':
+      return `${base} flex max-w-[min(88vw,34rem)] flex-row flex-nowrap items-start justify-center gap-1.5 overflow-x-auto overflow-y-visible py-1`
+    case 'south':
+      return `${base} flex max-w-[min(72vw,26rem)] flex-row flex-nowrap items-end justify-center gap-1.5 overflow-x-auto overflow-y-visible py-1`
+    case 'west':
+      return `${base} flex max-w-[min(15vw,6rem)] flex-row flex-wrap items-center justify-start gap-1`
+    case 'east':
+      return `${base} flex max-w-[min(15vw,6rem)] flex-row-reverse flex-wrap items-center justify-end gap-1`
+    case 'nw':
+      return `${base} flex max-w-[min(18vw,7rem)] flex-row flex-wrap items-end justify-start gap-1`
+    case 'ne':
+      return `${base} flex max-w-[min(18vw,7rem)] flex-row-reverse flex-wrap items-end justify-end gap-1`
+    case 'sw':
+      return `${base} flex max-w-[min(18vw,7rem)] flex-row flex-wrap items-start justify-start gap-1`
+    case 'se':
+      return `${base} flex max-w-[min(18vw,7rem)] flex-row-reverse flex-wrap items-start justify-end gap-1`
+    default:
+      return `${base} flex flex-row flex-wrap justify-center gap-1`
   }
 }

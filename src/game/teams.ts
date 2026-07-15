@@ -18,10 +18,11 @@ export function teamCount(playerCount: PlayerCount): number {
   return playerCount / 2
 }
 
+/** Soft, readable team accents — not neon dashboard chips. */
 export const TEAM_COLORS = [
-  '#3b82f6',
-  '#ef4444',
-  '#22c55e',
-  '#a855f7',
-  '#f59e0b',
+  '#7eb6e8',
+  '#e07a7a',
+  '#7dbe8f',
+  '#c4a0e0',
+  '#e0b86a',
 ] as const

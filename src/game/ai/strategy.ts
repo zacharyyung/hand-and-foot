@@ -1,10 +1,10 @@
 import type { Card, Rank } from '../cards'
 import { isRedThree, isWildCard } from '../cards'
 import type { Book } from '../books'
-import { canStartBook, isCleanBook, isDirtyBook } from '../books'
+import { bookWildCount, canStartBook, countWildsInCards, isCleanBook, isDirtyBook } from '../books'
 import { sumCardPoints, cardPointValue, meldThreshold } from '../scoring'
 import type { AiDifficulty } from '../deal'
-import { findAddToBookActions, findStartBookActions } from './decisions'
+import { findAddToBookActions, findStartBookActions, type AiAction } from './decisions'
 
 function combinations<T>(items: T[], min: number, max: number): T[][] {
   const results: T[][] = []
@@ -69,20 +69,103 @@ export function planInitialMeld(
   teamBooks: Book[],
   required: number,
   urgency: 'low' | 'medium' | 'high',
+  difficulty: AiDifficulty = 'normal',
 ): string[][] | null {
   const options = getStartOptions(hand, teamBooks)
   if (options.length === 0) return null
 
+  const needsDirty = teamNeedsDirtyBook(teamBooks)
+  const needsClean = teamNeedsCleanBook(teamBooks)
+
   const scoreOption = (opt: StartOption) => {
     let s = opt.score
-    if (urgency === 'high') s += 20
-    if (urgency === 'low' && opt.clean) s += 15
-    if (urgency !== 'high' && !opt.clean) s += 8
+    const rankCount = hand.filter((c) => c.rank === opt.rank && !isRedThree(c)).length
+
+    if (difficulty === 'expert') {
+      if (opt.clean) {
+        s += urgency === 'low' ? 50 : urgency === 'medium' ? 35 : 20
+        s += rankCount * 6
+      } else {
+        s -= urgency === 'low' ? 50 : urgency === 'medium' ? 25 : 8
+      if (needsDirty) s += 18
+      else s -= 30
+      if (needsClean && opt.clean) s += 12
+      }
+      if (urgency === 'high') s += opt.score * 0.35
+    } else {
+      if (urgency === 'high') s += 15
+      if (opt.clean) s += 12
+      else s += 6
+      s += rankCount * 3
+    }
+
     return s
   }
 
   const sorted = [...options].sort((a, b) => scoreOption(b) - scoreOption(a))
 
+  function dirtyBooksInPlan(chosen: string[][]): number {
+    return chosen.filter((ids) =>
+      ids.some((id) => {
+        const card = hand.find((c) => c.id === id)
+        return card && isWildCard(card)
+      }),
+    ).length
+  }
+
+  function search(
+    index: number,
+    used: Set<string>,
+    chosen: string[][],
+    points: number,
+  ): string[][] | null {
+    if (points >= required) return chosen
+    if (index >= sorted.length) return null
+
+    const skip = search(index + 1, used, chosen, points)
+    if (skip) return skip
+
+    const opt = sorted[index]
+    if (opt.cardIds.some((id) => used.has(id))) {
+      return search(index + 1, used, chosen, points)
+    }
+
+    if (
+      difficulty === 'expert' &&
+      !opt.clean &&
+      dirtyBooksInPlan(chosen) >= 1 &&
+      urgency !== 'high'
+    ) {
+      return search(index + 1, used, chosen, points)
+    }
+
+    const nextUsed = new Set(used)
+    opt.cardIds.forEach((id) => nextUsed.add(id))
+    return search(
+      index + 1,
+      nextUsed,
+      [...chosen, opt.cardIds],
+      points + opt.score,
+    )
+  }
+
+  const plan = search(0, new Set(), [], 0)
+  if (!plan || difficulty !== 'expert') return plan
+
+  const cleanOnly = options.filter((o) => o.clean)
+  if (cleanOnly.length > 0) {
+    const cleanSorted = [...cleanOnly].sort((a, b) => scoreOption(b) - scoreOption(a))
+    const cleanPlan = searchCleanOnly(cleanSorted, required)
+    if (cleanPlan) return cleanPlan
+  }
+
+  return plan
+}
+
+function searchCleanOnly(
+  sorted: StartOption[],
+  required: number,
+): string[][] | null {
   function search(
     index: number,
     used: Set<string>,
@@ -145,20 +228,90 @@ export function pickBestStartWhenUnlocked(
     const rankCount = hand.filter((c) => c.rank === opt.rank && !isRedThree(c)).length
     value += rankCount * 4
 
-    if (needsDirty && !opt.clean) value += urgency === 'low' ? 25 : 15
-    if (needsClean && opt.clean) value += urgency === 'low' ? 20 : 10
-    if (urgency === 'high') value += opt.score * 0.5
+    if (difficulty === 'expert') {
+      if (opt.clean) {
+        value += urgency === 'low' ? 40 : urgency === 'medium' ? 25 : 12
+        value += rankCount * 5
+      } else {
+        value -= urgency === 'low' ? 35 : urgency === 'medium' ? 15 : 0
+        if (needsDirty) value += 20
+        else value -= 25
+      }
+      if (needsClean && opt.clean) value += 15
+    } else {
+      if (needsDirty && !opt.clean) value += urgency === 'low' ? 15 : 10
+      if (needsClean && opt.clean) value += urgency === 'low' ? 12 : 8
+      if (urgency === 'high') value += opt.score * 0.4
+    }
 
     return { opt, value }
   })
 
   scored.sort((a, b) => b.value - a.value)
 
-  if (difficulty === 'easy' && Math.random() < 0.15 && scored.length > 1) {
+  if (difficulty === 'normal' && Math.random() < 0.12 && scored.length > 1) {
     return scored[1].opt.cardIds
   }
 
   return scored[0].opt.cardIds
+}
+
+/** Prefer natural adds; avoid wilds on clean books (preserves clean books for going out). */
+export function pickBestAddToBook(
+  actions: Extract<AiAction, { type: 'addToBook' }>[],
+  hand: Card[],
+  teamBooks: Book[],
+  difficulty: AiDifficulty,
+): Extract<AiAction, { type: 'addToBook' }> | null {
+  if (actions.length === 0) return null
+
+  const scored = actions.map((action) => {
+    const book = teamBooks.find((b) => b.id === action.bookId)!
+    const cards = hand.filter((c) => action.cardIds.includes(c.id))
+    const wildsAdded = countWildsInCards(cards)
+    const naturalsAdded = cards.length - wildsAdded
+    const clean = isCleanBook(book)
+    const newSize = book.cards.length + cards.length
+    const completes = newSize >= 7
+
+    let score = action.priority
+
+    if (clean && wildsAdded > 0) {
+      score -= difficulty === 'expert' ? 250 : 200
+      if (!completes) score -= 80
+    }
+
+    if (clean && naturalsAdded > 0) {
+      score += 40
+      if (completes) score += 35
+    }
+
+    if (!clean && wildsAdded > 0 && bookWildCount(book) < 2) {
+      score += 15
+    }
+
+    if (naturalsAdded > 0 && !clean) {
+      score += 20
+    }
+
+    return { action, score }
+  })
+
+  scored.sort((a, b) => b.score - a.score)
+
+  const withoutWildOnClean = scored.filter(({ action }) => {
+    const book = teamBooks.find((b) => b.id === action.bookId)!
+    const cards = hand.filter((c) => action.cardIds.includes(c.id))
+    return !(isCleanBook(book) && countWildsInCards(cards) > 0)
+  })
+
+  const pool = withoutWildOnClean.length > 0 ? withoutWildOnClean : scored
+
+  if (difficulty === 'normal' && Math.random() < 0.1 && pool.length > 1) {
+    return pool[1].action
+  }
+
+  return pool[0]?.action ?? null
 }
 
 export function pickDiscardCard(
@@ -190,8 +343,8 @@ export function pickDiscardCard(
       if (teamRanks.has(card.rank)) discardScore -= 25
     }
 
-    if (difficulty === 'easy' && Math.random() < 0.2) {
-      discardScore += Math.random() * 15
+    if (difficulty === 'normal' && Math.random() < 0.15) {
+      discardScore += Math.random() * 12
     }
 
     return { card, discardScore }

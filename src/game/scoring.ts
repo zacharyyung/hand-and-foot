@@ -36,5 +36,12 @@ export function bookBonus(book: Book): number {
   return bookWildCount(book) > 0 ? 100 : 300
 }
 
+/** Live round points on the table: melded card values + completed book bonuses. */
+export function teamBoardPoints(books: Book[]): number {
+  const tableCardPoints = sumCardPoints(books.flatMap((book) => book.cards))
+  const bookBonuses = books.reduce((sum, book) => sum + bookBonus(book), 0)
+  return tableCardPoints + bookBonuses
+}
+
 export const WINNING_SCORE = 5000
 export const GOING_OUT_BONUS = 100

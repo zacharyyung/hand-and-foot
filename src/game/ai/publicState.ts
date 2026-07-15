@@ -1,8 +1,13 @@
 import type { Card } from '../cards'
 import type { Book } from '../books'
 import type { GameState, TurnPhase } from '../deal'
+import { playerFootCount, playerHandCount } from '../deal'
+import { meldThreshold } from '../scoring'
 
-/** Information visible to an AI — same limits as a human player. */
+/**
+ * Information visible to an AI — same limits as a human at the table.
+ * AIs see melded books and pile counts, but never another player's hand or foot cards.
+ */
 export interface AiPublicState {
   mySeatIndex: number
   myTeamId: number
@@ -14,12 +19,14 @@ export interface AiPublicState {
   discardTop: Card | null
   discardCount: number
   myTeamBooks: Book[]
+  /** All melded books on the table (visible to everyone). */
   allTableBooks: Book[]
   teamScore: number
   teamMeldThresholdMet: boolean
   meldPointsThisTurn: number
   requiredMeld: number
-  opponentInfo: Array<{
+  /** Other players — counts only, never card contents (includes partner). */
+  otherPlayers: Array<{
     seatIndex: number
     name: string
     teamId: number
@@ -38,7 +45,7 @@ export function buildAiPublicState(state: GameState, seatIndex: number): AiPubli
     mySeatIndex: seatIndex,
     myTeamId: player.profile.teamId,
     myHand: [...player.hand],
-    myFootCount: player.foot.length,
+    myFootCount: playerFootCount(player),
     isPlayingFoot: player.isPlayingFoot,
     footOnHold: player.footOnHold,
     stockCount: state.stock.length,
@@ -49,15 +56,15 @@ export function buildAiPublicState(state: GameState, seatIndex: number): AiPubli
     teamScore: team.score,
     teamMeldThresholdMet: team.meldThresholdMet,
     meldPointsThisTurn: state.meldPointsThisTurn,
-    requiredMeld: 0, // filled by caller
-    opponentInfo: state.players
+    requiredMeld: meldThreshold(team.score),
+    otherPlayers: state.players
       .filter((_, i) => i !== seatIndex)
       .map((p) => ({
         seatIndex: p.profile.seatIndex,
         name: p.profile.name,
         teamId: p.profile.teamId,
-        handCount: p.hand.length,
-        footCount: p.foot.length,
+        handCount: playerHandCount(p),
+        footCount: playerFootCount(p),
         isPlayingFoot: p.isPlayingFoot,
       })),
     turnPhase: state.turnPhase,

@@ -1,7 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import type { GameState } from './game/deal'
 import { startNewGame } from './game/deal'
 import { applyRoundScores, startNextRound } from './game/roundScoring'
+import type { ChatMessage } from './game/chat'
+import { loadMutePreference, playSound, unlockAudio } from './game/audio'
 import { GameView } from './components/GameView'
 import { RoundSummary } from './components/RoundSummary'
 import {
@@ -23,7 +25,12 @@ function App() {
     createDefaultSetupPlayers(4, 1),
   )
   const [game, setGame] = useState<GameState | null>(null)
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [showInstructions, setShowInstructions] = useState(false)
+
+  useEffect(() => {
+    loadMutePreference()
+  }, [])
 
   function handlePlayerCountChange(count: PlayerCount) {
     setPlayerCount(count)
@@ -33,11 +40,16 @@ function App() {
   }
 
   function handleStart() {
+    unlockAudio()
+    playSound('threshold')
+    setChatMessages([])
     setGame(startNewGame(setupPlayers, playerCount))
   }
 
   function handleRoundContinue() {
     if (!game) return
+    unlockAudio()
+    playSound('button')
 
     if (game.phase === 'roundEnd') {
       if (!game.roundScores) {
@@ -45,6 +57,7 @@ function App() {
         return
       }
       if (game.winnerTeamId !== null) {
+        playSound('goOut')
         setGame({ ...game, phase: 'gameOver' })
         return
       }
@@ -52,52 +65,74 @@ function App() {
     }
   }
 
-  const content = useMemo(() => {
-    if (!game) {
-      return (
-        <SetupScreen
-          playerCount={playerCount}
-          onPlayerCountChange={handlePlayerCountChange}
-          humanCount={humanCount}
-          onHumanCountChange={setHumanCount}
-          players={setupPlayers}
-          onPlayersChange={setSetupPlayers}
-          onStart={handleStart}
-        />
-      )
-    }
+  let content: ReactNode
 
-    if (game.phase === 'roundEnd') {
-      return <RoundSummary game={game} onContinue={handleRoundContinue} />
-    }
-
-    if (game.phase === 'gameOver') {
-      const winner = game.teams.find((t) => t.id === game.winnerTeamId)
-      return (
-        <div className="mx-auto max-w-lg px-6 py-10 text-center">
-          <h2 className="mb-4 text-3xl font-bold text-white">Game Over!</h2>
-          <p className="mb-6 text-lg text-white/80">
-            <span style={{ color: TEAM_COLORS[winner!.id] }}>
-              Team {winner!.id + 1}
-            </span>{' '}
-            wins with {winner!.score} points!
-          </p>
-          <button
-            onClick={() => setGame(null)}
-            className="rounded-lg bg-amber-500 px-6 py-3 font-semibold text-amber-950 hover:bg-amber-400"
-          >
-            New Game
-          </button>
-        </div>
-      )
-    }
-
-    return <GameView game={game} onGameChange={setGame} />
-  }, [game, playerCount, humanCount, setupPlayers])
+  if (!game) {
+    content = (
+      <SetupScreen
+        playerCount={playerCount}
+        onPlayerCountChange={handlePlayerCountChange}
+        humanCount={humanCount}
+        onHumanCountChange={setHumanCount}
+        players={setupPlayers}
+        onPlayersChange={setSetupPlayers}
+        onStart={handleStart}
+      />
+    )
+  } else if (game.phase === 'roundEnd') {
+    content = <RoundSummary game={game} onContinue={handleRoundContinue} />
+  } else if (game.phase === 'gameOver') {
+    const winner = game.teams.find((t) => t.id === game.winnerTeamId)
+    content = (
+      <div className="animate-fade-up mx-auto max-w-lg px-6 py-16 text-center">
+        <p className="mb-2 font-sans text-[11px] uppercase tracking-[0.2em] text-ink-faint">
+          Game over
+        </p>
+        <h2 className="mb-3 font-display text-4xl font-semibold text-ink">Victory</h2>
+        <p className="mb-10 text-lg text-ink-soft">
+          <span style={{ color: TEAM_COLORS[winner!.id] }}>
+            Team {winner!.id + 1}
+          </span>{' '}
+          wins with{' '}
+          <span className="font-display font-semibold tabular-nums text-accent">
+            {winner!.score}
+          </span>
+        </p>
+        <button
+          onClick={() => {
+            playSound('button')
+            setGame(null)
+          }}
+          className="btn-primary px-8 py-3 text-sm"
+        >
+          New game
+        </button>
+      </div>
+    )
+  } else {
+    content = (
+      <GameView
+        game={game}
+        onGameChange={setGame}
+        chatMessages={chatMessages}
+        onChatSend={(message) => {
+          playSound('chat')
+          setChatMessages((prev) => [...prev, message])
+        }}
+        onShowInstructions={() => setShowInstructions(true)}
+      />
+    )
+  }
 
   return (
-    <div className="min-h-screen bg-felt bg-gradient-to-b from-felt-light to-felt-dark">
-      <InstructionsButton onClick={() => setShowInstructions(true)} />
+    <div
+      className={`room-bg min-h-screen ${
+        game && game.phase === 'playing' ? 'h-dvh overflow-hidden' : ''
+      }`}
+    >
+      {(!game || game.phase !== 'playing') && (
+        <InstructionsButton onClick={() => setShowInstructions(true)} />
+      )}
       <InstructionsOverlay
         open={showInstructions}
         onClose={() => setShowInstructions(false)}
