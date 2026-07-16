@@ -68,6 +68,7 @@ export function findAddToBookActions(
   hand: Card[],
   teamBooks: Book[],
   isPlayingFoot = false,
+  booksWithWildAddedThisTurn: string[] = [],
 ): Extract<AiAction, { type: 'addToBook' }>[] {
   if (isPlayingFoot && hand.length === 1) return []
 
@@ -77,7 +78,9 @@ export function findAddToBookActions(
   for (const book of teamBooks) {
     for (const size of [1, 2, 3, 4]) {
       for (const combo of combinations(playable, size, size)) {
-        const check = canAddToBook(book, combo)
+        const check = canAddToBook(book, combo, {
+          wildAlreadyAddedThisTurn: booksWithWildAddedThisTurn.includes(book.id),
+        })
         if (!check.ok) continue
         const newSize = book.cards.length + combo.length
         const wildsInCombo = countWildsInCards(combo)
@@ -85,7 +88,7 @@ export function findAddToBookActions(
         let priority =
           (newSize >= 7 ? 100 : newSize * 10) + combo.length
         if (bookIsClean && wildsInCombo > 0) {
-          priority -= 500
+          priority -= 800
         } else if (wildsInCombo === 0) {
           priority += 25
         }

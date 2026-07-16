@@ -3,6 +3,8 @@ import type { Book } from './books'
 import {
   canAddToBook,
   canStartBook,
+  countWildsInCards,
+  getGoOutBlockReason,
   teamHasCleanAndDirtyBooks,
 } from './books'
 import type { GameState, PlayerState } from './deal'
@@ -127,6 +129,7 @@ function advanceTurn(state: GameState, fromPlayerIndex: number): GameState {
     currentPlayerIndex: nextIndex,
     turnPhase: 'draw',
     meldPointsThisTurn: 0,
+    booksWithWildAddedThisTurn: [],
   }
 }
 
@@ -187,6 +190,7 @@ export function commitStagedMelds(
 
   let nextState = state
   let nextPlayer = player
+  let wildBooksThisTurn = [...state.booksWithWildAddedThisTurn]
 
   for (const group of parsedGroups) {
     const book: Book = {
@@ -195,6 +199,10 @@ export function commitStagedMelds(
       cards: group.cards,
       teamId: team.id,
       startedBySeatIndex: playerIndex,
+    }
+
+    if (countWildsInCards(group.cards) > 0) {
+      wildBooksThisTurn = [...wildBooksThisTurn, book.id]
     }
 
     const newHand = removeCardsFromHand(nextPlayer.hand, group.cardIds)
@@ -212,6 +220,7 @@ export function commitStagedMelds(
       players,
       teams,
       meldPointsThisTurn: totalPoints,
+      booksWithWildAddedThisTurn: wildBooksThisTurn,
     }
 
     if (
@@ -312,12 +321,17 @@ export function startBook(
   const players = [...state.players]
   players[playerIndex] = updatedPlayer
 
+  const wildInBook = countWildsInCards(selected) > 0
+
   return {
     state: {
       ...state,
       players,
       teams: teamsWithThreshold,
       meldPointsThisTurn,
+      booksWithWildAddedThisTurn: wildInBook
+        ? [...state.booksWithWildAddedThisTurn, book.id]
+        : state.booksWithWildAddedThisTurn,
     },
   }
 }
@@ -346,7 +360,9 @@ export function addToBook(
   if (!book) return { state, error: 'Book not found.' }
 
   const selected = player.hand.filter((c) => cardIds.includes(c.id))
-  const check = canAddToBook(book, selected)
+  const check = canAddToBook(book, selected, {
+    wildAlreadyAddedThisTurn: state.booksWithWildAddedThisTurn.includes(bookId),
+  })
   if (!check.ok) return { state, error: check.reason }
 
   const updatedBook: Book = {
@@ -370,13 +386,32 @@ export function addToBook(
   const players = [...state.players]
   players[playerIndex] = updatedPlayer
 
+  const wildAdded = countWildsInCards(selected) > 0
+
   return {
     state: {
       ...state,
       players,
       teams: updatedTeams,
+      booksWithWildAddedThisTurn: wildAdded
+        ? [...state.booksWithWildAddedThisTurn, bookId]
+        : state.booksWithWildAddedThisTurn,
     },
   }
+}
+
+/** Discarding the last card from the foot — the only way to end the round. */
+export function isAttemptingGoOutDiscard(player: PlayerState): boolean {
+  return (
+    player.isPlayingFoot &&
+    player.hand.length === 1 &&
+    player.foot.length === 0 &&
+    !player.footOnHold
+  )
+}
+
+export function canTeamGoOut(books: Book[], meldThresholdMet: boolean): boolean {
+  return meldThresholdMet && teamHasCleanAndDirtyBooks(books)
 }
 
 export function discardCard(
@@ -393,25 +428,31 @@ export function discardCard(
   if (!card) return { state, error: 'Card not found in hand.' }
 
   const team = getTeam(state, player.profile.teamId)
+
+  if (isAttemptingGoOutDiscard(player)) {
+    if (!canTeamGoOut(team.books, team.meldThresholdMet)) {
+      return {
+        state,
+        error:
+          getGoOutBlockReason(team.books, team.meldThresholdMet) ??
+          'Cannot go out — need 1 completed clean book and 1 completed dirty book (7+ each).',
+      }
+    }
+  }
+
   const willBeEmpty = player.hand.length === 1
-  const canGoOutNow =
+  const goingOut =
     willBeEmpty &&
     player.isPlayingFoot &&
     player.foot.length === 0 &&
     !player.footOnHold &&
-    teamHasCleanAndDirtyBooks(team.books) &&
-    team.meldThresholdMet
-  const goingOut = canGoOutNow
+    canTeamGoOut(team.books, team.meldThresholdMet)
 
   const newHand = removeCardsFromHand(player.hand, [cardId])
   let updatedPlayer: PlayerState = { ...player, hand: newHand }
 
   if (willBeEmpty && !player.isPlayingFoot && player.foot.length > 0 && !goingOut) {
     updatedPlayer = activateFootOnHold({ ...updatedPlayer, hand: newHand })
-  }
-
-  if (willBeEmpty && player.isPlayingFoot && !goingOut) {
-    updatedPlayer = { ...updatedPlayer, isPlayingFoot: false }
   }
 
   const players = [...state.players]
@@ -423,6 +464,7 @@ export function discardCard(
     discard: [...state.discard, card],
     turnPhase: 'draw',
     meldPointsThisTurn: 0,
+    booksWithWildAddedThisTurn: [],
   }
 
   if (goingOut) {
@@ -441,11 +483,9 @@ export function canGoOut(state: GameState): boolean {
   const player = getCurrentPlayer(state)
   const team = getTeam(state, player.profile.teamId)
 
-  if (player.hand.length !== 1) return false
-  if (!player.isPlayingFoot) return false
-  if (player.foot.length > 0 || player.footOnHold) return false
+  if (!isAttemptingGoOutDiscard(player)) return false
 
-  return teamHasCleanAndDirtyBooks(team.books) && team.meldThresholdMet
+  return canTeamGoOut(team.books, team.meldThresholdMet)
 }
 
 /** Last card while playing the foot — must be discarded to go out, never melded. */

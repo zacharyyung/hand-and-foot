@@ -107,9 +107,16 @@ export function canStartBook(
   return { ok: true, rank }
 }
 
+/** Max wilds allowed in any book (dirty books). */
+export const MAX_WILDS_PER_BOOK = 2
+
+/** At most one wild may be played onto a book in a single add. */
+export const MAX_WILDS_PER_ADD = 1
+
 export function canAddToBook(
   book: Book,
   cards: Card[],
+  options?: { wildAlreadyAddedThisTurn?: boolean },
 ): { ok: true } | { ok: false; reason: string } {
   if (cards.length === 0) {
     return { ok: false, reason: 'Select cards to add.' }
@@ -120,12 +127,30 @@ export function canAddToBook(
   }
 
   const wildsToAdd = countWildsInCards(cards)
-  if (wildsToAdd > 1) {
-    return { ok: false, reason: 'You cannot add more than 1 wild at a time.' }
+  const wildsAlready = bookWildCount(book)
+
+  if (wildsToAdd > MAX_WILDS_PER_ADD) {
+    return {
+      ok: false,
+      reason: 'You can add only 1 wild at a time to a book.',
+    }
   }
 
-  if (bookWildCount(book) + wildsToAdd > 2) {
-    return { ok: false, reason: 'A book can have at most 2 wild cards.' }
+  if (wildsToAdd > 0 && options?.wildAlreadyAddedThisTurn) {
+    return {
+      ok: false,
+      reason: 'You can add only 1 wild per turn to each book.',
+    }
+  }
+
+  if (wildsAlready + wildsToAdd > MAX_WILDS_PER_BOOK) {
+    return {
+      ok: false,
+      reason:
+        wildsAlready >= MAX_WILDS_PER_BOOK
+          ? 'This book already has the maximum of 2 wilds.'
+          : 'A book can have at most 2 wild cards.',
+    }
   }
 
   if (!cardsShareBookRank(cards, book.rank)) {
@@ -135,18 +160,109 @@ export function canAddToBook(
   return { ok: true }
 }
 
+export type WildPlayMode = 'start' | 'stage' | 'add'
+
+/** UI hint when the current selection breaks wild rules. */
+export function getWildPlayBlockReason(
+  hand: Card[],
+  selectedIds: string[],
+  books: Book[],
+  mode: WildPlayMode,
+  booksWithWildAddedThisTurn: string[] = [],
+): string | null {
+  if (selectedIds.length === 0) return null
+
+  const selected = hand.filter((c) => selectedIds.includes(c.id))
+  const wildsToAdd = countWildsInCards(selected)
+
+  if (mode === 'start' || mode === 'stage') {
+    if (wildsToAdd > MAX_WILDS_PER_ADD) {
+      return mode === 'stage'
+        ? 'You can use only 1 wild when staging a book.'
+        : 'You can use only 1 wild when starting a book.'
+    }
+    return null
+  }
+
+  if (wildsToAdd > MAX_WILDS_PER_ADD) {
+    return 'You can add only 1 wild at a time to a book.'
+  }
+
+  const rankMatches = books.filter((book) => cardsShareBookRank(selected, book.rank))
+  if (rankMatches.length === 0) return null
+
+  if (wildsToAdd > 0) {
+    const blockedByTurn = rankMatches.every((book) =>
+      booksWithWildAddedThisTurn.includes(book.id),
+    )
+    if (blockedByTurn) {
+      return 'You already added a wild to that book this turn.'
+    }
+
+    const fullWild = rankMatches.every(
+      (book) => bookWildCount(book) >= MAX_WILDS_PER_BOOK,
+    )
+    if (fullWild) {
+      return 'That book already has the maximum of 2 wilds.'
+    }
+  }
+
+  return null
+}
+
+/** @deprecated Use getWildPlayBlockReason */
+export function getWildSelectionBlockReason(
+  hand: Card[],
+  selectedIds: string[],
+  books: Book[],
+): string | null {
+  return getWildPlayBlockReason(hand, selectedIds, books, 'add')
+}
+
 /** All team books the selected cards can be added to. */
 export function findAllBooksForSelectedCards(
   hand: Card[],
   selectedIds: string[],
   books: Book[],
+  booksWithWildAddedThisTurn: string[] = [],
 ): Book[] {
   if (selectedIds.length === 0 || books.length === 0) return []
 
   const selected = hand.filter((c) => selectedIds.includes(c.id))
   if (selected.length === 0) return []
 
-  return books.filter((book) => canAddToBook(book, selected).ok)
+  const wilds = selected.filter(isWildCard)
+  const naturals = selected.filter((c) => !isWildCard(c) && !isRedThree(c))
+
+  // Single wild selected — may go on any book with room (< 2 wilds).
+  if (wilds.length === 1 && naturals.length === 0) {
+    return books.filter(
+      (book) =>
+        bookWildCount(book) < MAX_WILDS_PER_BOOK &&
+        canAddToBook(book, [wilds[0]], {
+          wildAlreadyAddedThisTurn: booksWithWildAddedThisTurn.includes(book.id),
+        }).ok,
+    )
+  }
+
+  return books.filter((book) =>
+    canAddToBook(book, selected, {
+      wildAlreadyAddedThisTurn: booksWithWildAddedThisTurn.includes(book.id),
+    }).ok,
+  )
+}
+
+/** True when the player must pick a target book (e.g. a lone wild fits several books). */
+export function needsAddBookPicker(
+  hand: Card[],
+  selectedIds: string[],
+  books: Book[],
+  booksWithWildAddedThisTurn: string[] = [],
+): boolean {
+  return (
+    findAllBooksForSelectedCards(hand, selectedIds, books, booksWithWildAddedThisTurn)
+      .length > 1
+  )
 }
 
 export function selectionIncludesWild(hand: Card[], selectedIds: string[]): boolean {
@@ -158,8 +274,14 @@ export function findBookForSelectedCards(
   hand: Card[],
   selectedIds: string[],
   books: Book[],
+  booksWithWildAddedThisTurn: string[] = [],
 ): Book | null {
-  const matches = findAllBooksForSelectedCards(hand, selectedIds, books)
+  const matches = findAllBooksForSelectedCards(
+    hand,
+    selectedIds,
+    books,
+    booksWithWildAddedThisTurn,
+  )
   if (matches.length === 0) return null
   if (matches.length === 1) return matches[0]
 

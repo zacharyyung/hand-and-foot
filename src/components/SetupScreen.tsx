@@ -1,6 +1,5 @@
 import type { AiDifficulty } from '../game/deal'
 import {
-  partnerSeat,
   PLAYER_COUNT_OPTIONS,
   teamIdForSeat,
   type PlayerCount,
@@ -200,8 +199,7 @@ export function SetupScreen({
               <p className="text-sm font-medium text-ink">
                 Seat {index + 1}
                 <span className="ml-2 text-[11px] font-normal text-ink-faint">
-                  team {teamIdForSeat(index, playerCount) + 1} · partner{' '}
-                  {partnerSeat(index, playerCount) + 1}
+                  Team {teamIdForSeat(index, playerCount) + 1}
                 </span>
               </p>
               <button

@@ -69,8 +69,15 @@ export function InstructionsOverlay({ open, onClose }: InstructionsOverlayProps)
             <h3 className="mb-1 font-semibold text-ink">Books</h3>
             <ul className="list-inside list-disc space-y-1">
               <li>Start with 3+ of a rank (max 1 wild when starting).</li>
-              <li>One book per rank per team. Red 3s cannot go in books.</li>
-              <li>Dirty = has wilds (max 2). Clean = no wilds.</li>
+              <li>Only one book per rank per team. Red 3s cannot go in books.</li>
+              <li>
+                Dirty = has wilds. Clean = no wilds. A dirty book may hold{' '}
+                <strong>at most 2 wilds</strong> total.
+              </li>
+              <li>
+                Only <strong>1 wild per play</strong> when starting, staging, or adding to a
+                book — and only <strong>1 wild per book per turn</strong>.
+              </li>
               <li>Completed (7+): clean +300, dirty +100 at round end.</li>
             </ul>
           </section>

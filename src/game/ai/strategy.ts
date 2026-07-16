@@ -1,9 +1,17 @@
 import type { Card, Rank } from '../cards'
 import { isRedThree, isWildCard } from '../cards'
 import type { Book } from '../books'
-import { bookWildCount, canStartBook, countWildsInCards, isCleanBook, isDirtyBook } from '../books'
+import {
+  bookWildCount,
+  canAddToBook,
+  canStartBook,
+  countWildsInCards,
+  isCleanBook,
+  isDirtyBook,
+} from '../books'
 import { sumCardPoints, cardPointValue, meldThreshold } from '../scoring'
 import type { AiDifficulty } from '../deal'
+import type { AiPublicState } from './publicState'
 import { findAddToBookActions, findStartBookActions, type AiAction } from './decisions'
 
 function combinations<T>(items: T[], min: number, max: number): T[][] {
@@ -93,10 +101,15 @@ export function planInitialMeld(
       }
       if (urgency === 'high') s += opt.score * 0.35
     } else {
-      if (urgency === 'high') s += 15
-      if (opt.clean) s += 12
-      else s += 6
-      s += rankCount * 3
+      if (opt.clean) {
+        s += urgency === 'low' ? 25 : urgency === 'medium' ? 18 : 10
+        s += rankCount * 4
+      } else {
+        s -= needsDirty ? 15 : 50
+        if (needsDirty) s += urgency === 'low' ? 12 : 8
+      }
+      if (needsClean && opt.clean) s += 15
+      if (urgency === 'high') s += opt.score * 0.35
     }
 
     return s
@@ -131,7 +144,6 @@ export function planInitialMeld(
     }
 
     if (
-      difficulty === 'expert' &&
       !opt.clean &&
       dirtyBooksInPlan(chosen) >= 1 &&
       urgency !== 'high'
@@ -211,6 +223,124 @@ export function teamNeedsCleanBook(books: Book[]): boolean {
   return !books.some((b) => b.cards.length >= 3 && isCleanBook(b))
 }
 
+export function teamHasCompletedCleanBook(books: Book[]): boolean {
+  return books.some((b) => b.cards.length >= 7 && isCleanBook(b))
+}
+
+export function teamHasCompletedDirtyBook(books: Book[]): boolean {
+  return books.some((b) => b.cards.length >= 7 && isDirtyBook(b))
+}
+
+function teammates(otherPlayers: AiPublicState['otherPlayers'], myTeamId: number) {
+  return otherPlayers.filter((p) => p.teamId === myTeamId)
+}
+
+function opponents(otherPlayers: AiPublicState['otherPlayers'], myTeamId: number) {
+  return otherPlayers.filter((p) => p.teamId !== myTeamId)
+}
+
+/** Partner is in foot with very few cards — team may be closing. */
+function partnerNearGoOut(otherPlayers: AiPublicState['otherPlayers'], myTeamId: number): boolean {
+  return teammates(otherPlayers, myTeamId).some(
+    (p) => p.isPlayingFoot && p.footCount === 0 && p.handCount <= 3,
+  )
+}
+
+/** Any opponent is low on cards — race to finish books. */
+function opponentRacing(otherPlayers: AiPublicState['otherPlayers'], myTeamId: number): boolean {
+  return opponents(otherPlayers, myTeamId).some((p) => p.handCount + p.footCount <= 5)
+}
+
+/** Can the wild(s) in hand go to an already-dirty book instead? */
+export function hasAlternativeWildTarget(
+  hand: Card[],
+  teamBooks: Book[],
+  targetCleanBookId: string,
+  booksWithWildAddedThisTurn: string[],
+): boolean {
+  const wilds = hand.filter(isWildCard)
+  if (wilds.length === 0) return true
+
+  for (const book of teamBooks) {
+    if (book.id === targetCleanBookId) continue
+    if (bookWildCount(book) === 0) continue
+    if (bookWildCount(book) >= 2) continue
+    if (booksWithWildAddedThisTurn.includes(book.id)) continue
+
+    for (const wild of wilds) {
+      const check = canAddToBook(book, [wild], {
+        wildAlreadyAddedThisTurn: booksWithWildAddedThisTurn.includes(book.id),
+      })
+      if (check.ok) return true
+    }
+  }
+
+  return false
+}
+
+/**
+ * Wild on a clean book is almost always wrong for going out.
+ * Only allow when there is a concrete strategic reason.
+ */
+export function justifyDirtyingCleanBook(
+  book: Book,
+  cards: Card[],
+  pub: AiPublicState,
+  booksWithWildAddedThisTurn: string[],
+): boolean {
+  if (!isCleanBook(book)) return true
+  if (countWildsInCards(cards) === 0) return true
+
+  const books = pub.myTeamBooks
+  const newSize = book.cards.length + cards.length
+  const completes = newSize >= 7
+  const otherCompletedClean = books.some(
+    (b) => b.id !== book.id && b.cards.length >= 7 && isCleanBook(b),
+  )
+  const needsDirtyCompleted = !teamHasCompletedDirtyBook(books)
+  const alternative = hasAlternativeWildTarget(
+    pub.myHand,
+    books,
+    book.id,
+    booksWithWildAddedThisTurn,
+  )
+
+  // Close a 6-card clean book as dirty when team already has a completed clean
+  // and still needs a completed dirty book to go out.
+  if (
+    book.cards.length === 6 &&
+    completes &&
+    otherCompletedClean &&
+    needsDirtyCompleted
+  ) {
+    return true
+  }
+
+  // Partner is about to go out — dump hand including wild when no dirty book to take it.
+  if (partnerNearGoOut(pub.otherPlayers, pub.myTeamId) && !alternative && pub.myHand.length <= 5) {
+    return true
+  }
+
+  // Must shed wild before discard; no dirty book can accept it.
+  if (pub.myHand.length <= 3 && !alternative) {
+    return true
+  }
+
+  // Opponent racing: finish a large clean book as dirty when team has clean done and needs dirty.
+  if (
+    completes &&
+    book.cards.length >= 5 &&
+    otherCompletedClean &&
+    needsDirtyCompleted &&
+    opponentRacing(pub.otherPlayers, pub.myTeamId) &&
+    !alternative
+  ) {
+    return true
+  }
+
+  return false
+}
+
 export function pickBestStartWhenUnlocked(
   hand: Card[],
   teamBooks: Book[],
@@ -233,13 +363,18 @@ export function pickBestStartWhenUnlocked(
         value += urgency === 'low' ? 40 : urgency === 'medium' ? 25 : 12
         value += rankCount * 5
       } else {
-        value -= urgency === 'low' ? 35 : urgency === 'medium' ? 15 : 0
+        value -= urgency === 'low' ? 80 : urgency === 'medium' ? 50 : 20
         if (needsDirty) value += 20
-        else value -= 25
+        else value -= 60
       }
       if (needsClean && opt.clean) value += 15
     } else {
-      if (needsDirty && !opt.clean) value += urgency === 'low' ? 15 : 10
+      if (opt.clean) {
+        value += urgency === 'low' ? 20 : 12
+      } else {
+        value -= needsDirty ? 10 : 40
+        if (needsDirty) value += urgency === 'low' ? 15 : 10
+      }
       if (needsClean && opt.clean) value += urgency === 'low' ? 12 : 8
       if (urgency === 'high') value += opt.score * 0.4
     }
@@ -249,6 +384,14 @@ export function pickBestStartWhenUnlocked(
 
   scored.sort((a, b) => b.value - a.value)
 
+  const cleanStarts = scored.filter((s) => s.opt.clean)
+  if (cleanStarts.length > 0 && (difficulty === 'expert' || !needsDirty)) {
+    if (difficulty === 'normal' && Math.random() < 0.12 && cleanStarts.length > 1) {
+      return cleanStarts[1].opt.cardIds
+    }
+    return cleanStarts[0].opt.cardIds
+  }
+
   if (difficulty === 'normal' && Math.random() < 0.12 && scored.length > 1) {
     return scored[1].opt.cardIds
   }
@@ -256,16 +399,28 @@ export function pickBestStartWhenUnlocked(
   return scored[0].opt.cardIds
 }
 
-/** Prefer natural adds; avoid wilds on clean books (preserves clean books for going out). */
+/** Prefer natural adds; never dirty a clean book without strategic justification. */
 export function pickBestAddToBook(
   actions: Extract<AiAction, { type: 'addToBook' }>[],
-  hand: Card[],
-  teamBooks: Book[],
+  pub: AiPublicState,
+  booksWithWildAddedThisTurn: string[],
   difficulty: AiDifficulty,
 ): Extract<AiAction, { type: 'addToBook' }> | null {
   if (actions.length === 0) return null
 
-  const scored = actions.map((action) => {
+  const teamBooks = pub.myTeamBooks
+  const hand = pub.myHand
+
+  const allowed = actions.filter((action) => {
+    const book = teamBooks.find((b) => b.id === action.bookId)
+    if (!book) return false
+    const cards = hand.filter((c) => action.cardIds.includes(c.id))
+    return justifyDirtyingCleanBook(book, cards, pub, booksWithWildAddedThisTurn)
+  })
+
+  if (allowed.length === 0) return null
+
+  const scored = allowed.map((action) => {
     const book = teamBooks.find((b) => b.id === action.bookId)!
     const cards = hand.filter((c) => action.cardIds.includes(c.id))
     const wildsAdded = countWildsInCards(cards)
@@ -277,21 +432,25 @@ export function pickBestAddToBook(
     let score = action.priority
 
     if (clean && wildsAdded > 0) {
-      score -= difficulty === 'expert' ? 250 : 200
-      if (!completes) score -= 80
+      score -= difficulty === 'expert' ? 400 : 300
     }
 
     if (clean && naturalsAdded > 0) {
-      score += 40
-      if (completes) score += 35
+      score += 50
+      if (completes) score += 45
+      if (book.cards.length === 6 && naturalsAdded > 0) score += 30
     }
 
     if (!clean && wildsAdded > 0 && bookWildCount(book) < 2) {
-      score += 15
+      score += 20
     }
 
     if (naturalsAdded > 0 && !clean) {
-      score += 20
+      score += 25
+    }
+
+    if (completes && clean && naturalsAdded > 0) {
+      score += 40
     }
 
     return { action, score }
@@ -299,19 +458,28 @@ export function pickBestAddToBook(
 
   scored.sort((a, b) => b.score - a.score)
 
-  const withoutWildOnClean = scored.filter(({ action }) => {
+  const naturalOnClean = scored.filter(({ action }) => {
     const book = teamBooks.find((b) => b.id === action.bookId)!
     const cards = hand.filter((c) => action.cardIds.includes(c.id))
-    return !(isCleanBook(book) && countWildsInCards(cards) > 0)
+    return isCleanBook(book) && countWildsInCards(cards) === 0
   })
 
-  const pool = withoutWildOnClean.length > 0 ? withoutWildOnClean : scored
+  const pool =
+    naturalOnClean.length > 0
+      ? naturalOnClean
+      : scored.filter(({ action }) => {
+          const book = teamBooks.find((b) => b.id === action.bookId)!
+          const cards = hand.filter((c) => action.cardIds.includes(c.id))
+          return countWildsInCards(cards) === 0 || !isCleanBook(book)
+        })
 
-  if (difficulty === 'normal' && Math.random() < 0.1 && pool.length > 1) {
+  if (pool.length === 0) return null
+
+  if (difficulty === 'normal' && Math.random() < 0.08 && pool.length > 1) {
     return pool[1].action
   }
 
-  return pool[0]?.action ?? null
+  return pool[0].action
 }
 
 export function pickDiscardCard(

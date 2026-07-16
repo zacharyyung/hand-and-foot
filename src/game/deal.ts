@@ -61,6 +61,8 @@ export interface GameState {
   roundNumber: number
   turnPhase: TurnPhase
   meldPointsThisTurn: number
+  /** Book ids that already received a wild this turn (max 1 wild per book per turn). */
+  booksWithWildAddedThisTurn: string[]
   wentOutTeamId: number | null
   roundScores: Record<number, number> | null
   winnerTeamId: number | null
@@ -176,6 +178,7 @@ export function dealNewRound(
     roundNumber,
     turnPhase: 'draw',
     meldPointsThisTurn: 0,
+    booksWithWildAddedThisTurn: [],
     wentOutTeamId: null,
     roundScores: null,
     winnerTeamId: null,

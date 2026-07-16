@@ -95,8 +95,8 @@
 
   .table-rail {
     box-shadow:
-      0 0 0 10px var(--wood),
-      0 0 0 12px var(--wood-dark),
+      0 0 0 9px var(--wood),
+      0 0 0 11px var(--wood-dark),
       0 18px 50px rgba(0, 0, 0, 0.55),
       inset 0 0 40px rgba(0, 0, 0, 0.35);
   }

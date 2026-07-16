@@ -2,6 +2,7 @@ import type { Book } from '../game/books'
 import { bookWildCount, cardsForBookFan, isCleanBook, sortBooks } from '../game/books'
 import { WILD_TEXT_CLASS, WILD_RING_CLASS } from './Card'
 import { CardFan } from './CardFan'
+import type { CompassSide } from '../game/tableLayout'
 import { TEAM_COLORS } from '../game/teams'
 
 interface TeamBooksProps {
@@ -15,7 +16,7 @@ interface TeamBooksProps {
 function WildCountBadge({ count }: { count: number }) {
   return (
     <span
-      className={`flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-black/70 px-0.5 text-[8px] font-bold leading-none ${WILD_TEXT_CLASS} ring-1 ${WILD_RING_CLASS}`}
+      className={`flex h-4 min-w-4 items-center justify-center rounded-full bg-black/75 px-0.5 text-[8px] font-bold leading-none ${WILD_TEXT_CLASS} ring-1 ${WILD_RING_CLASS}`}
       aria-label={`${count} wild cards`}
     >
       {count}
@@ -36,30 +37,50 @@ function BookStatusMark({ clean }: { clean: boolean }) {
   )
 }
 
+function BookCountBadge({ count, completed }: { count: number; completed: boolean }) {
+  return (
+    <div
+      className={`absolute -bottom-1 left-1/2 z-20 flex -translate-x-1/2 items-center gap-0.5 rounded-full px-1.5 py-0.5 font-display text-[11px] font-bold tabular-nums leading-none shadow-sm ${
+        completed ? 'bg-accent/90 text-felt-deep' : 'bg-black/75 text-ink'
+      }`}
+      aria-label={`${count} cards`}
+    >
+      {count}
+    </div>
+  )
+}
+
 function BookDisplay({ book }: { book: Book }) {
   const completed = book.cards.length >= 7
   const clean = isCleanBook(book)
   const wilds = bookWildCount(book)
 
   return (
-    <div className={`relative group ${completed ? 'animate-book-settle' : ''}`}>
+    <div
+      className={`relative shrink-0 pb-2 ${completed ? 'animate-book-settle' : ''}`}
+      title={`${book.rank}s · ${book.cards.length} cards${clean ? ' · clean' : wilds > 0 ? ' · dirty' : ''}`}
+    >
       {completed && (
-        <div className="absolute -right-0.5 -top-1.5 z-20 rounded bg-black/50 px-1 py-0.5 backdrop-blur-sm">
+        <div className="absolute -right-0.5 top-0 z-20 rounded bg-black/55 px-1 py-0.5 backdrop-blur-sm">
           <BookStatusMark clean={clean} />
         </div>
       )}
       {!clean && wilds > 0 && (
-        <div className="absolute -left-1 -top-1.5 z-20">
+        <div className="absolute -left-0.5 top-0 z-20">
           <WildCountBadge count={wilds} />
         </div>
       )}
-      <div className="transition-transform duration-200 ease-settle group-hover:-translate-y-0.5">
-        <CardFan cards={cardsForBookFan(book.cards)} small stacked={completed} animate={completed} />
+      <div className="transition-transform duration-200 ease-settle hover:-translate-y-0.5">
+        <CardFan
+          cards={cardsForBookFan(book.cards)}
+          small
+          stacked={completed}
+          animate={completed}
+        />
       </div>
-      <p className="mt-0.5 text-center font-sans text-[9px] tabular-nums text-ink-faint">
+      <BookCountBadge count={book.cards.length} completed={completed} />
+      <p className="mt-1 text-center font-sans text-[10px] font-medium tabular-nums text-ink-muted">
         {book.rank}
-        <span className="opacity-50">·</span>
-        {book.cards.length}
       </p>
     </div>
   )
@@ -89,9 +110,7 @@ export function TeamBooks({
     return (
       <>
         {teamBooks.map((book) => (
-          <div key={book.id} className="shrink-0 px-0.5 py-0.5">
-            <BookDisplay book={book} />
-          </div>
+          <BookDisplay key={book.id} book={book} />
         ))}
       </>
     )
@@ -113,4 +132,82 @@ export function TeamBooks({
       {highlighted && <span className="sr-only">Your team</span>}
     </div>
   )
+}
+
+/** Harmonious on-felt book placement — wraps naturally, never scrolls. */
+export function TableBookZone({
+  books,
+  teamId,
+  side,
+  myTeamId,
+}: {
+  books: Book[]
+  teamId: number
+  side: CompassSide
+  myTeamId: number
+}) {
+  const playerBooks = books.filter((b) => b.teamId === teamId)
+  if (playerBooks.length === 0) return null
+
+  const zoneClass = tableBookZoneClass(side)
+
+  return (
+    <div className={`pointer-events-none absolute z-[15] ${zoneClass}`}>
+      <div className={`flex ${tableBookFlexClass(side)}`}>
+        <TeamBooks
+          books={playerBooks}
+          teamId={teamId}
+          highlightTeamId={myTeamId}
+          compact
+        />
+      </div>
+    </div>
+  )
+}
+
+function tableBookZoneClass(side: CompassSide): string {
+  switch (side) {
+    case 'north':
+      return 'left-1/2 top-[12%] w-[min(82%,44rem)] -translate-x-1/2'
+    case 'south':
+      return 'bottom-[12%] left-1/2 w-[min(82%,44rem)] -translate-x-1/2'
+    case 'west':
+      return 'left-[10%] top-1/2 w-[min(36%,16rem)] -translate-y-1/2'
+    case 'east':
+      return 'right-[10%] top-1/2 w-[min(36%,16rem)] -translate-y-1/2'
+    case 'nw':
+      return 'left-[11%] top-[13%] w-[min(40%,18rem)]'
+    case 'ne':
+      return 'right-[11%] top-[13%] w-[min(40%,18rem)]'
+    case 'sw':
+      return 'bottom-[13%] left-[11%] w-[min(40%,18rem)]'
+    case 'se':
+      return 'bottom-[13%] right-[11%] w-[min(40%,18rem)]'
+    default:
+      return 'left-1/2 top-[12%] -translate-x-1/2'
+  }
+}
+
+function tableBookFlexClass(side: CompassSide): string {
+  const gap = 'gap-x-2.5 gap-y-2'
+  switch (side) {
+    case 'north':
+      return `flex-row flex-wrap items-end justify-center ${gap}`
+    case 'south':
+      return `flex-row flex-wrap items-start justify-center ${gap}`
+    case 'west':
+      return `flex-row flex-wrap items-center justify-start ${gap}`
+    case 'east':
+      return `flex-row-reverse flex-wrap items-center justify-start ${gap}`
+    case 'nw':
+      return `flex-row flex-wrap items-end justify-start ${gap}`
+    case 'ne':
+      return `flex-row-reverse flex-wrap items-end justify-end ${gap}`
+    case 'sw':
+      return `flex-row flex-wrap items-start justify-start ${gap}`
+    case 'se':
+      return `flex-row-reverse flex-wrap items-start justify-end ${gap}`
+    default:
+      return `flex-row flex-wrap justify-center ${gap}`
+  }
 }

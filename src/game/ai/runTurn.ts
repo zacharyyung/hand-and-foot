@@ -59,7 +59,12 @@ export function runAiTurn(state: GameState): GameState {
         }
       }
     } else {
-      const addActions = findAddToBookActions(pub.myHand, pub.myTeamBooks, pub.isPlayingFoot)
+      const addActions = findAddToBookActions(
+        pub.myHand,
+        pub.myTeamBooks,
+        pub.isPlayingFoot,
+        current.booksWithWildAddedThisTurn,
+      )
       const triedAdds = new Set<string>()
 
       for (let attempt = 0; attempt < 2 && !played; attempt++) {
@@ -68,8 +73,8 @@ export function runAiTurn(state: GameState): GameState {
         )
         const bestAdd = pickBestAddToBook(
           remaining,
-          pub.myHand,
-          pub.myTeamBooks,
+          pub,
+          current.booksWithWildAddedThisTurn,
           difficulty,
         )
         if (!bestAdd) break

@@ -22,8 +22,9 @@ import {
   findAllBooksForSelectedCards,
   findBookForSelectedCards,
   getGoOutBlockReason,
+  getWildPlayBlockReason,
+  needsAddBookPicker,
   shouldWarnDiscardToBook,
-  selectionIncludesWild,
   bookWildCount,
 } from '../game/books'
 import { meldThreshold, sumCardPoints } from '../game/scoring'
@@ -33,7 +34,6 @@ import { StagingArea, type StagedBook } from './StagingArea'
 import { RoundTable } from './RoundTable'
 import { Scoreboard, CurrentRoundTracker } from './Scoreboard'
 import { GameChat } from './GameChat'
-import { TeamBooks } from './TeamBooks'
 import { SoundToggle } from './SoundToggle'
 import { TEAM_COLORS } from '../game/teams'
 import type { ChatMessage } from '../game/chat'
@@ -122,22 +122,72 @@ export function GameView({
   const addBookOptions = useMemo(
     () =>
       team.meldThresholdMet && !isLastFootCard(viewer)
-        ? findAllBooksForSelectedCards(viewer.hand, selectedIds, team.books)
+        ? findAllBooksForSelectedCards(
+            viewer.hand,
+            selectedIds,
+            team.books,
+            game.booksWithWildAddedThisTurn,
+          )
         : [],
-    [team.meldThresholdMet, team.books, viewer, selectedIds],
+    [
+      team.meldThresholdMet,
+      team.books,
+      viewer,
+      selectedIds,
+      game.booksWithWildAddedThisTurn,
+    ],
   )
-  const wildAddChoice = useMemo(
+  const showAddBookPicker = useMemo(
     () =>
-      addBookOptions.length > 1 && selectionIncludesWild(viewer.hand, selectedIds),
-    [addBookOptions.length, viewer.hand, selectedIds],
+      needsAddBookPicker(
+        viewer.hand,
+        selectedIds,
+        team.books,
+        game.booksWithWildAddedThisTurn,
+      ),
+    [viewer.hand, selectedIds, team.books, game.booksWithWildAddedThisTurn],
   )
   const matchedAddBook = useMemo(() => {
     if (addBookOptions.length === 0) return null
-    if (wildAddChoice) {
+    if (showAddBookPicker) {
       return addBookOptions.find((b) => b.id === selectedAddBookId) ?? null
     }
-    return findBookForSelectedCards(viewer.hand, selectedIds, team.books)
-  }, [addBookOptions, wildAddChoice, selectedAddBookId, viewer.hand, selectedIds, team.books])
+    return findBookForSelectedCards(
+      viewer.hand,
+      selectedIds,
+      team.books,
+      game.booksWithWildAddedThisTurn,
+    )
+  }, [
+    addBookOptions,
+    showAddBookPicker,
+    selectedAddBookId,
+    viewer.hand,
+    selectedIds,
+    team.books,
+    game.booksWithWildAddedThisTurn,
+  ])
+
+  const wildBlockReason = useMemo(() => {
+    if (!isMyTurn || game.turnPhase !== 'play') return null
+    const mode = needsStagedMeld ? 'stage' : team.meldThresholdMet ? 'add' : 'start'
+    return getWildPlayBlockReason(
+      viewer.hand,
+      selectedIds,
+      team.books,
+      mode,
+      game.booksWithWildAddedThisTurn,
+    )
+  }, [
+    isMyTurn,
+    game.turnPhase,
+    game.booksWithWildAddedThisTurn,
+    needsStagedMeld,
+    team.meldThresholdMet,
+    viewer.hand,
+    selectedIds,
+    team.books,
+  ])
   const goingOut = isMyTurn && canGoOut(game)
   const lastFootCard = isMyTurn && isLastFootCard(viewer) && game.turnPhase === 'play'
   const goOutBlockReason =
@@ -150,10 +200,6 @@ export function GameView({
   const skipAndRunMeld =
     isMyTurn && willSkipAndRun(viewer, stagedBooks.flatMap((b) => b.cardIds))
   const teamColor = TEAM_COLORS[viewer.profile.teamId]
-  const viewerBooks = useMemo(
-    () => team.books.filter((b) => b.startedBySeatIndex === viewerSeat),
-    [team.books, viewerSeat],
-  )
 
   const humanPlayers = useMemo(
     () => game.players.filter((p) => p.profile.isHuman),
@@ -182,14 +228,14 @@ export function GameView({
   }, [game.currentPlayerIndex, game.turnPhase])
 
   useEffect(() => {
-    if (!wildAddChoice) {
+    if (!showAddBookPicker) {
       setSelectedAddBookId(null)
       return
     }
     setSelectedAddBookId((prev) =>
       prev && addBookOptions.some((b) => b.id === prev) ? prev : addBookOptions[0]?.id ?? null,
     )
-  }, [wildAddChoice, addBookOptions, selectedIds])
+  }, [showAddBookPicker, addBookOptions, selectedIds])
 
   /* Turn-change / your-turn cues */
   useEffect(() => {
@@ -258,7 +304,7 @@ export function GameView({
     unlockAudio()
     if (!matchedAddBook) {
       setError(
-        wildAddChoice ? 'Choose which book to add to.' : 'Selected cards cannot be added to any book.',
+        showAddBookPicker ? 'Choose which book to add to.' : 'Selected cards cannot be added to any book.',
       )
       playSound('invalid')
       return
@@ -301,6 +347,15 @@ export function GameView({
     }
 
     const cardId = selectedIds[0]
+
+    if (isLastFootCard(viewer)) {
+      const blockReason = getGoOutBlockReason(team.books, team.meldThresholdMet)
+      if (blockReason) {
+        setError(blockReason)
+        playSound('invalid')
+        return
+      }
+    }
 
     if (!goingOut && !isLastFootCard(viewer) && team.books.length > 0) {
       const warning = shouldWarnDiscardToBook(viewer.hand, cardId, team.books)
@@ -475,17 +530,6 @@ export function GameView({
                 />
               )}
 
-              {viewerBooks.length > 0 && (
-                <div className="flex shrink-0 justify-center gap-1 overflow-x-auto px-2 py-1">
-                  <TeamBooks
-                    books={viewerBooks}
-                    teamId={team.id}
-                    highlightTeamId={team.id}
-                    compact
-                  />
-                </div>
-              )}
-
               <div className="flex shrink-0 flex-wrap items-center justify-center gap-x-3 gap-y-0.5 px-3 py-0.5 sm:px-4">
                 <span className="text-[10px] tabular-nums text-ink-faint">
                   {playerHandCount(viewer)}
@@ -551,6 +595,12 @@ export function GameView({
                     {error}
                   </p>
                 )}
+
+                {!error && wildBlockReason && (
+                  <p className="animate-fade-up mx-auto mt-1.5 max-w-md rounded-lg bg-amber-950/40 px-3 py-1.5 text-center text-xs text-amber-100/90">
+                    {wildBlockReason}
+                  </p>
+                )}
               </div>
 
               <div className="flex min-h-[2.85rem] shrink-0 flex-wrap items-center justify-center gap-2 px-3 py-2 sm:px-4">
@@ -601,27 +651,28 @@ export function GameView({
 
                         {addBookOptions.length > 0 && (
                           <>
-                            {wildAddChoice && (
+                            {showAddBookPicker && (
                               <select
                                 value={selectedAddBookId ?? ''}
                                 onChange={(e) =>
                                   setSelectedAddBookId(e.target.value || null)
                                 }
-                                className="max-w-[9rem] rounded-lg border border-white/15 bg-black/40 px-2 py-2 text-xs text-ink"
+                                className="max-w-[11rem] rounded-lg border border-white/15 bg-black/40 px-2 py-2 text-xs text-ink"
+                                aria-label="Choose book to add to"
                               >
-                                {addBookOptions.map((book) => (
-                                  <option
-                                    key={book.id}
-                                    value={book.id}
-                                    className="bg-felt-dark"
-                                  >
-                                    {book.rank}s ({book.cards.length}
-                                    {bookWildCount(book) > 0
-                                      ? `, ${bookWildCount(book)} wild`
-                                      : ''}
-                                    )
-                                  </option>
-                                ))}
+                                {addBookOptions.map((book) => {
+                                  const wilds = bookWildCount(book)
+                                  return (
+                                    <option
+                                      key={book.id}
+                                      value={book.id}
+                                      className="bg-felt-dark"
+                                    >
+                                      {book.rank}s · {book.cards.length} cards
+                                      {wilds === 0 ? ' · clean' : ` · ${wilds} wild`}
+                                    </option>
+                                  )
+                                })}
                               </select>
                             )}
                             <button
@@ -638,19 +689,27 @@ export function GameView({
                           </>
                         )}
 
-                        <button
-                          onClick={handleDiscard}
-                          disabled={selectedIds.length !== 1}
-                          className={`disabled:opacity-35 ${
-                            goingOut
-                              ? 'btn-success'
-                              : goToFootDiscard
-                                ? 'btn-foot'
+                      <button
+                        onClick={handleDiscard}
+                        disabled={selectedIds.length !== 1}
+                        className={`disabled:opacity-35 ${
+                          goingOut
+                            ? 'btn-success'
+                            : goToFootDiscard
+                              ? 'btn-foot'
+                              : lastFootCard
+                                ? 'btn-danger'
                                 : 'btn-danger'
-                          }`}
-                        >
-                          {goingOut ? 'Go out' : goToFootDiscard ? 'Go to foot' : 'Discard'}
-                        </button>
+                        }`}
+                      >
+                        {goingOut
+                          ? 'Go out'
+                          : lastFootCard
+                            ? 'Discard to go out'
+                            : goToFootDiscard
+                              ? 'Go to foot'
+                              : 'Discard'}
+                      </button>
                       </>
                     )}
                   </>
