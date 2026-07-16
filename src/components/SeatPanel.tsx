@@ -11,7 +11,7 @@ interface SeatPanelProps {
   isActive: boolean
   myTeamId: number
   side: CompassSide
-  style: { left: string; top: string }
+  coords: { left: number; top: number }
 }
 
 function seatAnchorClass(side: CompassSide): string {
@@ -21,19 +21,44 @@ function seatAnchorClass(side: CompassSide): string {
     case 'north':
       return '-translate-x-1/2'
     case 'west':
-      return '-translate-y-1/2'
     case 'east':
-      return '-translate-x-full -translate-y-1/2'
+      return '-translate-y-1/2'
     case 'nw':
       return ''
     case 'ne':
-      return '-translate-x-full'
+      return ''
     case 'sw':
       return '-translate-y-full'
     case 'se':
-      return '-translate-x-full -translate-y-full'
+      return '-translate-y-full'
     default:
       return '-translate-x-1/2'
+  }
+}
+
+function isEastSide(side: CompassSide): boolean {
+  return side === 'east' || side === 'ne' || side === 'se'
+}
+
+function seatPositionStyle(
+  side: CompassSide,
+  coords: { left: number; top: number },
+): CSSProperties {
+  if (side === 'south') {
+    return { left: '50%', bottom: '0.25rem', top: 'auto' }
+  }
+
+  if (isEastSide(side)) {
+    return {
+      right: `${100 - coords.left}%`,
+      top: `${coords.top}%`,
+      left: 'auto',
+    }
+  }
+
+  return {
+    left: `${coords.left}%`,
+    top: `${coords.top}%`,
   }
 }
 
@@ -44,7 +69,7 @@ export function SeatPanel({
   isActive,
   myTeamId,
   side,
-  style,
+  coords,
 }: SeatPanelProps) {
   const teamColor = TEAM_COLORS[player.profile.teamId]
   const isMyTeam = player.profile.teamId === myTeamId
@@ -55,11 +80,7 @@ export function SeatPanel({
   const handCount = playerHandCount(player)
   const footCount = playerFootCount(player)
 
-  const isSouth = side === 'south'
-
-  const positionStyle: CSSProperties = isSouth
-    ? { left: '50%', bottom: '0.25rem', top: 'auto' }
-    : style
+  const positionStyle = seatPositionStyle(side, coords)
 
   const chipStyle = {
     '--seat-team': teamColor,
@@ -100,10 +121,10 @@ export function SeatPanel({
               </span>
             </span>
             {player.isPlayingFoot && (
-              <span className="seat-chip-tag seat-chip-tag-foot">Foot</span>
+              <span className="seat-chip-inline-status seat-chip-inline-foot">Foot</span>
             )}
             {player.footOnHold && (
-              <span className="seat-chip-tag seat-chip-tag-hold">Hold</span>
+              <span className="seat-chip-inline-status seat-chip-inline-hold">Hold</span>
             )}
           </div>
         </div>

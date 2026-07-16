@@ -35,14 +35,17 @@ import { RoundTable } from './RoundTable'
 import { MeldTracker, CurrentRoundTracker } from './Scoreboard'
 import { GameChat } from './GameChat'
 import { GameMessageBar } from './GameMessageBar'
-import { TEAM_COLORS } from '../game/teams'
+import { TEAM_COLORS, partnerSeat, type PlayerCount } from '../game/teams'
 import type { ChatMessage } from '../game/chat'
+import { pendingPartnerGoOutRequest } from '../game/chat'
+import { maybeAiPartnerGoOutResponse } from '../game/ai/chatSignals'
 
 interface GameViewProps {
   game: GameState
   onGameChange: (game: GameState, options?: { recordHistory?: boolean }) => void
   chatMessages: ChatMessage[]
   onChatSend: (message: ChatMessage) => void
+  autoSort?: boolean
 }
 
 const AI_TURN_DELAY_MS = 900
@@ -73,6 +76,7 @@ export function GameView({
   onGameChange,
   chatMessages,
   onChatSend,
+  autoSort = false,
 }: GameViewProps) {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -88,6 +92,9 @@ export function GameView({
 
   const prevTurn = useRef(game.currentPlayerIndex)
   const prevViewerBooks = useRef(0)
+  const chatRef = useRef(chatMessages)
+  chatRef.current = chatMessages
+  const lastAiGoOutReplyRef = useRef(0)
 
   const viewerSeat = useMemo(() => getViewerSeat(game.players), [game.players])
   const viewer = game.players[viewerSeat]
@@ -198,16 +205,13 @@ export function GameView({
     isMyTurn && willSkipAndRun(viewer, selectedIds)
   const skipAndRunMeld =
     isMyTurn && willSkipAndRun(viewer, stagedBooks.flatMap((b) => b.cardIds))
+  const skipAndRunActive = skipAndRunMeld || skipAndRunSelected
+  const skipAndRunDisabled = skipAndRunMeld
+    ? stagedBooks.length === 0 || stagedPoints < requiredMeld
+    : addBookOptions.length > 0 && skipAndRunSelected
+      ? selectedIds.length === 0 || !matchedAddBook
+      : selectedIds.length < 3
   const teamColor = TEAM_COLORS[viewer.profile.teamId]
-
-  const humanPlayers = useMemo(
-    () => game.players.filter((p) => p.profile.isHuman),
-    [game.players],
-  )
-  const showChat = humanPlayers.length >= 2
-  const chatSenderSeat = current.profile.isHuman
-    ? current.profile.seatIndex
-    : humanPlayers[0]?.profile.seatIndex
 
   const completedBooks = team.books.filter((b) => b.cards.length >= 7).length
 
@@ -255,6 +259,36 @@ export function GameView({
     prevViewerBooks.current = completedBooks
   }, [completedBooks])
 
+  /* AI partner analyzes and replies when human signals "I can go out!" */
+  useEffect(() => {
+    if (game.phase !== 'playing') return
+
+    const partnerIdx = partnerSeat(viewerSeat, game.playerCount as PlayerCount)
+    const partner = game.players[partnerIdx]
+    if (!partner || partner.profile.isHuman) return
+
+    const pending = pendingPartnerGoOutRequest(chatMessages, partnerIdx, viewerSeat)
+    if (!pending || pending.timestamp <= lastAiGoOutReplyRef.current) return
+
+    const requestTimestamp = pending.timestamp
+    const timer = setTimeout(() => {
+      const stillPending = pendingPartnerGoOutRequest(
+        chatRef.current,
+        partnerIdx,
+        viewerSeat,
+      )
+      if (!stillPending || stillPending.timestamp !== requestTimestamp) return
+
+      const response = maybeAiPartnerGoOutResponse(game, partnerIdx, chatRef.current)
+      if (response) {
+        lastAiGoOutReplyRef.current = requestTimestamp
+        onChatSend(response)
+      }
+    }, 900)
+
+    return () => clearTimeout(timer)
+  }, [chatMessages, game, viewerSeat, onChatSend])
+
   useEffect(() => {
     if (game.phase !== 'playing' || current.profile.isHuman) {
       setAiThinking(false)
@@ -263,12 +297,16 @@ export function GameView({
 
     setAiThinking(true)
     const timer = setTimeout(() => {
-      onGameChange(runAiTurn(game))
+      const result = runAiTurn(game, chatRef.current)
+      onGameChange(result.state)
+      if (result.chatMessage) {
+        onChatSend(result.chatMessage)
+      }
       setAiThinking(false)
     }, AI_TURN_DELAY_MS)
 
     return () => clearTimeout(timer)
-  }, [game, current.profile.isHuman, onGameChange])
+  }, [game, current.profile.isHuman, onGameChange, onChatSend])
 
   function toggleCard(cardId: string) {
     if (!isMyTurn || game.turnPhase === 'draw') return
@@ -278,11 +316,28 @@ export function GameView({
     )
   }
 
+  function applyHandSort(cards: typeof viewer.hand, playSoundEffect = true) {
+    const display = cards.filter((c) => !stagedCardIds.has(c.id))
+    const staged = handOrder.filter((id) => stagedCardIds.has(id))
+    setHandOrder([...sortCardIdsByHand(display), ...staged])
+    if (playSoundEffect) playSound('sort')
+  }
+
+  function handleAutoSort() {
+    unlockAudio()
+    applyHandSort(handForDisplay)
+  }
+
   function handleDraw() {
     unlockAudio()
     setError(null)
     playSound('draw')
-    onGameChange(drawCards(game), { recordHistory: true })
+    const result = drawCards(game)
+    onGameChange(result, { recordHistory: true })
+    if (autoSort) {
+      const newHand = result.players[viewerSeat].hand
+      applyHandSort(newHand, false)
+    }
   }
 
   function handleStartBook() {
@@ -322,7 +377,7 @@ export function GameView({
   }
 
   function performDiscard(cardId: string) {
-    const result = discardCard(game, cardId)
+    const result = discardCard(game, cardId, chatMessages)
     if (result.error) {
       setError(result.error)
       playSound('invalid')
@@ -377,13 +432,6 @@ export function GameView({
     performDiscard(discardWarning.cardId)
   }
 
-  function handleAutoSort() {
-    unlockAudio()
-    const sorted = sortCardIdsByHand(handForDisplay)
-    const staged = handOrder.filter((id) => stagedCardIds.has(id))
-    setHandOrder([...sorted, ...staged])
-    playSound('sort')
-  }
 
   function handleStage() {
     unlockAudio()
@@ -429,6 +477,17 @@ export function GameView({
     setError(null)
     playSound('threshold')
     onGameChange(result.state, { recordHistory: true })
+  }
+
+  function handleSkipAndRun() {
+    unlockAudio()
+    if (skipAndRunMeld) {
+      handleMeld()
+    } else if (addBookOptions.length > 0 && matchedAddBook) {
+      handleAddToBook()
+    } else {
+      handleStartBook()
+    }
   }
 
   function handleRemoveStaged(id: string) {
@@ -567,7 +626,10 @@ export function GameView({
                 onConfirmDiscard={handleConfirmDiscard}
               />
 
-              <div className="flex min-h-[2.85rem] shrink-0 flex-wrap items-center justify-center gap-2 px-3 py-2 sm:px-4">
+              <div
+                className="game-action-slot flex min-h-[3.25rem] shrink-0 flex-wrap items-center justify-center gap-2 px-3 py-2 sm:px-4"
+                aria-hidden={!isMyTurn}
+              >
                 {isMyTurn && (
                   <>
                     {game.turnPhase === 'draw' && (
@@ -595,9 +657,7 @@ export function GameView({
                                 }
                                 className="btn-primary disabled:opacity-35"
                               >
-                                {skipAndRunMeld
-                                  ? 'Skip & run'
-                                  : `Meld ${stagedPoints}/${requiredMeld}`}
+                                Meld {stagedPoints}/{requiredMeld}
                               </button>
                             </>
                           )
@@ -608,7 +668,7 @@ export function GameView({
                               disabled={selectedIds.length < 3}
                               className="btn-secondary disabled:opacity-35"
                             >
-                              {skipAndRunSelected ? 'Skip & run' : 'Start book'}
+                              Start book
                             </button>
                           )
                         )}
@@ -644,36 +704,42 @@ export function GameView({
                               disabled={selectedIds.length === 0 || !matchedAddBook}
                               className="btn-secondary disabled:opacity-35"
                             >
-                              {skipAndRunSelected
-                                ? 'Skip & run'
-                                : matchedAddBook
-                                  ? `Add to ${matchedAddBook.rank}s`
-                                  : 'Add to book'}
+                              {matchedAddBook
+                                ? `Add to ${matchedAddBook.rank}s`
+                                : 'Add to book'}
                             </button>
                           </>
                         )}
 
-                      <button
-                        onClick={handleDiscard}
-                        disabled={selectedIds.length !== 1}
-                        className={`disabled:opacity-35 ${
-                          goingOut
-                            ? 'btn-success'
-                            : goToFootDiscard
-                              ? 'btn-foot'
+                        {skipAndRunActive ? (
+                          <button
+                            onClick={handleSkipAndRun}
+                            disabled={skipAndRunDisabled}
+                            className="btn-foot disabled:opacity-35"
+                          >
+                            Skip &amp; run
+                          </button>
+                        ) : (
+                          <button
+                            onClick={handleDiscard}
+                            disabled={selectedIds.length !== 1}
+                            className={`disabled:opacity-35 ${
+                              goingOut
+                                ? 'btn-success'
+                                : goToFootDiscard
+                                  ? 'btn-foot'
+                                  : 'btn-danger'
+                            }`}
+                          >
+                            {goingOut
+                              ? 'Go out'
                               : lastFootCard
-                                ? 'btn-danger'
-                                : 'btn-danger'
-                        }`}
-                      >
-                        {goingOut
-                          ? 'Go out'
-                          : lastFootCard
-                            ? 'Discard to go out'
-                            : goToFootDiscard
-                              ? 'Go to foot'
-                              : 'Discard'}
-                      </button>
+                                ? 'Discard to go out'
+                                : goToFootDiscard
+                                  ? 'Go to foot'
+                                  : 'Discard'}
+                          </button>
+                        )}
                       </>
                     )}
                   </>
@@ -688,13 +754,12 @@ export function GameView({
         )}
       </div>
 
-      {showChat && (
+      {game.phase === 'playing' && (
         <GameChat
-          humanPlayers={humanPlayers}
+          game={game}
+          viewerSeat={viewerSeat}
           messages={chatMessages}
           onSend={onChatSend}
-          defaultSenderSeat={chatSenderSeat}
-          dockedAboveHand={isHumanViewer}
         />
       )}
     </div>

@@ -29,8 +29,8 @@ export function RoundTable({
   const playerCount = game.playerCount as PlayerCount
 
   return (
-    <div className="flex h-full min-h-0 w-full overflow-x-hidden px-1 sm:px-2 lg:px-4">
-      <div className="relative h-full w-full overflow-visible px-1 pt-2 pb-1 sm:pt-3">
+    <div className="flex h-full min-h-0 w-full overflow-x-hidden px-2 sm:px-3 lg:px-5">
+      <div className="relative h-full w-full overflow-visible px-0.5 pt-2 pb-1 sm:pt-3">
         {/* Soft-cornered rectangle — books live on the felt inside this area */}
         <div
           className="table-rail table-surface felt-texture absolute rounded-[1.75rem] sm:rounded-[2rem] md:rounded-[2.25rem] inset-[11%_9%] sm:inset-[10%_8%] md:inset-[9%_7%] lg:inset-[8%_6%]"
@@ -103,10 +103,7 @@ export function RoundTable({
               isActive={isActive}
               myTeamId={myTeamId}
               side={side}
-              style={{
-                left: `${left}%`,
-                top: `${top}%`,
-              }}
+              coords={{ left, top }}
             />
           )
         })}

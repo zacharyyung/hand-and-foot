@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { isMuted, loadMutePreference, playSound, setMuted, unlockAudio } from '../game/audio'
 
 interface SoundToggleProps {
-  variant?: 'icon' | 'row'
+  variant?: 'icon' | 'row' | 'chip'
 }
 
 export function SoundToggle({ variant = 'icon' }: SoundToggleProps) {
@@ -30,6 +30,20 @@ export function SoundToggle({ variant = 'icon' }: SoundToggleProps) {
       >
         <span>Volume</span>
         <span>{muted ? 'Muted' : 'On'}</span>
+      </button>
+    )
+  }
+
+  if (variant === 'chip') {
+    return (
+      <button
+        type="button"
+        onClick={toggle}
+        className="corner-control"
+        aria-label={muted ? 'Unmute sounds' : 'Mute sounds'}
+        aria-pressed={!muted}
+      >
+        {muted ? '🔇 Sound off' : '🔊 Sound on'}
       </button>
     )
   }

@@ -5,7 +5,6 @@ import {
   type PlayerCount,
 } from '../game/teams'
 import { playSound } from '../game/audio'
-import { SoundToggle } from './SoundToggle'
 
 export const AI_AVATAR = '🤖'
 
@@ -118,10 +117,6 @@ export function SetupScreen({
 
   return (
     <div className="relative mx-auto max-w-2xl px-6 py-12 sm:py-16">
-      <div className="absolute right-6 top-6">
-        <SoundToggle />
-      </div>
-
       <header className="mb-10 text-center sm:mb-12">
         <p className="mb-2 font-sans text-[11px] uppercase tracking-[0.22em] text-ink-faint">
           Tabletop

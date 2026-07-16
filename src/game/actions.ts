@@ -12,6 +12,8 @@ import { shuffleDeck } from './shuffle'
 import { meldContributionFromCards, meldThreshold } from './scoring'
 import { applyRoundScores } from './roundScoring'
 import { nextSeatCounterClockwise, type PlayerCount } from './teams'
+import type { ChatMessage } from './chat'
+import { hasPartnerGoOutClearance } from './chat'
 
 export function getActiveCards(player: PlayerState): Card[] {
   return player.isPlayingFoot ? player.hand : player.hand
@@ -418,6 +420,7 @@ export function canTeamGoOut(books: Book[], meldThresholdMet: boolean): boolean 
 export function discardCard(
   state: GameState,
   cardId: string,
+  chatMessages: ChatMessage[] = [],
 ): { state: GameState; error?: string } {
   if (state.turnPhase !== 'play' && state.turnPhase !== 'discard') {
     return { state, error: 'You must draw before discarding.' }
@@ -439,15 +442,28 @@ export function discardCard(
           'Cannot go out — need 1 completed clean book and 1 completed dirty book (7+ each).',
       }
     }
+    if (
+      !player.profile.isHuman &&
+      !hasPartnerGoOutClearance(state, playerIndex, chatMessages)
+    ) {
+      return {
+        state,
+        error: 'Your partner has not cleared you to go out — wait for table chat.',
+      }
+    }
   }
 
   const willBeEmpty = player.hand.length === 1
+  const partnerCleared =
+    player.profile.isHuman ||
+    hasPartnerGoOutClearance(state, playerIndex, chatMessages)
   const goingOut =
     willBeEmpty &&
     player.isPlayingFoot &&
     player.foot.length === 0 &&
     !player.footOnHold &&
-    canTeamGoOut(team.books, team.meldThresholdMet)
+    canTeamGoOut(team.books, team.meldThresholdMet) &&
+    partnerCleared
 
   const newHand = removeCardsFromHand(player.hand, [cardId])
   let updatedPlayer: PlayerState = { ...player, hand: newHand }
@@ -487,6 +503,17 @@ export function canGoOut(state: GameState): boolean {
   if (!isAttemptingGoOutDiscard(player)) return false
 
   return canTeamGoOut(team.books, team.meldThresholdMet)
+}
+
+/** Whether the active player may go out, including partner chat clearance for AI. */
+export function canPlayerGoOut(
+  state: GameState,
+  chatMessages: ChatMessage[] = [],
+): boolean {
+  if (!canGoOut(state)) return false
+  const player = getCurrentPlayer(state)
+  if (player.profile.isHuman) return true
+  return hasPartnerGoOutClearance(state, player.profile.seatIndex, chatMessages)
 }
 
 /** Last card while playing the foot — must be discarded to go out, never melded. */

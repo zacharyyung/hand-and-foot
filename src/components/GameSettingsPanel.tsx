@@ -13,7 +13,8 @@ interface GameSettingsPanelProps {
   canRequestUndo: boolean
   undoPending: boolean
   onRequestUndo: () => void
-  docked?: boolean
+  autoSort: boolean
+  onAutoSortChange: (enabled: boolean) => void
 }
 
 export function GameSettingsPanel({
@@ -27,7 +28,8 @@ export function GameSettingsPanel({
   canRequestUndo,
   undoPending,
   onRequestUndo,
-  docked = false,
+  autoSort,
+  onAutoSortChange,
 }: GameSettingsPanelProps) {
   const humans = game.players.filter((p) => p.profile.isHuman)
   const humanCount = humans.length
@@ -39,7 +41,7 @@ export function GameSettingsPanel({
       <button
         type="button"
         onClick={onToggle}
-        className={`corner-control ${docked ? 'corner-control-br-docked' : 'corner-control-br'}`}
+        className="corner-control corner-control-br"
         aria-expanded={open}
         aria-haspopup="dialog"
       >
@@ -55,7 +57,7 @@ export function GameSettingsPanel({
             onClick={onClose}
           />
           <div
-            className={`corner-popover animate-fade-up ${docked ? 'corner-popover-br-docked' : 'corner-popover-br'}`}
+            className="settings-popover corner-popover corner-popover-br animate-fade-up"
             role="dialog"
             aria-label="Settings"
           >
@@ -72,6 +74,24 @@ export function GameSettingsPanel({
                   Sound
                 </p>
                 <SoundToggle variant="row" />
+              </section>
+
+              <section className="rounded-xl bg-black/20 px-3 py-2.5">
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
+                  Hand
+                </p>
+                <button
+                  type="button"
+                  onClick={() => onAutoSortChange(!autoSort)}
+                  className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-xs font-medium text-ink-soft hover:bg-white/8 hover:text-ink"
+                  aria-pressed={autoSort}
+                >
+                  <span>Auto sort</span>
+                  <span>{autoSort ? 'On' : 'Off'}</span>
+                </button>
+                <p className="mt-1.5 text-[10px] leading-relaxed text-ink-faint">
+                  When on, your hand is sorted automatically after you draw.
+                </p>
               </section>
 
               <section className="rounded-xl bg-black/20 px-3 py-2.5">

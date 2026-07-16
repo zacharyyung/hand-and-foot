@@ -9,7 +9,12 @@ import {
   isCleanBook,
   isDirtyBook,
 } from '../books'
+import type { GameState } from '../deal'
+import type { ChatMessage } from '../chat'
+import { opponentTeamSignaledGoOut } from '../chat'
+import { partnerGoOutSignaledInChat } from './chatSignals'
 import { cardPointValue, meldThreshold, meldContributionFromCards } from '../scoring'
+import type { PlayerCount } from '../teams'
 import type { AiDifficulty } from '../deal'
 import type { AiPublicState } from './publicState'
 import { findAddToBookActions, findStartBookActions, type AiAction } from './decisions'
@@ -240,14 +245,30 @@ function opponents(otherPlayers: AiPublicState['otherPlayers'], myTeamId: number
 }
 
 /** Partner is in foot with very few cards — team may be closing. */
-function partnerNearGoOut(otherPlayers: AiPublicState['otherPlayers'], myTeamId: number): boolean {
+function partnerNearGoOut(
+  otherPlayers: AiPublicState['otherPlayers'],
+  myTeamId: number,
+  chatMessages: ChatMessage[] = [],
+  state?: GameState,
+): boolean {
+  if (state && partnerGoOutSignaledInChat(chatMessages, state, myTeamId)) {
+    return true
+  }
   return teammates(otherPlayers, myTeamId).some(
     (p) => p.isPlayingFoot && p.footCount === 0 && p.handCount <= 3,
   )
 }
 
-/** Any opponent is low on cards — race to finish books. */
-function opponentRacing(otherPlayers: AiPublicState['otherPlayers'], myTeamId: number): boolean {
+/** Any opponent is low on cards — or signaled go-out in table chat. */
+function opponentRacing(
+  otherPlayers: AiPublicState['otherPlayers'],
+  myTeamId: number,
+  chatMessages: ChatMessage[] = [],
+  playerCount?: PlayerCount,
+): boolean {
+  if (playerCount && opponentTeamSignaledGoOut(chatMessages, myTeamId, playerCount)) {
+    return true
+  }
   return opponents(otherPlayers, myTeamId).some((p) => p.handCount + p.footCount <= 5)
 }
 
@@ -287,6 +308,8 @@ export function justifyDirtyingCleanBook(
   cards: Card[],
   pub: AiPublicState,
   booksWithWildAddedThisTurn: string[],
+  chatMessages: ChatMessage[] = [],
+  state?: GameState,
 ): boolean {
   if (!isCleanBook(book)) return true
   if (countWildsInCards(cards) === 0) return true
@@ -317,7 +340,7 @@ export function justifyDirtyingCleanBook(
   }
 
   // Partner is about to go out — dump hand including wild when no dirty book to take it.
-  if (partnerNearGoOut(pub.otherPlayers, pub.myTeamId) && !alternative && pub.myHand.length <= 5) {
+  if (partnerNearGoOut(pub.otherPlayers, pub.myTeamId, chatMessages, state) && !alternative && pub.myHand.length <= 5) {
     return true
   }
 
@@ -332,7 +355,7 @@ export function justifyDirtyingCleanBook(
     book.cards.length >= 5 &&
     otherCompletedClean &&
     needsDirtyCompleted &&
-    opponentRacing(pub.otherPlayers, pub.myTeamId) &&
+    opponentRacing(pub.otherPlayers, pub.myTeamId, chatMessages, state?.playerCount as PlayerCount | undefined) &&
     !alternative
   ) {
     return true
@@ -405,6 +428,8 @@ export function pickBestAddToBook(
   pub: AiPublicState,
   booksWithWildAddedThisTurn: string[],
   difficulty: AiDifficulty,
+  chatMessages: ChatMessage[] = [],
+  state?: GameState,
 ): Extract<AiAction, { type: 'addToBook' }> | null {
   if (actions.length === 0) return null
 
@@ -415,7 +440,14 @@ export function pickBestAddToBook(
     const book = teamBooks.find((b) => b.id === action.bookId)
     if (!book) return false
     const cards = hand.filter((c) => action.cardIds.includes(c.id))
-    return justifyDirtyingCleanBook(book, cards, pub, booksWithWildAddedThisTurn)
+    return justifyDirtyingCleanBook(
+      book,
+      cards,
+      pub,
+      booksWithWildAddedThisTurn,
+      chatMessages,
+      state,
+    )
   })
 
   if (allowed.length === 0) return null
@@ -451,6 +483,29 @@ export function pickBestAddToBook(
 
     if (completes && clean && naturalsAdded > 0) {
       score += 40
+    }
+
+    if (
+      state &&
+      opponentTeamSignaledGoOut(
+        chatMessages,
+        pub.myTeamId,
+        state.playerCount as PlayerCount,
+      ) &&
+      clean &&
+      wildsAdded > 0 &&
+      book.cards.length >= 5 &&
+      completes
+    ) {
+      score += difficulty === 'expert' ? 120 : 80
+    }
+
+    if (
+      state &&
+      partnerGoOutSignaledInChat(chatMessages, state, pub.myTeamId) &&
+      wildsAdded > 0
+    ) {
+      score += 35
     }
 
     return { action, score }

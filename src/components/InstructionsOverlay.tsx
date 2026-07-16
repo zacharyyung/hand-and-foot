@@ -84,6 +84,15 @@ export function InstructionsOverlay({ open, onClose }: InstructionsOverlayProps)
           </section>
 
           <section>
+            <h3 className="mb-1 font-semibold text-ink">Table chat</h3>
+            <p>
+              Use <strong>Table chat</strong> on your turn to signal{' '}
+              <strong>I can go out!</strong> Your partner can reply anytime with
+              Yes, No, or a custom message.
+            </p>
+          </section>
+
+          <section>
             <h3 className="mb-1 font-semibold text-ink">Hand → foot &amp; going out</h3>
             <ul className="list-inside list-disc space-y-1">
               <li>
@@ -103,11 +112,7 @@ export function InstructionsOverlay({ open, onClose }: InstructionsOverlayProps)
 
 export function InstructionsButton({ onClick }: { onClick: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="fixed right-4 top-4 z-40 rounded-full bg-black/40 px-3 py-1.5 text-xs font-medium text-ink-muted backdrop-blur hover:bg-black/60 hover:text-ink"
-    >
+    <button type="button" onClick={onClick} className="corner-control">
       How to play
     </button>
   )

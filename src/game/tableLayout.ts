@@ -26,12 +26,12 @@ export type CompassSide = 'north' | 'south' | 'east' | 'west' | 'ne' | 'nw' | 's
 const COMPASS_COORDS: Record<CompassSide, { left: number; top: number }> = {
   south: { left: 50, top: 97 },
   north: { left: 50, top: 2 },
-  west: { left: 1.5, top: 50 },
-  east: { left: 98.5, top: 50 },
-  nw: { left: 1.5, top: 3 },
-  ne: { left: 98.5, top: 3 },
-  sw: { left: 1.5, top: 97 },
-  se: { left: 98.5, top: 97 },
+  west: { left: 1, top: 50 },
+  east: { left: 99, top: 50 },
+  nw: { left: 1, top: 3 },
+  ne: { left: 99, top: 3 },
+  sw: { left: 1, top: 97 },
+  se: { left: 99, top: 97 },
 }
 
 /** Map relative seat offset to compass position from viewer's perspective. */

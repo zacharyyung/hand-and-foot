@@ -1,15 +1,20 @@
 import {
   addToBook,
-  canGoOut,
+  canPlayerGoOut,
+  canTeamGoOut,
   commitStagedMelds,
   discardCard,
   drawCards,
   getCurrentPlayer,
+  getTeam,
   startBook,
 } from '../actions'
 import type { GameState } from '../deal'
+import type { ChatMessage } from '../chat'
+import { hasPartnerGoOutClearance } from '../chat'
 import { findAddToBookActions } from './decisions'
 import { buildAiPublicState } from './publicState'
+import { maybeAiChatSignal, maybeAiPartnerGoOutResponse } from './chatSignals'
 import {
   meldUrgency,
   pickBestAddToBook,
@@ -18,26 +23,56 @@ import {
   planInitialMeld,
 } from './strategy'
 
-export function runAiTurn(state: GameState): GameState {
+export interface AiTurnResult {
+  state: GameState
+  chatMessage?: ChatMessage
+}
+
+export function runAiTurn(
+  state: GameState,
+  chatMessages: ChatMessage[] = [],
+): AiTurnResult {
   const player = getCurrentPlayer(state)
-  if (player.profile.isHuman) return state
+  if (player.profile.isHuman) return { state }
 
   const difficulty = player.profile.aiDifficulty ?? 'normal'
   let current = state
+  let chatMessage: ChatMessage | undefined
+  let messages = chatMessages
 
   if (current.turnPhase === 'draw') {
     current = drawCards(current)
   }
 
-  if (current.phase !== 'playing') return current
+  if (current.phase !== 'playing') return { state: current, chatMessage }
+
+  const partnerResponse = maybeAiPartnerGoOutResponse(
+    current,
+    current.currentPlayerIndex,
+    messages,
+  )
+  if (partnerResponse) {
+    chatMessage = partnerResponse
+    messages = [...messages, partnerResponse]
+  }
 
   const maxPlays = difficulty === 'expert' ? 14 : 10
 
   for (let i = 0; i < maxPlays; i++) {
     if (current.turnPhase !== 'play') break
-    if (canGoOut(current)) break
+    if (canPlayerGoOut(current, messages)) break
 
     const pub = buildAiPublicState(current, current.currentPlayerIndex)
+    const team = getTeam(current, pub.myTeamId)
+    if (
+      pub.isPlayingFoot &&
+      pub.myHand.length <= 2 &&
+      canTeamGoOut(team.books, team.meldThresholdMet) &&
+      !hasPartnerGoOutClearance(current, current.currentPlayerIndex, messages)
+    ) {
+      break
+    }
+
     const urgency = meldUrgency(pub.teamScore)
 
     let played = false
@@ -76,6 +111,8 @@ export function runAiTurn(state: GameState): GameState {
           pub,
           current.booksWithWildAddedThisTurn,
           difficulty,
+          messages,
+          current,
         )
         if (!bestAdd) break
 
@@ -115,21 +152,27 @@ export function runAiTurn(state: GameState): GameState {
 
   if (current.turnPhase === 'play') {
     const pub = buildAiPublicState(current, current.currentPlayerIndex)
-    const goingOut = canGoOut(current)
+    const goingOut = canPlayerGoOut(current, messages)
 
-    const cardId = pickDiscardCard(
+    const goOutSignal = maybeAiChatSignal(current, current.currentPlayerIndex, messages)
+    if (goOutSignal && !chatMessage) {
+      chatMessage = goOutSignal
+      messages = [...messages, goOutSignal]
+    }
+
+    const discardId = pickDiscardCard(
       pub.myHand,
       pub.myTeamBooks,
       difficulty,
       goingOut,
     )
-    const result = discardCard(current, cardId)
+    const result = discardCard(current, discardId, messages)
     if (!result.error) {
       current = result.state
     }
   }
 
-  return current
+  return { state: current, chatMessage }
 }
 
 export function isAiPlayer(state: GameState): boolean {

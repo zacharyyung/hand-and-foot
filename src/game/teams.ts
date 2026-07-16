@@ -1,6 +1,6 @@
-export type PlayerCount = 4 | 6 | 8 | 10
+export type PlayerCount = 4 | 6
 
-export const PLAYER_COUNT_OPTIONS: PlayerCount[] = [4, 6, 8, 10]
+export const PLAYER_COUNT_OPTIONS: PlayerCount[] = [4, 6]
 
 export function teamIdForSeat(seatIndex: number, playerCount: PlayerCount): number {
   return seatIndex % (playerCount / 2)

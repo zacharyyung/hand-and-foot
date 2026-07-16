@@ -172,17 +172,17 @@ function tableBookZoneClass(side: CompassSide): string {
     case 'south':
       return 'bottom-[12%] left-1/2 w-[min(82%,44rem)] -translate-x-1/2'
     case 'west':
-      return 'left-[10%] top-1/2 w-[min(36%,16rem)] -translate-y-1/2'
+      return 'left-[15%] top-1/2 w-[min(32%,14rem)] -translate-y-1/2'
     case 'east':
-      return 'right-[10%] top-1/2 w-[min(36%,16rem)] -translate-y-1/2'
+      return 'right-[15%] top-1/2 w-[min(32%,14rem)] -translate-y-1/2'
     case 'nw':
-      return 'left-[11%] top-[13%] w-[min(40%,18rem)]'
+      return 'left-[14%] top-[14%] w-[min(36%,16rem)]'
     case 'ne':
-      return 'right-[11%] top-[13%] w-[min(40%,18rem)]'
+      return 'right-[14%] top-[14%] w-[min(36%,16rem)]'
     case 'sw':
-      return 'bottom-[13%] left-[11%] w-[min(40%,18rem)]'
+      return 'bottom-[14%] left-[14%] w-[min(36%,16rem)]'
     case 'se':
-      return 'bottom-[13%] right-[11%] w-[min(40%,18rem)]'
+      return 'bottom-[14%] right-[14%] w-[min(36%,16rem)]'
     default:
       return 'left-1/2 top-[12%] -translate-x-1/2'
   }

@@ -124,15 +124,16 @@ function MeldTeamRow({ team }: { team: TeamState }) {
 /** Initial meld points each team still needs before laying cards down. */
 export function MeldTracker({ teams }: { teams: TeamState[] }) {
   return (
-    <div className="flex items-start gap-1.5">
-      <div className="flex flex-col items-end gap-1">
-        <span className="px-1 text-[8px] font-semibold uppercase tracking-wider text-ink-faint">
-          To meld
-        </span>
-        {teams.map((team) => (
-          <MeldTeamRow key={team.id} team={team} />
-        ))}
-      </div>
+    <div
+      className="flex flex-wrap items-center justify-end gap-1.5"
+      title="Initial meld requirement per team"
+    >
+      <span className="shrink-0 text-[8px] font-semibold uppercase tracking-wider text-ink-faint">
+        To meld
+      </span>
+      {teams.map((team) => (
+        <MeldTeamRow key={team.id} team={team} />
+      ))}
       <MeldRulesHint />
     </div>
   )

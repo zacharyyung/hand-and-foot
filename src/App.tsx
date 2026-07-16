@@ -3,7 +3,9 @@ import type { GameState } from './game/deal'
 import { startNewGame } from './game/deal'
 import { applyRoundScores, startNextRound } from './game/roundScoring'
 import type { ChatMessage } from './game/chat'
+import { canInitiateGoOutSignal } from './game/chat'
 import { loadMutePreference, playSound, unlockAudio } from './game/audio'
+import { loadAutoSortPreference, saveAutoSortPreference } from './game/preferences'
 import type { UndoVoteRequest } from './game/votes'
 import {
   humanSeats,
@@ -25,6 +27,7 @@ import {
   type SetupPlayer,
 } from './components/SetupScreen'
 import { InstructionsButton, InstructionsOverlay } from './components/InstructionsOverlay'
+import { SoundToggle } from './components/SoundToggle'
 import { TEAM_COLORS } from './game/teams'
 import type { PlayerCount } from './game/teams'
 
@@ -46,6 +49,7 @@ function App() {
   const [undoResult, setUndoResult] = useState<'approved' | 'denied' | null>(null)
   const [showRestartNotice, setShowRestartNotice] = useState(false)
   const [showUndoPicker, setShowUndoPicker] = useState(false)
+  const [autoSort, setAutoSort] = useState(() => loadAutoSortPreference())
 
   useEffect(() => {
     loadMutePreference()
@@ -181,6 +185,7 @@ function App() {
         return
       }
       setGame(startNextRound(game))
+      setChatMessages([])
     }
   }
 
@@ -255,15 +260,21 @@ function App() {
         game={game}
         onGameChange={handleGameChange}
         chatMessages={chatMessages}
+        autoSort={autoSort}
         onChatSend={(message) => {
+          if (
+            message.type === 'ready_go_out' &&
+            game &&
+            !canInitiateGoOutSignal(game, message.senderSeatIndex)
+          ) {
+            return
+          }
           playSound('chat')
           setChatMessages((prev) => [...prev, message])
         }}
       />
     )
   }
-
-  const humanPlayersInGame = game?.players.some((p) => p.profile.isHuman) ?? false
 
   return (
     <div
@@ -280,7 +291,6 @@ function App() {
         <GameSettingsPanel
           game={game}
           open={settingsOpen}
-          docked={humanPlayersInGame}
           onToggle={() => setSettingsOpen((open) => !open)}
           onClose={() => setSettingsOpen(false)}
           onShowInstructions={() => setShowInstructions(true)}
@@ -289,6 +299,12 @@ function App() {
           canRequestUndo={gameHistory.length > 0}
           undoPending={undoRequest !== null}
           onRequestUndo={initiateUndoRequest}
+          autoSort={autoSort}
+          onAutoSortChange={(enabled) => {
+            saveAutoSortPreference(enabled)
+            setAutoSort(enabled)
+            playSound('button')
+          }}
         />
       )}
 
@@ -324,8 +340,17 @@ function App() {
         />
       )}
 
-      {(!game || game.phase !== 'playing') && (
-        <InstructionsButton onClick={() => setShowInstructions(true)} />
+      {!game && (
+        <div className="fixed right-3 top-3 z-40 flex items-center gap-2 sm:right-4 sm:top-4">
+          <SoundToggle variant="chip" />
+          <InstructionsButton onClick={() => setShowInstructions(true)} />
+        </div>
+      )}
+
+      {game && game.phase !== 'playing' && (
+        <div className="fixed right-3 top-3 z-40 sm:right-4 sm:top-4">
+          <InstructionsButton onClick={() => setShowInstructions(true)} />
+        </div>
       )}
 
       {content}
