@@ -1,6 +1,6 @@
 import type { Card, Rank } from '../game/cards'
 import { cardsForBookFan } from '../game/books'
-import { sumCardPoints } from '../game/scoring'
+import { meldContributionFromCards } from '../game/scoring'
 import { CardFan } from './CardFan'
 
 export interface StagedBook {
@@ -29,7 +29,7 @@ export function StagingArea({
   ribbon = false,
 }: StagingAreaProps) {
   const stagedPoints = stagedBooks.reduce(
-    (sum, book) => sum + sumCardPoints(book.cards),
+    (sum, book) => sum + meldContributionFromCards(book.cards),
     0,
   )
   const met = stagedPoints >= requiredPoints

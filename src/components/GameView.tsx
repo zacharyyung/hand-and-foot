@@ -27,23 +27,22 @@ import {
   shouldWarnDiscardToBook,
   bookWildCount,
 } from '../game/books'
-import { meldThreshold, sumCardPoints } from '../game/scoring'
+import { meldContributionFromCards, meldThreshold, sumCardPoints } from '../game/scoring'
 import { playSound, unlockAudio } from '../game/audio'
 import { HandCards } from './HandCards'
 import { StagingArea, type StagedBook } from './StagingArea'
 import { RoundTable } from './RoundTable'
-import { Scoreboard, CurrentRoundTracker } from './Scoreboard'
+import { MeldTracker, CurrentRoundTracker } from './Scoreboard'
 import { GameChat } from './GameChat'
-import { SoundToggle } from './SoundToggle'
+import { GameMessageBar } from './GameMessageBar'
 import { TEAM_COLORS } from '../game/teams'
 import type { ChatMessage } from '../game/chat'
 
 interface GameViewProps {
   game: GameState
-  onGameChange: (game: GameState) => void
+  onGameChange: (game: GameState, options?: { recordHistory?: boolean }) => void
   chatMessages: ChatMessage[]
   onChatSend: (message: ChatMessage) => void
-  onShowInstructions: () => void
 }
 
 const AI_TURN_DELAY_MS = 900
@@ -56,7 +55,6 @@ function shortStatus(opts: {
   turnPhase: string
   isPlayingFoot: boolean
   goingOut: boolean
-  goOutBlockReason: string | null
   hasFoot: boolean
 }): string {
   if (opts.aiThinking) return `${opts.currentName}…`
@@ -65,7 +63,6 @@ function shortStatus(opts: {
     return opts.isPlayingFoot ? 'Draw for your foot' : 'Draw two'
   }
   if (opts.goingOut) return 'Discard to go out'
-  if (opts.goOutBlockReason) return opts.goOutBlockReason
   if (opts.isPlayingFoot) return 'Playing foot'
   if (opts.hasFoot) return 'Meld or discard'
   return 'Your turn'
@@ -76,7 +73,6 @@ export function GameView({
   onGameChange,
   chatMessages,
   onChatSend,
-  onShowInstructions,
 }: GameViewProps) {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -113,12 +109,14 @@ export function GameView({
   )
 
   const stagedPoints = useMemo(
-    () => stagedBooks.reduce((sum, b) => sum + sumCardPoints(b.cards), 0),
+    () => stagedBooks.reduce((sum, b) => sum + meldContributionFromCards(b.cards), 0),
     [stagedBooks],
   )
 
   const selectedCards = handForDisplay.filter((c) => selectedIds.includes(c.id))
-  const selectedPoints = sumCardPoints(selectedCards)
+  const selectedPoints = needsStagedMeld
+    ? meldContributionFromCards(selectedCards)
+    : sumCardPoints(selectedCards)
   const addBookOptions = useMemo(
     () =>
       team.meldThresholdMet && !isLastFootCard(viewer)
@@ -192,6 +190,7 @@ export function GameView({
   const lastFootCard = isMyTurn && isLastFootCard(viewer) && game.turnPhase === 'play'
   const goOutBlockReason =
     lastFootCard && !goingOut ? getGoOutBlockReason(team.books, team.meldThresholdMet) : null
+  const playerHint = error ? null : wildBlockReason ?? goOutBlockReason
   const mustDiscardLastFoot = lastFootCard
   const goToFootDiscard =
     isMyTurn && canGoToFoot(viewer) && selectedIds.length === 1
@@ -283,7 +282,7 @@ export function GameView({
     unlockAudio()
     setError(null)
     playSound('draw')
-    onGameChange(drawCards(game))
+    onGameChange(drawCards(game), { recordHistory: true })
   }
 
   function handleStartBook() {
@@ -297,7 +296,7 @@ export function GameView({
     setSelectedIds([])
     setError(null)
     playSound('place')
-    onGameChange(result.state)
+    onGameChange(result.state, { recordHistory: true })
   }
 
   function handleAddToBook() {
@@ -319,7 +318,7 @@ export function GameView({
     setSelectedAddBookId(null)
     setError(null)
     playSound('place')
-    onGameChange(result.state)
+    onGameChange(result.state, { recordHistory: true })
   }
 
   function performDiscard(cardId: string) {
@@ -335,7 +334,7 @@ export function GameView({
     if (goingOut) playSound('goOut')
     else if (goToFootDiscard) playSound('goToFoot')
     else playSound('discard')
-    onGameChange(result.state)
+    onGameChange(result.state, { recordHistory: true })
   }
 
   function handleDiscard() {
@@ -429,7 +428,7 @@ export function GameView({
     setSelectedIds([])
     setError(null)
     playSound('threshold')
-    onGameChange(result.state)
+    onGameChange(result.state, { recordHistory: true })
   }
 
   function handleRemoveStaged(id: string) {
@@ -453,7 +452,6 @@ export function GameView({
     turnPhase: game.turnPhase,
     isPlayingFoot: viewer.isPlayingFoot,
     goingOut,
-    goOutBlockReason,
     hasFoot: viewer.foot.length > 0,
   })
 
@@ -487,16 +485,7 @@ export function GameView({
           </div>
 
           <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-            <SoundToggle />
-            <button
-              type="button"
-              onClick={onShowInstructions}
-              className="rounded-lg px-2 py-1 text-[11px] font-medium text-ink-muted hover:bg-white/10 hover:text-ink"
-              aria-label="Instructions"
-            >
-              ?
-            </button>
-            <Scoreboard teams={game.teams} compact />
+            <MeldTracker teams={game.teams} />
           </div>
         </div>
         <div className="mt-1.5 flex justify-center sm:hidden">
@@ -531,10 +520,15 @@ export function GameView({
               )}
 
               <div className="flex shrink-0 flex-wrap items-center justify-center gap-x-3 gap-y-0.5 px-3 py-0.5 sm:px-4">
-                <span className="text-[10px] tabular-nums text-ink-faint">
-                  {playerHandCount(viewer)}
-                  <span className="mx-1 opacity-30">·</span>
-                  {playerFootCount(viewer)}
+                <span className="flex items-center gap-1.5 text-[10px] tabular-nums text-ink-faint">
+                  <span className="seat-chip-pile" title="Hand cards">
+                    <span className="seat-chip-pile-label">H</span>
+                    <span className="seat-chip-pile-count">{playerHandCount(viewer)}</span>
+                  </span>
+                  <span className="seat-chip-pile" title="Foot cards">
+                    <span className="seat-chip-pile-label">F</span>
+                    <span className="seat-chip-pile-count">{playerFootCount(viewer)}</span>
+                  </span>
                   {viewer.isPlayingFoot && (
                     <span className="ml-1.5 text-accent">Foot</span>
                   )}
@@ -552,7 +546,7 @@ export function GameView({
                 </button>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1 sm:px-4">
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-1 sm:px-4">
                 <HandCards
                   hand={handForDisplay}
                   handOrder={displayHandOrder}
@@ -563,45 +557,15 @@ export function GameView({
                   canDrag
                   spread
                 />
-
-                {discardWarning && (
-                  <div className="animate-fade-up mx-auto mt-2 max-w-md rounded-xl bg-black/50 px-3 py-2.5 text-center backdrop-blur-sm">
-                    <p className="text-xs text-ink-soft">
-                      Discard{' '}
-                      <span className="font-semibold text-accent">{discardWarning.cardName}</span>?
-                      It fits your {discardWarning.bookRank}s book.
-                    </p>
-                    <div className="mt-2 flex justify-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setDiscardWarning(null)}
-                        className="btn-secondary"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleConfirmDiscard}
-                        className="btn-danger"
-                      >
-                        Discard anyway
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {error && (
-                  <p className="animate-fade-up mx-auto mt-1.5 max-w-md rounded-lg bg-red-950/50 px-3 py-1.5 text-center text-xs text-red-200">
-                    {error}
-                  </p>
-                )}
-
-                {!error && wildBlockReason && (
-                  <p className="animate-fade-up mx-auto mt-1.5 max-w-md rounded-lg bg-amber-950/40 px-3 py-1.5 text-center text-xs text-amber-100/90">
-                    {wildBlockReason}
-                  </p>
-                )}
               </div>
+
+              <GameMessageBar
+                error={error}
+                hint={playerHint}
+                discardWarning={!error ? discardWarning : null}
+                onDismissDiscardWarning={() => setDiscardWarning(null)}
+                onConfirmDiscard={handleConfirmDiscard}
+              />
 
               <div className="flex min-h-[2.85rem] shrink-0 flex-wrap items-center justify-center gap-2 px-3 py-2 sm:px-4">
                 {isMyTurn && (

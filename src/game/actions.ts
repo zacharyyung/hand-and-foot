@@ -9,7 +9,7 @@ import {
 } from './books'
 import type { GameState, PlayerState } from './deal'
 import { shuffleDeck } from './shuffle'
-import { meldThreshold, sumCardPoints } from './scoring'
+import { meldContributionFromCards, meldThreshold } from './scoring'
 import { applyRoundScores } from './roundScoring'
 import { nextSeatCounterClockwise, type PlayerCount } from './teams'
 
@@ -170,7 +170,7 @@ export function commitStagedMelds(
     const check = canStartBook(cards, virtualBooks)
     if (!check.ok) return { state, error: check.reason }
 
-    totalPoints += sumCardPoints(cards)
+    totalPoints += meldContributionFromCards(cards)
     parsedGroups.push({ cardIds, cards, rank: check.rank })
     virtualBooks.push({
       id: `staged-${check.rank}-${parsedGroups.length}`,
@@ -278,7 +278,7 @@ export function startBook(
   if (!check.ok) return { state, error: check.reason }
 
   if (!team.meldThresholdMet) {
-    const newMeldPoints = state.meldPointsThisTurn + sumCardPoints(selected)
+    const newMeldPoints = state.meldPointsThisTurn + meldContributionFromCards(selected)
     const required = meldThreshold(team.score)
     if (newMeldPoints < required) {
       return {
@@ -299,7 +299,8 @@ export function startBook(
   const newHand = removeCardsFromHand(player.hand, cardIds)
   let updatedPlayer: PlayerState = { ...player, hand: newHand }
 
-  const meldPointsThisTurn = state.meldPointsThisTurn + sumCardPoints(selected)
+  const meldPointsThisTurn =
+    state.meldPointsThisTurn + meldContributionFromCards(selected)
   const thresholdNowMet =
     team.meldThresholdMet ||
     meldPointsThisTurn >= meldThreshold(team.score)

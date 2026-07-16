@@ -1,7 +1,7 @@
 import type { Card } from './cards'
 import { isRedThree } from './cards'
 import type { Book } from './books'
-import { bookWildCount } from './books'
+import { bookWildCount, countWildsInCards } from './books'
 
 export function cardPointValue(card: Card): number {
   if (isRedThree(card)) return -300
@@ -34,6 +34,13 @@ export function heldCardPenalty(cards: Card[]): number {
 export function bookBonus(book: Book): number {
   if (book.cards.length < 7) return 0
   return bookWildCount(book) > 0 ? 100 : 300
+}
+
+/** Card points plus completed-book bonus — counts toward the initial meld requirement. */
+export function meldContributionFromCards(cards: Card[]): number {
+  const cardPoints = sumCardPoints(cards)
+  if (cards.length < 7) return cardPoints
+  return cardPoints + (countWildsInCards(cards) > 0 ? 100 : 300)
 }
 
 /** Live round points on the table: melded card values + completed book bonuses. */

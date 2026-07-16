@@ -9,7 +9,7 @@ import {
   isCleanBook,
   isDirtyBook,
 } from '../books'
-import { sumCardPoints, cardPointValue, meldThreshold } from '../scoring'
+import { cardPointValue, meldThreshold, meldContributionFromCards } from '../scoring'
 import type { AiDifficulty } from '../deal'
 import type { AiPublicState } from './publicState'
 import { findAddToBookActions, findStartBookActions, type AiAction } from './decisions'
@@ -56,13 +56,13 @@ function getStartOptions(hand: Card[], teamBooks: Book[]): StartOption[] {
   const seen = new Set<Rank>()
   const playable = hand.filter((c) => !isRedThree(c))
 
-  for (const combo of combinations(playable, 3, Math.min(6, playable.length))) {
+  for (const combo of combinations(playable, 3, Math.min(7, playable.length))) {
     const check = canStartBook(combo, teamBooks)
     if (!check.ok || seen.has(check.rank)) continue
     seen.add(check.rank)
     options.push({
       cardIds: combo.map((c) => c.id),
-      score: sumCardPoints(combo),
+      score: meldContributionFromCards(combo),
       rank: check.rank,
       clean: !hasWilds(combo),
     })

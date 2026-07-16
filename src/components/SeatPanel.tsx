@@ -37,7 +37,7 @@ function seatAnchorClass(side: CompassSide): string {
   }
 }
 
-/** Identity chip only — books render separately on the felt. */
+/** Identity chip — rail placard outside the felt, books render on the table. */
 export function SeatPanel({
   player,
   role,
@@ -46,7 +46,7 @@ export function SeatPanel({
   side,
   style,
 }: SeatPanelProps) {
-  const color = TEAM_COLORS[player.profile.teamId]
+  const teamColor = TEAM_COLORS[player.profile.teamId]
   const isMyTeam = player.profile.teamId === myTeamId
 
   const roleLabel =
@@ -61,38 +61,50 @@ export function SeatPanel({
     ? { left: '50%', bottom: '0.25rem', top: 'auto' }
     : style
 
+  const chipStyle = {
+    '--seat-team': teamColor,
+  } as CSSProperties
+
   return (
     <div className={`absolute z-20 ${seatAnchorClass(side)}`} style={positionStyle}>
       <div
-        className={`seat-plaque relative shrink-0 ${isActive ? 'seat-plaque-active animate-soft-pulse' : ''}`}
-        style={
-          !isActive && isMyTeam
-            ? { borderColor: `${color}55`, boxShadow: `0 0 0 1px ${color}22` }
-            : undefined
-        }
+        className={[
+          'seat-chip',
+          isMyTeam ? 'seat-chip-ally' : '',
+          isActive ? 'seat-chip-active' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+        style={chipStyle}
       >
-        <div className="flex items-center gap-1.5">
-          <span className="shrink-0 text-base leading-none" aria-hidden>
-            {player.profile.avatar}
-          </span>
-          <div className="min-w-0">
-            <p className="truncate font-sans text-[11px] font-semibold leading-tight text-ink">
-              {player.profile.name}
-            </p>
-            <p className="flex items-center gap-1.5 whitespace-nowrap text-[9px] text-ink-muted">
-              <span style={{ color }}>{roleLabel}</span>
-              <span className="tabular-nums text-ink-faint">
-                {handCount}
-                <span className="mx-0.5 opacity-40">·</span>
-                {footCount}
+        <div className="seat-chip-avatar" aria-hidden>
+          {player.profile.avatar}
+        </div>
+        <div className="seat-chip-body">
+          <div className="seat-chip-name-row">
+            <p className="seat-chip-name">{player.profile.name}</p>
+            {isActive && (
+              <span className="seat-chip-turn-dot" aria-label="Current turn" />
+            )}
+          </div>
+          <div className="seat-chip-meta">
+            <span className="seat-chip-role">{roleLabel}</span>
+            <span className="seat-chip-piles">
+              <span className="seat-chip-pile" title="Hand cards">
+                <span className="seat-chip-pile-label">H</span>
+                <span className="seat-chip-pile-count">{handCount}</span>
               </span>
-              {player.isPlayingFoot && (
-                <span className="text-accent">Foot</span>
-              )}
-              {player.footOnHold && (
-                <span className="text-sky-300/90">Hold</span>
-              )}
-            </p>
+              <span className="seat-chip-pile" title="Foot cards">
+                <span className="seat-chip-pile-label">F</span>
+                <span className="seat-chip-pile-count">{footCount}</span>
+              </span>
+            </span>
+            {player.isPlayingFoot && (
+              <span className="seat-chip-tag seat-chip-tag-foot">Foot</span>
+            )}
+            {player.footOnHold && (
+              <span className="seat-chip-tag seat-chip-tag-hold">Hold</span>
+            )}
           </div>
         </div>
       </div>

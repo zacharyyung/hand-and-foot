@@ -2,7 +2,7 @@ import type { Card, Rank } from '../cards'
 import { isRedThree, isWildCard } from '../cards'
 import type { Book } from '../books'
 import { bookWildCount, canAddToBook, canStartBook, countWildsInCards, naturalRank } from '../books'
-import { sumCardPoints, cardPointValue } from '../scoring'
+import { cardPointValue, meldContributionFromCards } from '../scoring'
 
 export type AiAction =
   | { type: 'startBook'; cardIds: string[]; score: number }
@@ -57,7 +57,7 @@ export function findStartBookActions(hand: Card[], teamBooks: Book[]): AiAction[
     actions.push({
       type: 'startBook',
       cardIds: combo.map((c) => c.id),
-      score: sumCardPoints(combo),
+      score: meldContributionFromCards(combo),
     })
   }
 

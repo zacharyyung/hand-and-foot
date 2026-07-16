@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react'
 import { isMuted, loadMutePreference, playSound, setMuted, unlockAudio } from '../game/audio'
 
-export function SoundToggle() {
+interface SoundToggleProps {
+  variant?: 'icon' | 'row'
+}
+
+export function SoundToggle({ variant = 'icon' }: SoundToggleProps) {
   const [muted, setMutedState] = useState(false)
 
   useEffect(() => {
@@ -14,6 +18,20 @@ export function SoundToggle() {
     setMuted(next)
     setMutedState(next)
     if (!next) playSound('button')
+  }
+
+  if (variant === 'row') {
+    return (
+      <button
+        type="button"
+        onClick={toggle}
+        className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-xs font-medium text-ink-soft hover:bg-white/8 hover:text-ink"
+        aria-label={muted ? 'Unmute sounds' : 'Mute sounds'}
+      >
+        <span>Volume</span>
+        <span>{muted ? 'Muted' : 'On'}</span>
+      </button>
+    )
   }
 
   return (

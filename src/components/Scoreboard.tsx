@@ -3,11 +3,7 @@ import type { TeamState } from '../game/deal'
 import { meldThreshold, teamBoardPoints } from '../game/scoring'
 import { TEAM_COLORS } from '../game/teams'
 import { playSound } from '../game/audio'
-
-interface ScoreboardProps {
-  teams: TeamState[]
-  compact?: boolean
-}
+import { MeldRulesHint } from './MeldRulesHint'
 
 function AnimatedNumber({ value }: { value: number }) {
   const [display, setDisplay] = useState(value)
@@ -38,12 +34,22 @@ function AnimatedNumber({ value }: { value: number }) {
   return <span className="tabular-nums">{display}</span>
 }
 
-export function CurrentRoundTracker({ teams }: { teams: TeamState[] }) {
+function TeamDotsRow({
+  teams,
+  value,
+  size = 'md',
+}: {
+  teams: TeamState[]
+  value: (team: TeamState) => number
+  size?: 'md' | 'sm'
+}) {
+  const numberClass =
+    size === 'md'
+      ? 'font-display text-base font-semibold leading-none tabular-nums sm:text-lg'
+      : 'font-display text-xs font-semibold leading-none tabular-nums sm:text-sm'
+
   return (
-    <div
-      className="flex items-center gap-2.5 sm:gap-3.5"
-      title="Points on the table this round"
-    >
+    <>
       {teams.map((team, i) => (
         <div key={team.id} className="flex items-center gap-1.5">
           {i > 0 && <span className="mr-1 h-3 w-px bg-white/10" aria-hidden />}
@@ -51,59 +57,94 @@ export function CurrentRoundTracker({ teams }: { teams: TeamState[] }) {
             className="h-1.5 w-1.5 shrink-0 rounded-full"
             style={{ backgroundColor: TEAM_COLORS[team.id] }}
           />
-          <span
-            className="font-display text-base font-semibold leading-none tabular-nums sm:text-lg"
-            style={{ color: TEAM_COLORS[team.id] }}
-          >
-            <AnimatedNumber value={teamBoardPoints(team.books)} />
+          <span className={numberClass} style={{ color: TEAM_COLORS[team.id] }}>
+            <AnimatedNumber value={value(team)} />
           </span>
         </div>
       ))}
+    </>
+  )
+}
+
+/** Round points on the table, with cumulative game total underneath. */
+export function CurrentRoundTracker({ teams }: { teams: TeamState[] }) {
+  return (
+    <div className="flex flex-col items-center gap-1" title="Round table points and cumulative scores">
+      <div className="flex items-center gap-2.5 sm:gap-3">
+        <span className="w-[4.75rem] shrink-0 text-right text-[9px] font-semibold uppercase tracking-wider text-ink-faint">
+          Table
+        </span>
+        <div className="flex items-center gap-2.5 sm:gap-3.5">
+          <TeamDotsRow teams={teams} value={(team) => teamBoardPoints(team.books)} size="md" />
+        </div>
+      </div>
+      <div className="flex items-center gap-2.5 sm:gap-3">
+        <span className="w-[4.75rem] shrink-0 text-right text-[9px] font-semibold uppercase tracking-wider text-ink-faint">
+          Cumulative
+        </span>
+        <div className="flex items-center gap-2.5 sm:gap-3.5">
+          <TeamDotsRow teams={teams} value={(team) => team.score} size="sm" />
+        </div>
+      </div>
     </div>
   )
 }
 
-export function Scoreboard({ teams, compact = false }: ScoreboardProps) {
-  if (compact) {
-    return (
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {teams.map((team) => (
-          <div key={team.id} className="flex items-center gap-1.5">
-            <span
-              className="h-1.5 w-1.5 rounded-full"
-              style={{ backgroundColor: TEAM_COLORS[team.id] }}
-            />
-            <span className="font-display text-sm font-semibold tabular-nums text-ink">
-              <AnimatedNumber value={team.score} />
-            </span>
-            <span className="text-[9px] text-ink-faint tabular-nums">
-              {meldThreshold(team.score)}
-              {team.meldThresholdMet ? '' : '🔒'}
-            </span>
-          </div>
-        ))}
-      </div>
-    )
-  }
+function MeldTeamRow({ team }: { team: TeamState }) {
+  const needed = meldThreshold(team.score)
+  const met = team.meldThresholdMet
 
   return (
-    <div className="flex flex-wrap gap-4">
-      {teams.map((team) => (
-        <div key={team.id} className="min-w-[7rem]">
-          <div className="flex items-center gap-2">
-            <span
-              className="h-2 w-2 rounded-full"
-              style={{ backgroundColor: TEAM_COLORS[team.id] }}
-            />
-            <span className="font-display text-lg font-semibold tabular-nums text-ink">
-              <AnimatedNumber value={team.score} />
-            </span>
-          </div>
-          <p className="text-[10px] text-ink-muted">
-            Board {teamBoardPoints(team.books)} · Need {meldThreshold(team.score)}
-          </p>
-        </div>
-      ))}
+    <div className="flex items-center gap-1.5 rounded-lg bg-black/20 px-2 py-1">
+      <span
+        className="h-1.5 w-1.5 shrink-0 rounded-full"
+        style={{ backgroundColor: TEAM_COLORS[team.id] }}
+        aria-hidden
+      />
+      {met ? (
+        <span
+          className="text-[11px] font-semibold tabular-nums text-accent"
+          title="Initial meld requirement met"
+        >
+          Met
+        </span>
+      ) : (
+        <span
+          className="text-[11px] font-semibold tabular-nums text-ink-soft"
+          title={`Need ${needed} points to meld this round`}
+        >
+          {needed}
+          <span className="ml-0.5 text-[9px] font-medium text-ink-faint">pts</span>
+        </span>
+      )}
+    </div>
+  )
+}
+
+/** Initial meld points each team still needs before laying cards down. */
+export function MeldTracker({ teams }: { teams: TeamState[] }) {
+  return (
+    <div className="flex items-start gap-1.5">
+      <div className="flex flex-col items-end gap-1">
+        <span className="px-1 text-[8px] font-semibold uppercase tracking-wider text-ink-faint">
+          To meld
+        </span>
+        {teams.map((team) => (
+          <MeldTeamRow key={team.id} team={team} />
+        ))}
+      </div>
+      <MeldRulesHint />
+    </div>
+  )
+}
+
+/** @deprecated Use MeldTracker and CurrentRoundTracker separately. */
+export function Scoreboard({ teams, compact = false }: { teams: TeamState[]; compact?: boolean }) {
+  if (compact) return <MeldTracker teams={teams} />
+  return (
+    <div className="flex flex-wrap items-start gap-4">
+      <CurrentRoundTracker teams={teams} />
+      <MeldTracker teams={teams} />
     </div>
   )
 }

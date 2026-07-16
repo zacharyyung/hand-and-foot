@@ -1,22 +1,34 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import type { GameState } from './game/deal'
 import { startNewGame } from './game/deal'
 import { applyRoundScores, startNextRound } from './game/roundScoring'
 import type { ChatMessage } from './game/chat'
 import { loadMutePreference, playSound, unlockAudio } from './game/audio'
+import type { UndoVoteRequest } from './game/votes'
+import {
+  humanSeats,
+  resolveUndoRequest,
+  startOverReached,
+  undoEligibleVoters,
+} from './game/votes'
 import { GameView } from './components/GameView'
 import { RoundSummary } from './components/RoundSummary'
+import { GameSettingsPanel } from './components/GameSettingsPanel'
+import {
+  RestartNoticeOverlay,
+  UndoRequestPicker,
+  UndoVoteOverlay,
+} from './components/VoteOverlays'
 import {
   SetupScreen,
   createDefaultSetupPlayers,
   type SetupPlayer,
 } from './components/SetupScreen'
-import {
-  InstructionsButton,
-  InstructionsOverlay,
-} from './components/InstructionsOverlay'
+import { InstructionsButton, InstructionsOverlay } from './components/InstructionsOverlay'
 import { TEAM_COLORS } from './game/teams'
 import type { PlayerCount } from './game/teams'
+
+const RESTART_NOTICE_MS = 2400
 
 function App() {
   const [playerCount, setPlayerCount] = useState<PlayerCount>(4)
@@ -27,10 +39,27 @@ function App() {
   const [game, setGame] = useState<GameState | null>(null)
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [showInstructions, setShowInstructions] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [gameHistory, setGameHistory] = useState<GameState[]>([])
+  const [startOverVotes, setStartOverVotes] = useState<number[]>([])
+  const [undoRequest, setUndoRequest] = useState<UndoVoteRequest | null>(null)
+  const [undoResult, setUndoResult] = useState<'approved' | 'denied' | null>(null)
+  const [showRestartNotice, setShowRestartNotice] = useState(false)
+  const [showUndoPicker, setShowUndoPicker] = useState(false)
 
   useEffect(() => {
     loadMutePreference()
   }, [])
+
+  function resetSession() {
+    setGameHistory([])
+    setStartOverVotes([])
+    setUndoRequest(null)
+    setUndoResult(null)
+    setShowRestartNotice(false)
+    setShowUndoPicker(false)
+    setSettingsOpen(false)
+  }
 
   function handlePlayerCountChange(count: PlayerCount) {
     setPlayerCount(count)
@@ -43,7 +72,97 @@ function App() {
     unlockAudio()
     playSound('threshold')
     setChatMessages([])
+    resetSession()
     setGame(startNewGame(setupPlayers, playerCount))
+  }
+
+  function handleGameChange(
+    next: GameState,
+    options?: { recordHistory?: boolean },
+  ) {
+    if (options?.recordHistory && game) {
+      setGameHistory((history) => [...history.slice(-40), game])
+    }
+    setGame(next)
+  }
+
+  function handleStartOverVote(seatIndex: number) {
+    if (!game || startOverVotes.includes(seatIndex)) return
+    playSound('button')
+
+    const nextVotes = [...startOverVotes, seatIndex]
+    setStartOverVotes(nextVotes)
+
+    const humans = humanSeats(game).length
+    if (!startOverReached(nextVotes, humans)) return
+
+    setSettingsOpen(false)
+    setShowRestartNotice(true)
+    window.setTimeout(() => {
+      playSound('button')
+      setChatMessages([])
+      resetSession()
+      setGame(startNewGame(setupPlayers, playerCount))
+    }, RESTART_NOTICE_MS)
+  }
+
+  function handleRequestUndo(requesterSeat: number) {
+    if (!game || gameHistory.length === 0 || undoRequest) return
+    playSound('button')
+    setSettingsOpen(false)
+    setShowUndoPicker(false)
+
+    const eligible = undoEligibleVoters(game, requesterSeat)
+    if (eligible.length === 0) {
+      setGame(gameHistory[gameHistory.length - 1]!)
+      setGameHistory((history) => history.slice(0, -1))
+      setUndoResult('approved')
+      return
+    }
+
+    setUndoRequest({ requesterSeat, votes: {} })
+  }
+
+  function initiateUndoRequest() {
+    if (!game || gameHistory.length === 0 || undoRequest) return
+    const humans = humanSeats(game)
+    if (humans.length <= 1) {
+      handleRequestUndo(humans[0]!)
+      return
+    }
+    setShowUndoPicker(true)
+  }
+
+  function handleUndoVote(voterSeat: number, choice: 'approve' | 'deny') {
+    if (!game || !undoRequest || undoRequest.votes[voterSeat]) return
+    playSound('button')
+
+    const updated: UndoVoteRequest = {
+      ...undoRequest,
+      votes: { ...undoRequest.votes, [voterSeat]: choice },
+    }
+    const eligible = undoEligibleVoters(game, undoRequest.requesterSeat)
+    const outcome = resolveUndoRequest(updated, eligible)
+
+    if (outcome === null) {
+      setUndoRequest(updated)
+      return
+    }
+
+    setUndoRequest(null)
+    if (outcome === 'approved') {
+      const previous = gameHistory[gameHistory.length - 1]
+      if (previous) {
+        setGame(previous)
+        setGameHistory((history) => history.slice(0, -1))
+      }
+    }
+    setUndoResult(outcome)
+  }
+
+  function handleDismissUndoResult() {
+    playSound('button')
+    setUndoResult(null)
   }
 
   function handleRoundContinue() {
@@ -83,13 +202,16 @@ function App() {
     content = <RoundSummary game={game} onContinue={handleRoundContinue} />
   } else if (game.phase === 'gameOver') {
     const winner = game.teams.find((t) => t.id === game.winnerTeamId)
+    const winningPlayers = game.players.filter(
+      (p) => p.profile.teamId === game.winnerTeamId,
+    )
     content = (
       <div className="animate-fade-up mx-auto max-w-lg px-6 py-16 text-center">
         <p className="mb-2 font-sans text-[11px] uppercase tracking-[0.2em] text-ink-faint">
           Game over
         </p>
         <h2 className="mb-3 font-display text-4xl font-semibold text-ink">Victory</h2>
-        <p className="mb-10 text-lg text-ink-soft">
+        <p className="mb-6 text-lg text-ink-soft">
           <span style={{ color: TEAM_COLORS[winner!.id] }}>
             Team {winner!.id + 1}
           </span>{' '}
@@ -98,9 +220,27 @@ function App() {
             {winner!.score}
           </span>
         </p>
+
+        <ul className="mb-10 flex flex-wrap items-stretch justify-center gap-3">
+          {winningPlayers.map((player) => (
+            <li
+              key={player.profile.seatIndex}
+              className="seat-chip seat-chip-ally max-w-none px-4 py-2.5"
+              style={{ '--seat-team': TEAM_COLORS[winner!.id] } as CSSProperties}
+            >
+              <div className="seat-chip-avatar text-xl">{player.profile.avatar}</div>
+              <div className="seat-chip-body">
+                <p className="seat-chip-name text-sm">{player.profile.name}</p>
+                <span className="seat-chip-role">Winner</span>
+              </div>
+            </li>
+          ))}
+        </ul>
+
         <button
           onClick={() => {
             playSound('button')
+            resetSession()
             setGame(null)
           }}
           className="btn-primary px-8 py-3 text-sm"
@@ -113,16 +253,17 @@ function App() {
     content = (
       <GameView
         game={game}
-        onGameChange={setGame}
+        onGameChange={handleGameChange}
         chatMessages={chatMessages}
         onChatSend={(message) => {
           playSound('chat')
           setChatMessages((prev) => [...prev, message])
         }}
-        onShowInstructions={() => setShowInstructions(true)}
       />
     )
   }
+
+  const humanPlayersInGame = game?.players.some((p) => p.profile.isHuman) ?? false
 
   return (
     <div
@@ -130,13 +271,63 @@ function App() {
         game && game.phase === 'playing' ? 'h-dvh overflow-hidden' : ''
       }`}
     >
-      {(!game || game.phase !== 'playing') && (
-        <InstructionsButton onClick={() => setShowInstructions(true)} />
-      )}
       <InstructionsOverlay
         open={showInstructions}
         onClose={() => setShowInstructions(false)}
       />
+
+      {game?.phase === 'playing' && (
+        <GameSettingsPanel
+          game={game}
+          open={settingsOpen}
+          docked={humanPlayersInGame}
+          onToggle={() => setSettingsOpen((open) => !open)}
+          onClose={() => setSettingsOpen(false)}
+          onShowInstructions={() => setShowInstructions(true)}
+          startOverVotes={startOverVotes}
+          onStartOverVote={handleStartOverVote}
+          canRequestUndo={gameHistory.length > 0}
+          undoPending={undoRequest !== null}
+          onRequestUndo={initiateUndoRequest}
+        />
+      )}
+
+      {showRestartNotice && game && (
+        <RestartNoticeOverlay humanCount={humanSeats(game).length} />
+      )}
+
+      {undoRequest && game && !undoResult && (
+        <UndoVoteOverlay
+          game={game}
+          request={undoRequest}
+          onVote={handleUndoVote}
+          onDismissResult={handleDismissUndoResult}
+          result={null}
+        />
+      )}
+
+      {undoResult && (
+        <UndoVoteOverlay
+          game={game!}
+          request={{ requesterSeat: 0, votes: {} }}
+          onVote={() => {}}
+          onDismissResult={handleDismissUndoResult}
+          result={undoResult}
+        />
+      )}
+
+      {showUndoPicker && game && (
+        <UndoRequestPicker
+          game={game}
+          onSelect={handleRequestUndo}
+          onCancel={() => setShowUndoPicker(false)}
+        />
+      )}
+
+      {(!game || game.phase !== 'playing') && (
+        <InstructionsButton onClick={() => setShowInstructions(true)} />
+      )}
+
       {content}
     </div>
   )
