@@ -1,4 +1,5 @@
 import type { GameState } from '../game/deal'
+import type { CardMotionKind } from '../game/cardMotion'
 import { getTeam } from '../game/actions'
 import {
   getViewerSeat,
@@ -16,6 +17,8 @@ interface RoundTableProps {
   hideViewerSeat?: boolean
   onDraw?: () => void
   canDraw?: boolean
+  getCardMotion?: (cardId: string) => CardMotionKind | undefined
+  isCardInFlight?: (cardId: string) => boolean
 }
 
 export function RoundTable({
@@ -23,6 +26,8 @@ export function RoundTable({
   hideViewerSeat = false,
   onDraw,
   canDraw = false,
+  getCardMotion,
+  isCardInFlight,
 }: RoundTableProps) {
   const viewerSeat = getViewerSeat(game.players)
   const myTeamId = game.players[viewerSeat].profile.teamId
@@ -52,8 +57,11 @@ export function RoundTable({
               key={`books-${seatIndex}`}
               books={playerBooks}
               teamId={team.id}
+              seatIndex={seatIndex}
               side={side}
               myTeamId={myTeamId}
+              getCardMotion={getCardMotion}
+              isCardHidden={isCardInFlight}
             />
           )
         })}
@@ -74,6 +82,7 @@ export function RoundTable({
             label="Stock"
             faceDown
             small
+            flightAnchor="stock"
             interactive={canDraw}
             highlight={canDraw}
             onClick={canDraw ? onDraw : undefined}
@@ -83,6 +92,9 @@ export function RoundTable({
             label="Discard"
             showTopCard={game.discard.length > 0}
             small
+            flightAnchor="discard"
+            getCardMotion={getCardMotion}
+            isCardHidden={isCardInFlight}
           />
         </div>
 
@@ -99,6 +111,7 @@ export function RoundTable({
             <SeatPanel
               key={seatIndex}
               player={player}
+              seatIndex={seatIndex}
               role={role}
               isActive={isActive}
               myTeamId={myTeamId}

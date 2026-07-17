@@ -1,6 +1,8 @@
 import type { Card, Rank } from '../game/cards'
+import type { CardMotionKind } from '../game/cardMotion'
 import { cardsForBookFan } from '../game/books'
 import { meldContributionFromCards } from '../game/scoring'
+import { cardFanLayout } from './cardFanLayout'
 import { CardFan } from './CardFan'
 
 export interface StagedBook {
@@ -20,6 +22,41 @@ interface StagingAreaProps {
   ribbon?: boolean
   /** Sit inside the H/F toolbar row without extra vertical padding. */
   embedded?: boolean
+  getCardMotion?: (cardId: string) => CardMotionKind | undefined
+  isCardHidden?: (cardId: string) => boolean
+}
+
+function StagedBookFan({
+  book,
+  getCardMotion,
+  isCardHidden,
+}: {
+  book: StagedBook
+  getCardMotion?: (cardId: string) => CardMotionKind | undefined
+  isCardHidden?: (cardId: string) => boolean
+}) {
+  const fanCards = cardsForBookFan(book.cards)
+  const layout = cardFanLayout(fanCards.length, { small: true })
+  const landingIndex = Math.max(0, Math.floor((fanCards.length - 1) / 2))
+  const landing = { x: layout.fanWidth / 2, y: layout.cardHeight / 2 }
+
+  return (
+    <div className="relative">
+      <span
+        data-flight-anchor={`staging-${book.id}`}
+        data-flight-rotation={layout.rotation(landingIndex)}
+        className="pointer-events-none absolute z-0 h-0 w-0"
+        style={{ left: landing.x, top: landing.y }}
+        aria-hidden
+      />
+      <CardFan
+        cards={fanCards}
+        small
+        getCardMotion={getCardMotion}
+        isCardHidden={isCardHidden}
+      />
+    </div>
+  )
 }
 
 export function StagingArea({
@@ -30,6 +67,8 @@ export function StagingArea({
   compact = false,
   ribbon = false,
   embedded = false,
+  getCardMotion,
+  isCardHidden,
 }: StagingAreaProps) {
   const stagedPoints = stagedBooks.reduce(
     (sum, book) => sum + meldContributionFromCards(book.cards),
@@ -62,10 +101,10 @@ export function StagingArea({
   if (ribbon) {
     const rowClass = embedded
       ? 'flex min-w-0 flex-1 flex-wrap items-center justify-center gap-x-2 gap-y-0.5'
-      : 'animate-fade-up flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 px-3 py-1.5 sm:px-4 lg:px-6'
+      : 'flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 px-3 py-1.5 sm:px-4 lg:px-6'
 
     return (
-      <div className={rowClass}>
+      <div className={rowClass} data-flight-anchor="staging">
         <p
           className={`font-display text-xs font-semibold tabular-nums sm:text-sm ${
             met ? 'text-accent' : 'text-ink-soft'
@@ -80,7 +119,11 @@ export function StagingArea({
               key={book.id}
               className="flex items-center gap-1 rounded-lg bg-black/25 px-1.5 py-0.5"
             >
-              <CardFan cards={cardsForBookFan(book.cards)} small />
+              <StagedBookFan
+                book={book}
+                getCardMotion={getCardMotion}
+                isCardHidden={isCardHidden}
+              />
               <button
                 type="button"
                 onClick={() => onRemove(book.id)}
@@ -126,7 +169,11 @@ export function StagingArea({
               compact ? 'px-1.5 py-1' : 'px-2 py-2'
             }`}
           >
-            <CardFan cards={cardsForBookFan(book.cards)} small />
+            <StagedBookFan
+              book={book}
+              getCardMotion={getCardMotion}
+              isCardHidden={isCardHidden}
+            />
             <button
               type="button"
               onClick={() => onRemove(book.id)}

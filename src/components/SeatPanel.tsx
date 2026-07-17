@@ -7,6 +7,7 @@ import { TEAM_COLORS } from '../game/teams'
 
 interface SeatPanelProps {
   player: PlayerState
+  seatIndex: number
   role: SeatRole
   isActive: boolean
   myTeamId: number
@@ -65,6 +66,7 @@ function seatPositionStyle(
 /** Identity chip — rail placard outside the felt, books render on the table. */
 export function SeatPanel({
   player,
+  seatIndex,
   role,
   isActive,
   myTeamId,
@@ -88,6 +90,11 @@ export function SeatPanel({
 
   return (
     <div className={`absolute z-20 ${seatAnchorClass(side)}`} style={positionStyle}>
+      <span
+        data-flight-anchor={`seat-${seatIndex}`}
+        className="pointer-events-none absolute left-1/2 top-1/2 h-0 w-0"
+        aria-hidden
+      />
       <div
         className={[
           'seat-chip',

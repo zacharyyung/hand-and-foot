@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import type { TeamState } from '../game/deal'
 import { meldThreshold, teamBoardPoints } from '../game/scoring'
 import { TEAM_COLORS } from '../game/teams'
-import { playSound } from '../game/audio'
 import { MeldRulesHint } from './MeldRulesHint'
 
 function AnimatedNumber({ value }: { value: number }) {
@@ -25,7 +24,6 @@ function AnimatedNumber({ value }: { value: number }) {
       step++
       const next = Math.round(from + (delta * step) / steps)
       setDisplay(next)
-      if (step % 3 === 0) playSound('scoreTick')
       if (step >= steps) window.clearInterval(id)
     }, 28)
     return () => window.clearInterval(id)

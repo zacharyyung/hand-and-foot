@@ -1,16 +1,19 @@
 import type { Card as CardType } from '../game/cards'
+import type { CardMotionKind } from '../game/cardMotion'
+import { cardFanLayout } from './cardFanLayout'
 import { Card } from './Card'
+import { AnimatedCardShell } from './AnimatedCardShell'
 
 interface CardFanProps {
   cards: CardType[]
   small?: boolean
   tiny?: boolean
-  /** Pixels each card shifts right; auto-tightens for large books. */
   peek?: number
-  /** Tight stack for completed books. */
   stacked?: boolean
-  /** Soft settle animation when books update. */
   animate?: boolean
+  getCardMotion?: (cardId: string) => CardMotionKind | undefined
+  isCardHidden?: (cardId: string) => boolean
+  faceDown?: boolean
 }
 
 export function CardFan({
@@ -20,43 +23,42 @@ export function CardFan({
   peek,
   stacked = false,
   animate = false,
+  getCardMotion,
+  isCardHidden,
+  faceDown = false,
 }: CardFanProps) {
   if (cards.length === 0) return null
 
-  const cardWidth = tiny ? 30 : small ? 44 : 64
-  const cardHeight = tiny ? 44 : small ? 64 : 96
-  const step = stacked
-    ? tiny ? 2 : 2.5
-    : peek ??
-      Math.max(
-        tiny ? 4 : 7,
-        Math.min(tiny ? 8 : small ? 13 : 17, Math.floor((tiny ? 36 : 52) / cards.length)),
-      )
-
-  const fanWidth = cardWidth + (cards.length - 1) * step
+  const layout = cardFanLayout(cards.length, { small, tiny, stacked, peek })
 
   return (
     <div
       className={`relative shrink-0 ${animate ? 'animate-book-settle' : ''} ${
         stacked ? 'drop-shadow-md' : ''
       }`}
-      style={{ width: fanWidth, height: cardHeight }}
+      style={{ width: layout.fanWidth, height: layout.cardHeight }}
       aria-label={`${cards.length} cards`}
     >
       {cards.map((card, index) => {
-        const rot = stacked ? 0 : (index - (cards.length - 1) / 2) * (tiny ? 0.4 : 0.6)
+        const rot = layout.rotation(index)
+        const hidden = isCardHidden?.(card.id)
         return (
           <div
             key={card.id}
             className="absolute top-0"
             style={{
-              left: index * step,
+              left: index * layout.step,
               zIndex: index,
               transform: `rotate(${rot}deg)`,
               transformOrigin: 'bottom center',
             }}
           >
-            <Card card={card} small={!tiny} tiny={tiny} />
+            <AnimatedCardShell
+              motion={hidden ? undefined : getCardMotion?.(card.id)}
+              className={hidden ? 'opacity-0' : 'block book-card-at-rest'}
+            >
+              <Card card={faceDown ? undefined : card} faceDown={faceDown} small={!tiny} tiny={tiny} />
+            </AnimatedCardShell>
           </div>
         )
       })}

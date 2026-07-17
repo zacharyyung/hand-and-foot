@@ -1,5 +1,8 @@
 import type { Card as CardType } from '../game/cards'
+import type { CardMotionKind } from '../game/cardMotion'
+import type { FlightAnchor } from '../game/flightAnchors'
 import { Card } from './Card'
+import { AnimatedCardShell } from './AnimatedCardShell'
 
 interface CardPileProps {
   cards: CardType[]
@@ -10,6 +13,9 @@ interface CardPileProps {
   interactive?: boolean
   onClick?: () => void
   highlight?: boolean
+  flightAnchor?: FlightAnchor
+  getCardMotion?: (cardId: string) => CardMotionKind | undefined
+  isCardHidden?: (cardId: string) => boolean
 }
 
 export function CardPile({
@@ -21,9 +27,21 @@ export function CardPile({
   interactive = false,
   onClick,
   highlight = false,
+  flightAnchor,
+  getCardMotion,
+  isCardHidden,
 }: CardPileProps) {
-  const topCard = cards[cards.length - 1]
-  const depth = Math.min(cards.length, 4)
+  let displayTopCard: CardType | undefined
+  let displayCount = 0
+  for (let i = cards.length - 1; i >= 0; i--) {
+    if (!isCardHidden?.(cards[i].id)) {
+      displayTopCard = cards[i]
+      displayCount = i + 1
+      break
+    }
+  }
+
+  const depth = Math.min(displayCount, 4)
   const sizeH = small ? 'h-16' : 'h-24'
   const sizeW = small ? 'w-11' : 'w-16'
 
@@ -32,6 +50,7 @@ export function CardPile({
       className={`relative transition-transform duration-200 ease-settle ${
         highlight ? 'scale-[1.04]' : ''
       } ${interactive ? 'cursor-pointer hover:-translate-y-0.5' : ''}`}
+      {...(flightAnchor ? { 'data-flight-anchor': flightAnchor } : {})}
     >
       {/* Depth layers under the top card */}
       {depth > 1 &&
@@ -51,17 +70,31 @@ export function CardPile({
           </div>
         ))}
 
-      {cards.length > 0 ? (
+      {displayTopCard ? (
         <div
           className="relative z-10 shadow-pile"
           style={{ transform: depth > 1 ? `translate(${(depth - 1) * 0.5}px, ${(depth - 1) * 0.5}px)` : undefined }}
         >
-          <Card
-            card={showTopCard && !faceDown ? topCard : undefined}
-            faceDown={faceDown || !showTopCard}
-            small={small}
-          />
+          <AnimatedCardShell
+            motion={
+              showTopCard && !faceDown && displayTopCard
+                ? getCardMotion?.(displayTopCard.id)
+                : undefined
+            }
+            className="block"
+          >
+            <Card
+              card={showTopCard && !faceDown ? displayTopCard : undefined}
+              faceDown={faceDown || !showTopCard}
+              small={small}
+            />
+          </AnimatedCardShell>
         </div>
+      ) : cards.length > 0 ? (
+        <div
+          className={`relative z-10 ${sizeH} ${sizeW}`}
+          aria-hidden
+        />
       ) : (
         <div
           className={`flex ${sizeH} ${sizeW} items-center justify-center rounded-[0.55rem] border border-dashed border-white/20 bg-black/15 text-[10px] text-ink-faint`}

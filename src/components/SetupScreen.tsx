@@ -74,7 +74,7 @@ export function buildSetupPlayers(
       const human = humanPlayers[i]
       return {
         name: human.name,
-        age: human.age,
+        age: humanPlayers.length >= 2 ? human.age : 0,
         avatar: human.avatar,
         isHuman: true,
         aiDifficulty: 'normal',
@@ -125,8 +125,10 @@ export function SetupScreen({
     }
   }
 
+  const askAge = humanCount >= 2
+
   const humansValid = humanPlayers.every(
-    (p) => p.name.trim().length > 0 && p.age > 0,
+    (p) => p.name.trim().length > 0 && (!askAge || p.age > 0),
   )
   const canStart = humanPlayers.length > 0 && humansValid
 
@@ -285,39 +287,41 @@ export function SetupScreen({
                   className="field-control px-3 py-2 text-sm"
                 />
               </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-[10px] text-ink-faint">Age</span>
-                <div className="field-age-group">
-                  <button
-                    type="button"
-                    className="field-stepper"
-                    aria-label="Decrease age"
-                    disabled={player.age <= 1}
-                    onClick={() => adjustAge(index, -1)}
-                  >
-                    −
-                  </button>
-                  <input
-                    type="number"
-                    min={1}
-                    max={120}
-                    value={player.age || ''}
-                    onChange={(e) =>
-                      updateHuman(index, { age: Number(e.target.value) })
-                    }
-                    className="field-control field-control--number py-2 text-sm"
-                  />
-                  <button
-                    type="button"
-                    className="field-stepper"
-                    aria-label="Increase age"
-                    disabled={player.age >= 120}
-                    onClick={() => adjustAge(index, 1)}
-                  >
-                    +
-                  </button>
-                </div>
-              </label>
+              {askAge && (
+                <label className="flex flex-col gap-1">
+                  <span className="text-[10px] text-ink-faint">Age</span>
+                  <div className="field-age-group">
+                    <button
+                      type="button"
+                      className="field-stepper"
+                      aria-label="Decrease age"
+                      disabled={player.age <= 1}
+                      onClick={() => adjustAge(index, -1)}
+                    >
+                      −
+                    </button>
+                    <input
+                      type="number"
+                      min={1}
+                      max={120}
+                      value={player.age || ''}
+                      onChange={(e) =>
+                        updateHuman(index, { age: Number(e.target.value) })
+                      }
+                      className="field-control field-control--number py-2 text-sm"
+                    />
+                    <button
+                      type="button"
+                      className="field-stepper"
+                      aria-label="Increase age"
+                      disabled={player.age >= 120}
+                      onClick={() => adjustAge(index, 1)}
+                    >
+                      +
+                    </button>
+                  </div>
+                </label>
+              )}
             </div>
           </div>
         ))}

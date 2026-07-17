@@ -1,7 +1,9 @@
 import type { Book } from '../game/books'
+import type { CardMotionKind } from '../game/cardMotion'
 import { bookWildCount, cardsForBookFan, isCleanBook, sortBooks } from '../game/books'
 import { WILD_TEXT_CLASS, WILD_RING_CLASS } from './Card'
 import { CardFan } from './CardFan'
+import { cardFanLayout } from './cardFanLayout'
 import type { CompassSide } from '../game/tableLayout'
 import { TEAM_COLORS } from '../game/teams'
 
@@ -11,6 +13,8 @@ interface TeamBooksProps {
   highlightTeamId?: number
   compact?: boolean
   label?: string
+  getCardMotion?: (cardId: string) => CardMotionKind | undefined
+  isCardHidden?: (cardId: string) => boolean
 }
 
 function WildCountBadge({ count }: { count: number }) {
@@ -50,10 +54,22 @@ function BookCountBadge({ count, completed }: { count: number; completed: boolea
   )
 }
 
-function BookDisplay({ book }: { book: Book }) {
+function BookDisplay({
+  book,
+  getCardMotion,
+  isCardHidden,
+}: {
+  book: Book
+  getCardMotion?: (cardId: string) => CardMotionKind | undefined
+  isCardHidden?: (cardId: string) => boolean
+}) {
   const completed = book.cards.length >= 7
   const clean = isCleanBook(book)
   const wilds = bookWildCount(book)
+  const fanCards = cardsForBookFan(book.cards)
+  const layout = cardFanLayout(fanCards.length, { small: true, stacked: completed })
+  const landingIndex = Math.max(0, fanCards.length - 1)
+  const landing = layout.slotCenter(landingIndex)
 
   return (
     <div
@@ -70,12 +86,21 @@ function BookDisplay({ book }: { book: Book }) {
           <WildCountBadge count={wilds} />
         </div>
       )}
-      <div className="transition-transform duration-200 ease-settle hover:-translate-y-0.5">
+      <div className="relative transition-transform duration-200 ease-settle hover:-translate-y-0.5">
+        <span
+          data-flight-anchor={`book-${book.id}`}
+          data-flight-rotation={layout.rotation(landingIndex)}
+          className="pointer-events-none absolute z-0 h-0 w-0"
+          style={{ left: landing.x, top: landing.y }}
+          aria-hidden
+        />
         <CardFan
-          cards={cardsForBookFan(book.cards)}
+          cards={fanCards}
           small
           stacked={completed}
           animate={completed}
+          getCardMotion={getCardMotion}
+          isCardHidden={isCardHidden}
         />
       </div>
       <BookCountBadge count={book.cards.length} completed={completed} />
@@ -92,6 +117,8 @@ export function TeamBooks({
   highlightTeamId,
   compact = false,
   label,
+  getCardMotion,
+  isCardHidden,
 }: TeamBooksProps) {
   const teamBooks = sortBooks(books.filter((b) => b.teamId === teamId))
   const color = TEAM_COLORS[teamId]
@@ -110,7 +137,12 @@ export function TeamBooks({
     return (
       <>
         {teamBooks.map((book) => (
-          <BookDisplay key={book.id} book={book} />
+          <BookDisplay
+            key={book.id}
+            book={book}
+            getCardMotion={getCardMotion}
+            isCardHidden={isCardHidden}
+          />
         ))}
       </>
     )
@@ -126,7 +158,12 @@ export function TeamBooks({
       </p>
       <div className="flex flex-wrap gap-3">
         {teamBooks.map((book) => (
-          <BookDisplay key={book.id} book={book} />
+          <BookDisplay
+            key={book.id}
+            book={book}
+            getCardMotion={getCardMotion}
+            isCardHidden={isCardHidden}
+          />
         ))}
       </div>
       {highlighted && <span className="sr-only">Your team</span>}
@@ -138,13 +175,19 @@ export function TeamBooks({
 export function TableBookZone({
   books,
   teamId,
+  seatIndex,
   side,
   myTeamId,
+  getCardMotion,
+  isCardHidden,
 }: {
   books: Book[]
   teamId: number
+  seatIndex: number
   side: CompassSide
   myTeamId: number
+  getCardMotion?: (cardId: string) => CardMotionKind | undefined
+  isCardHidden?: (cardId: string) => boolean
 }) {
   const playerBooks = books.filter((b) => b.teamId === teamId)
   if (playerBooks.length === 0) return null
@@ -152,13 +195,18 @@ export function TableBookZone({
   const zoneClass = tableBookZoneClass(side)
 
   return (
-    <div className={`pointer-events-none absolute z-[15] ${zoneClass}`}>
+    <div
+      className={`pointer-events-none absolute z-[15] ${zoneClass}`}
+      data-flight-anchor={`books-${seatIndex}`}
+    >
       <div className={`flex ${tableBookFlexClass(side)}`}>
         <TeamBooks
           books={playerBooks}
           teamId={teamId}
           highlightTeamId={myTeamId}
           compact
+          getCardMotion={getCardMotion}
+          isCardHidden={isCardHidden}
         />
       </div>
     </div>

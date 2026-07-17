@@ -78,6 +78,20 @@ export default {
           '0%': { opacity: '0', transform: 'translateY(-10px) rotate(-3deg)' },
           '100%': { opacity: '1', transform: 'translateY(0) rotate(0)' },
         },
+        'card-draw': {
+          '0%': { opacity: '0.55', transform: 'translateY(-16px) scale(1.03) rotate(-5deg)' },
+          '100%': { opacity: '1', transform: 'translateY(0) scale(1) rotate(0)' },
+        },
+        'card-place': {
+          '0%': { opacity: '0.7', transform: 'translateY(-12px) scale(1.04) rotate(-3deg)' },
+          '55%': { opacity: '1', transform: 'translateY(2px) scale(0.985) rotate(0.5deg)' },
+          '100%': { opacity: '1', transform: 'translateY(0) scale(1) rotate(0)' },
+        },
+        'card-discard': {
+          '0%': { opacity: '0.75', transform: 'translateY(-20px) scale(1.05) rotate(-7deg)' },
+          '45%': { opacity: '1', transform: 'translateY(3px) scale(0.98) rotate(1deg)' },
+          '100%': { opacity: '1', transform: 'translateY(0) scale(1) rotate(0)' },
+        },
       },
       animation: {
         'soft-pulse': 'soft-pulse 2.4s ease-in-out infinite',
@@ -85,6 +99,9 @@ export default {
         'book-settle': 'book-settle 0.4s var(--ease-settle)',
         'fade-up': 'fade-up 0.28s var(--ease-settle)',
         'draw-in': 'draw-in 0.32s var(--ease-settle)',
+        'card-draw': 'card-draw 0.32s var(--ease-settle) both',
+        'card-place': 'card-place 0.38s var(--ease-settle) both',
+        'card-discard': 'card-discard 0.35s var(--ease-settle) both',
       },
     },
   },

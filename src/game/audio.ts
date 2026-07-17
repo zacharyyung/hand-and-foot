@@ -114,6 +114,170 @@ function noiseBurst(duration: number, gain = 0.05, filterFreq = 1200) {
   src.start(now)
 }
 
+/** Card-on-felt snap — layered paper + table thump like classic online card games. */
+function cardTableSnap(options?: { harder?: boolean }) {
+  const audioCtx = getCtx()
+  if (!audioCtx || muted) return
+
+  const now = audioCtx.currentTime
+  const harder = options?.harder ?? false
+  const vol = volume * (harder ? 1.12 : 1)
+
+  function burst(
+    ac: AudioContext,
+    duration: number,
+    gain: number,
+    filterType: BiquadFilterType,
+    filterFreq: number,
+    q = 0.7,
+    startOffset = 0,
+  ) {
+    const length = Math.floor(ac.sampleRate * duration)
+    const buffer = ac.createBuffer(1, length, ac.sampleRate)
+    const data = buffer.getChannelData(0)
+    for (let i = 0; i < length; i++) {
+      const t = i / length
+      const env = (1 - t) * (1 - t)
+      data[i] = (Math.random() * 2 - 1) * env
+    }
+
+    const src = ac.createBufferSource()
+    src.buffer = buffer
+    const filter = ac.createBiquadFilter()
+    filter.type = filterType
+    filter.frequency.value = filterFreq
+    filter.Q.value = q
+    const g = ac.createGain()
+    const t0 = now + startOffset
+    g.gain.setValueAtTime(gain * vol, t0)
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + duration)
+    src.connect(filter)
+    filter.connect(g)
+    g.connect(ac.destination)
+    src.start(t0)
+  }
+
+  // Paper edge snap
+  burst(audioCtx, 0.02, 0.085, 'bandpass', harder ? 3600 : 3100, 1.15)
+  // Card sliding onto felt
+  burst(
+    audioCtx,
+    0.05,
+    harder ? 0.075 : 0.058,
+    'lowpass',
+    harder ? 1500 : 1200,
+    0.55,
+    0.003,
+  )
+  // Table contact thump
+  const thump = audioCtx.createOscillator()
+  const thumpGain = audioCtx.createGain()
+  thump.type = 'sine'
+  thump.frequency.setValueAtTime(harder ? 92 : 108, now)
+  thump.frequency.exponentialRampToValueAtTime(52, now + 0.045)
+  thumpGain.gain.setValueAtTime(0, now)
+  thumpGain.gain.linearRampToValueAtTime((harder ? 0.085 : 0.068) * vol, now + 0.002)
+  thumpGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.065)
+  thump.connect(thumpGain)
+  thumpGain.connect(audioCtx.destination)
+  thump.start(now)
+  thump.stop(now + 0.075)
+}
+
+/** Completed book — page rustle + soft cover close (distinct from card snap). */
+function bookCloseSound() {
+  const audioCtx = getCtx()
+  if (!audioCtx || muted) return
+
+  const now = audioCtx.currentTime
+  const vol = volume
+
+  function paperSwipe(
+    ac: AudioContext,
+    startOffset: number,
+    duration: number,
+    gain: number,
+    filterFreq: number,
+  ) {
+    const length = Math.floor(ac.sampleRate * duration)
+    const buffer = ac.createBuffer(1, length, ac.sampleRate)
+    const data = buffer.getChannelData(0)
+    for (let i = 0; i < length; i++) {
+      const t = i / length
+      const env = Math.sin(t * Math.PI)
+      data[i] = (Math.random() * 2 - 1) * env * env
+    }
+
+    const src = ac.createBufferSource()
+    src.buffer = buffer
+    const filter = ac.createBiquadFilter()
+    filter.type = 'bandpass'
+    filter.frequency.value = filterFreq
+    filter.Q.value = 0.85
+    const g = ac.createGain()
+    const t0 = now + startOffset
+    g.gain.setValueAtTime(gain * vol, t0)
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + duration)
+    src.connect(filter)
+    filter.connect(g)
+    g.connect(ac.destination)
+    src.start(t0)
+  }
+
+  // Pages sliding together
+  paperSwipe(audioCtx, 0, 0.055, 0.07, 2800)
+  paperSwipe(audioCtx, 0.05, 0.07, 0.055, 2100)
+
+  // Cover settling shut
+  const cover = audioCtx.createOscillator()
+  const coverGain = audioCtx.createGain()
+  cover.type = 'triangle'
+  cover.frequency.setValueAtTime(118, now + 0.09)
+  cover.frequency.exponentialRampToValueAtTime(62, now + 0.17)
+  coverGain.gain.setValueAtTime(0, now + 0.09)
+  coverGain.gain.linearRampToValueAtTime(0.09 * vol, now + 0.095)
+  coverGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.2)
+  cover.connect(coverGain)
+  coverGain.connect(audioCtx.destination)
+  cover.start(now + 0.09)
+  cover.stop(now + 0.22)
+
+  // Felt/table muffled thump
+  const length = Math.floor(audioCtx.sampleRate * 0.09)
+  const buffer = audioCtx.createBuffer(1, length, audioCtx.sampleRate)
+  const data = buffer.getChannelData(0)
+  for (let i = 0; i < length; i++) {
+    const env = 1 - i / length
+    data[i] = (Math.random() * 2 - 1) * env * env
+  }
+  const thumpSrc = audioCtx.createBufferSource()
+  thumpSrc.buffer = buffer
+  const thumpFilter = audioCtx.createBiquadFilter()
+  thumpFilter.type = 'lowpass'
+  thumpFilter.frequency.value = 320
+  const thumpGain = audioCtx.createGain()
+  const t0 = now + 0.1
+  thumpGain.gain.setValueAtTime(0.06 * vol, t0)
+  thumpGain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.09)
+  thumpSrc.connect(thumpFilter)
+  thumpFilter.connect(thumpGain)
+  thumpGain.connect(audioCtx.destination)
+  thumpSrc.start(t0)
+
+  // Warm single “sealed” note — reward without a jingle run
+  const seal = audioCtx.createOscillator()
+  const sealGain = audioCtx.createGain()
+  seal.type = 'sine'
+  seal.frequency.setValueAtTime(392, now + 0.14)
+  sealGain.gain.setValueAtTime(0, now + 0.14)
+  sealGain.gain.linearRampToValueAtTime(0.032 * vol, now + 0.155)
+  sealGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.32)
+  seal.connect(sealGain)
+  sealGain.connect(audioCtx.destination)
+  seal.start(now + 0.14)
+  seal.stop(now + 0.34)
+}
+
 export function playSound(id: SoundId) {
   if (muted) return
   getCtx()
@@ -130,11 +294,10 @@ export function playSound(id: SoundId) {
       tone(280, 0.08, 'triangle', 0.025)
       break
     case 'discard':
-      noiseBurst(0.09, 0.055, 900)
-      tone(220, 0.1, 'triangle', 0.035)
+      cardTableSnap({ harder: true })
       break
     case 'place':
-      noiseBurst(0.06, 0.045, 1100)
+      cardTableSnap()
       break
     case 'sort':
       noiseBurst(0.05, 0.03, 2200)
@@ -149,12 +312,7 @@ export function playSound(id: SoundId) {
       setTimeout(() => tone(554, 0.14, 'sine', 0.045), 70)
       break
     case 'bookComplete':
-      noiseBurst(0.08, 0.05, 800)
-      setTimeout(() => {
-        tone(523, 0.1, 'sine', 0.045)
-        setTimeout(() => tone(659, 0.12, 'sine', 0.04), 60)
-        setTimeout(() => tone(784, 0.16, 'sine', 0.035), 120)
-      }, 50)
+      bookCloseSound()
       break
     case 'goToFoot':
       tone(392, 0.1, 'sine', 0.045)

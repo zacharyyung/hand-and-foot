@@ -900,6 +900,30 @@
     color: var(--ink-soft);
   }
 
+.card-flight-piece {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 200;
+    pointer-events: none;
+    will-change: transform;
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.14),
+      0 3px 8px rgba(0, 0, 0, 0.16);
+  }
+
+  .card-flight-piece .playing-card {
+    transition: none !important;
+  }
+
+  .hand-card-at-rest .playing-card {
+    transition: none;
+  }
+
+  .book-card-at-rest .playing-card {
+    transition: none;
+  }
+
   /* South dock: stable hand meta + action row heights */
   .south-player-dock {
     padding-bottom: max(0.25rem, env(safe-area-inset-bottom, 0px));
@@ -907,6 +931,10 @@
 
   .south-dock-hand-meta {
     min-height: 2.375rem;
+  }
+
+  .south-dock-sort {
+    min-height: 2.25rem;
   }
 
   .game-action-slot {

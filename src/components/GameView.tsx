@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { Card } from '../game/cards'
 import type { GameState } from '../game/deal'
 import { playerFootCount, playerHandCount } from '../game/deal'
 import {
@@ -30,6 +31,11 @@ import {
 } from '../game/books'
 import { meldContributionFromCards, meldThreshold, sumCardPoints } from '../game/scoring'
 import { playSound, unlockAudio } from '../game/audio'
+import { useCardSettleMotion } from '../game/cardMotion'
+import { useCardFlightSystem } from '../game/cardFlight'
+import { handFlightAnchor, stagingBookAnchor, bookFlightAnchor } from '../game/flightAnchors'
+import type { CardFlightRequest } from '../game/cardFlight'
+import { CardFlightLayer } from './CardFlightLayer'
 import { HandCards } from './HandCards'
 import { StagingArea, type StagedBook } from './StagingArea'
 import { RoundTable } from './RoundTable'
@@ -93,29 +99,105 @@ export function GameView({
   const [selectedAddBookId, setSelectedAddBookId] = useState<string | null>(null)
 
   const prevTurn = useRef(game.currentPlayerIndex)
-  const prevViewerBooks = useRef(0)
   const chatRef = useRef(chatMessages)
   chatRef.current = chatMessages
   const handledGoOutReplyKeys = useRef(new Set<string>())
+  const stagingFlightIdsRef = useRef<Set<string>>(new Set())
+  const stagingBookIdByCardRef = useRef<Map<string, string>>(new Map())
+  const meldFlightPendingRef = useRef(false)
+  const handFlightRetainRef = useRef<Map<string, Card>>(new Map())
+  const prevBooksGameRef = useRef<GameState | null>(null)
 
   const viewerSeat = useMemo(() => getViewerSeat(game.players), [game.players])
   const viewer = game.players[viewerSeat]
-  const current = getCurrentPlayer(game)
-  const isMyTurn = game.currentPlayerIndex === viewerSeat
   const isHumanViewer = viewer.profile.isHuman
-  const team = getTeam(game, viewer.profile.teamId)
-  const requiredMeld = meldThreshold(team.score)
-  const needsStagedMeld = !team.meldThresholdMet
-  const handKey = viewer.hand.map((c) => c.id).sort().join(',')
   const stagedCardIds = useMemo(
     () => new Set(stagedBooks.flatMap((b) => b.cardIds)),
     [stagedBooks],
   )
+  const { getMotion: getCardMotion, markMotion } = useCardSettleMotion()
+  const { flights, settleFlight, isCardInFlight, queueLocalFlights } =
+    useCardFlightSystem(game, viewerSeat, {
+      isHumanViewer,
+      stagedCardIds,
+      stagingFlightIdsRef,
+      stagingBookIdByCardRef,
+    })
+  const flightsRef = useRef(flights)
+  flightsRef.current = flights
 
-  const handForDisplay = useMemo(
-    () => viewer.hand.filter((c) => !stagedCardIds.has(c.id)),
-    [viewer.hand, stagedCardIds],
-  )
+  function retainHandCardsForFlight(cards: Card[]) {
+    for (const card of cards) handFlightRetainRef.current.set(card.id, card)
+  }
+
+  function releaseHandCardsForFlight(cardIds: string[]) {
+    for (const id of cardIds) handFlightRetainRef.current.delete(id)
+  }
+
+  function clearStagingFlightTracking(cardIds: string[]) {
+    for (const id of cardIds) {
+      stagingFlightIdsRef.current.delete(id)
+      stagingBookIdByCardRef.current.delete(id)
+    }
+    if (meldFlightPendingRef.current && stagingFlightIdsRef.current.size === 0) {
+      meldFlightPendingRef.current = false
+      setStagedBooks([])
+    }
+  }
+
+  function handleSettleFlight(flightId: string) {
+    const flight = flightsRef.current.find((f) => f.flightId === flightId)
+    settleFlight(flightId)
+    if (!flight) return
+    releaseHandCardsForFlight(flight.cards.map((c) => c.id))
+    clearStagingFlightTracking(flight.cards.map((c) => c.id))
+  }
+
+  function queueHandToTargetFlight(
+    cards: Card[],
+    to: CardFlightRequest['to'],
+  ) {
+    if (cards.length === 0) return
+    retainHandCardsForFlight(cards)
+    const sourceCard = cards[Math.floor((cards.length - 1) / 2)]
+    queueLocalFlights([
+      {
+        cards,
+        from: handFlightAnchor(sourceCard.id),
+        to,
+        kind: 'place',
+      },
+    ])
+  }
+
+  function queueDiscardFlight(card: Card) {
+    retainHandCardsForFlight([card])
+    queueLocalFlights([
+      {
+        cards: [card],
+        from: handFlightAnchor(card.id),
+        to: 'discard',
+        kind: 'discard',
+      },
+    ])
+  }
+  const current = getCurrentPlayer(game)
+  const isMyTurn = game.currentPlayerIndex === viewerSeat
+  const team = getTeam(game, viewer.profile.teamId)
+  const requiredMeld = meldThreshold(team.score)
+  const needsStagedMeld = !team.meldThresholdMet
+  const handKey = viewer.hand.map((c) => c.id).sort().join(',')
+
+  const handForDisplay = useMemo(() => {
+    const handIds = new Set(viewer.hand.map((c) => c.id))
+    const visibleHand = viewer.hand.filter(
+      (c) => !stagedCardIds.has(c.id) || isCardInFlight(c.id),
+    )
+    const retained = [...handFlightRetainRef.current.values()].filter(
+      (c) => !handIds.has(c.id) && isCardInFlight(c.id),
+    )
+    return [...visibleHand, ...retained]
+  }, [viewer.hand, stagedCardIds, isCardInFlight])
 
   const stagedPoints = useMemo(
     () => stagedBooks.reduce((sum, b) => sum + meldContributionFromCards(b.cards), 0),
@@ -257,14 +339,15 @@ export function GameView({
       : selectedIds.length < 3
   const teamColor = TEAM_COLORS[viewer.profile.teamId]
 
-  const completedBooks = team.books.filter((b) => b.cards.length >= 7).length
-
   useEffect(() => {
     setHandOrder((prev) => mergeHandOrder(prev, viewer.hand))
   }, [handKey, viewer.hand])
 
   useEffect(() => {
     setStagedBooks([])
+    stagingFlightIdsRef.current.clear()
+    stagingBookIdByCardRef.current.clear()
+    meldFlightPendingRef.current = false
   }, [game.currentPlayerIndex])
 
   useEffect(() => {
@@ -295,13 +378,31 @@ export function GameView({
     }
   }, [game.currentPlayerIndex, viewerSeat, viewer.profile.isHuman])
 
-  /* Book completion celebration */
+  /* Book closed — play after the last card flight lands. */
   useEffect(() => {
-    if (completedBooks > prevViewerBooks.current) {
-      playSound('bookComplete')
+    const prev = prevBooksGameRef.current
+    prevBooksGameRef.current = game
+    if (!prev || game.phase !== 'playing') return
+
+    let completions = 0
+    for (const team of game.teams) {
+      for (const book of team.books) {
+        if (book.cards.length < 7) continue
+        const prevBook = prev.teams.flatMap((t) => t.books).find((b) => b.id === book.id)
+        if ((prevBook?.cards.length ?? 0) < 7) completions++
+      }
     }
-    prevViewerBooks.current = completedBooks
-  }, [completedBooks])
+
+    if (completions === 0) return
+
+    const timers: ReturnType<typeof setTimeout>[] = []
+    for (let i = 0; i < completions; i++) {
+      timers.push(
+        window.setTimeout(() => playSound('bookComplete'), 320 + i * 150),
+      )
+    }
+    return () => timers.forEach((id) => window.clearTimeout(id))
+  }, [game])
 
   /* Any AI partner replies when a teammate asks to go out (all teams, not just viewer). */
   useEffect(() => {
@@ -391,19 +492,21 @@ export function GameView({
     playSound('draw')
     const result = drawCards(game)
     onGameChange(result, { recordHistory: true })
-    if (autoSort) {
-      const newHand = result.players[viewerSeat].hand
-      applyHandSort(newHand, false)
-    }
   }
 
   function handleStartBook() {
     unlockAudio()
+    const cards = viewer.hand.filter((c) => selectedIds.includes(c.id))
+    const prevBookIds = new Set(team.books.map((b) => b.id))
     const result = startBook(game, selectedIds)
     if (result.error) {
       setError(result.error)
       playSound('invalid')
       return
+    }
+    const newBook = getTeam(result.state, team.id).books.find((b) => !prevBookIds.has(b.id))
+    if (newBook) {
+      queueHandToTargetFlight(cards, bookFlightAnchor(newBook.id))
     }
     setSelectedIds([])
     setError(null)
@@ -420,12 +523,14 @@ export function GameView({
       playSound('invalid')
       return
     }
+    const cards = viewer.hand.filter((c) => selectedIds.includes(c.id))
     const result = addToBook(game, matchedAddBook.id, selectedIds)
     if (result.error) {
       setError(result.error)
       playSound('invalid')
       return
     }
+    queueHandToTargetFlight(cards, bookFlightAnchor(matchedAddBook.id))
     setSelectedIds([])
     setSelectedAddBookId(null)
     setError(null)
@@ -434,11 +539,15 @@ export function GameView({
   }
 
   function performDiscard(cardId: string) {
+    const card = viewer.hand.find((c) => c.id === cardId)
     const result = discardCard(game, cardId, chatMessages)
     if (result.error) {
       setError(result.error)
       playSound('invalid')
       return
+    }
+    if (card) {
+      queueDiscardFlight(card)
     }
     setSelectedIds([])
     setError(null)
@@ -504,15 +613,17 @@ export function GameView({
       return
     }
     const cards = viewer.hand.filter((c) => selectedIds.includes(c.id))
+    const bookId = `staged-${Date.now()}-${Math.random()}`
     setStagedBooks((prev) => [
       ...prev,
       {
-        id: `staged-${Date.now()}-${Math.random()}`,
+        id: bookId,
         cardIds: [...selectedIds],
         rank: check.rank,
         cards,
       },
     ])
+    queueHandToTargetFlight(cards, stagingBookAnchor(bookId))
     setSelectedIds([])
     setError(null)
     playSound('place')
@@ -520,19 +631,52 @@ export function GameView({
 
   function handleMeld() {
     unlockAudio()
+    const snapshot = [...stagedBooks]
+    const prevBookIds = new Set(team.books.map((b) => b.id))
     const result = commitStagedMelds(
       game,
-      stagedBooks.map((b) => b.cardIds),
+      snapshot.map((b) => b.cardIds),
     )
     if (result.error) {
       setError(result.error)
       playSound('invalid')
       return
     }
-    setStagedBooks([])
+
+    const newBooks = getTeam(result.state, team.id).books.filter((b) => !prevBookIds.has(b.id))
+    const meldFlights: CardFlightRequest[] = []
+    for (const staged of snapshot) {
+      const stagedIds = new Set(staged.cardIds)
+      const matched = newBooks.find(
+        (book) =>
+          book.cards.length === staged.cardIds.length &&
+          book.cards.every((card) => stagedIds.has(card.id)),
+      )
+      if (!matched) continue
+      meldFlights.push({
+        cards: staged.cards,
+        from: stagingBookAnchor(staged.id),
+        to: bookFlightAnchor(matched.id),
+        kind: 'place',
+      })
+    }
+
+    if (meldFlights.length > 0) {
+      meldFlightPendingRef.current = true
+      stagingFlightIdsRef.current = new Set(snapshot.flatMap((book) => book.cardIds))
+      for (const staged of snapshot) {
+        for (const cardId of staged.cardIds) {
+          stagingBookIdByCardRef.current.set(cardId, staged.id)
+        }
+      }
+      queueLocalFlights(meldFlights)
+    } else {
+      setStagedBooks([])
+    }
+
     setSelectedIds([])
     setError(null)
-    playSound('threshold')
+    playSound('place')
     onGameChange(result.state, { recordHistory: true })
   }
 
@@ -547,13 +691,38 @@ export function GameView({
     }
   }
 
+  function handleClearStaged() {
+    stagingBookIdByCardRef.current.clear()
+    setStagedBooks([])
+  }
+
   function handleRemoveStaged(id: string) {
-    setStagedBooks((prev) => prev.filter((b) => b.id !== id))
+    setStagedBooks((prev) => {
+      const removed = prev.find((b) => b.id === id)
+      if (removed) {
+        for (const cardId of removed.cardIds) {
+          stagingBookIdByCardRef.current.delete(cardId)
+        }
+      }
+      return prev.filter((b) => b.id !== id)
+    })
     setError(null)
     playSound('deselect')
   }
 
-  const displayHandOrder = handOrder.filter((id) => !stagedCardIds.has(id))
+  const displayHandOrder = useMemo(() => {
+    const unstagedIds = handOrder.filter((id) => !stagedCardIds.has(id))
+    const unstagedCards = unstagedIds
+      .map((id) => handForDisplay.find((c) => c.id === id))
+      .filter((c): c is (typeof handForDisplay)[number] => c !== undefined)
+    const orphans = handForDisplay.filter((c) => !unstagedIds.includes(c.id))
+    const allDisplay = [...unstagedCards, ...orphans]
+
+    if (autoSort && isHumanViewer && allDisplay.length >= 2) {
+      return sortCardIdsByHand(allDisplay)
+    }
+    return allDisplay.map((c) => c.id)
+  }, [handOrder, handForDisplay, stagedCardIds, autoSort, isHumanViewer])
 
   function handleHandReorder(newDisplayOrder: string[]) {
     const staged = handOrder.filter((id) => stagedCardIds.has(id))
@@ -573,7 +742,9 @@ export function GameView({
 
   const canDraw = isMyTurn && game.turnPhase === 'draw'
   const showStagingRibbon =
-    isMyTurn && needsStagedMeld && game.turnPhase === 'play'
+    isMyTurn &&
+    game.turnPhase === 'play' &&
+    (needsStagedMeld || stagedBooks.length > 0)
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden">
@@ -613,7 +784,14 @@ export function GameView({
 
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="relative min-h-0 flex-1">
-          <RoundTable game={game} onDraw={handleDraw} canDraw={canDraw} />
+          <RoundTable
+            game={game}
+            onDraw={handleDraw}
+            canDraw={canDraw}
+            getCardMotion={getCardMotion}
+            isCardInFlight={isCardInFlight}
+          />
+          <CardFlightLayer flights={flights} onSettle={handleSettleFlight} />
         </div>
 
         {isHumanViewer && (
@@ -672,25 +850,21 @@ export function GameView({
                       stagedBooks={stagedBooks}
                       requiredPoints={requiredMeld}
                       onRemove={handleRemoveStaged}
-                      onClear={() => setStagedBooks([])}
+                      onClear={handleClearStaged}
                       compact
                       ribbon
                       embedded
+                      getCardMotion={getCardMotion}
+                      isCardHidden={isCardInFlight}
                     />
                   )}
                 </div>
-
-                <button
-                  type="button"
-                  onClick={handleAutoSort}
-                  disabled={viewer.hand.length < 2}
-                  className="shrink-0 rounded-md border border-white/20 bg-white/10 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-ink-soft shadow-sm transition hover:border-white/30 hover:bg-white/18 hover:text-ink active:translate-y-px disabled:opacity-30"
-                >
-                  Sort
-                </button>
               </div>
 
-              <div className="theme-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-1 sm:px-4 sm:py-1.5">
+              <div
+                className="theme-scroll relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-1 sm:px-4 sm:py-1.5"
+                data-flight-anchor="hand"
+              >
                 <HandCards
                   hand={handForDisplay}
                   handOrder={displayHandOrder}
@@ -700,8 +874,24 @@ export function GameView({
                   canSelect={isMyTurn && game.turnPhase === 'play'}
                   canDrag
                   spread
+                  getCardMotion={getCardMotion}
+                  onPlaceMotion={(cardId) => markMotion([cardId], 'place')}
+                  isCardHidden={isCardInFlight}
                 />
               </div>
+
+              {!autoSort && (
+                <div className="south-dock-sort flex shrink-0 justify-center px-3 py-1 sm:px-4">
+                  <button
+                    type="button"
+                    onClick={handleAutoSort}
+                    disabled={viewer.hand.length < 2}
+                    className="rounded-md border border-white/20 bg-white/10 px-3 py-1.5 text-[11px] font-semibold tracking-wide text-ink-soft shadow-sm transition hover:border-white/30 hover:bg-white/18 hover:text-ink active:translate-y-px disabled:opacity-30"
+                  >
+                    Sort
+                  </button>
+                </div>
+              )}
 
               <GameMessageBar
                 error={error}
