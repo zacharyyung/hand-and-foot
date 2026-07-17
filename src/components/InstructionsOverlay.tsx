@@ -86,10 +86,10 @@ export function InstructionsOverlay({ open, onClose }: InstructionsOverlayProps)
           <section>
             <h3 className="mb-1 font-semibold text-ink">Table chat</h3>
             <p>
-              Use <strong>Table chat</strong> on your turn with <strong>2+ cards</strong> to
-              signal <strong>I can go out!</strong> Only your partner can reply with Yes or
-              No. If they say no, discard and keep at least one card — go out only after
-              they approve.
+              Use <strong>Table chat</strong> on your <strong>last foot card</strong> when books
+              are set to signal <strong>I can go out!</strong> Only your partner can reply with
+              Yes or No. If they say no, keep your last foot card and end your turn — go out only
+              after they approve.
             </p>
           </section>
 

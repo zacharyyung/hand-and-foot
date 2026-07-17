@@ -154,7 +154,7 @@ export function analyzePartnerGoOutRequest(
   }
 }
 
-/** AI asks to go out with 2+ foot cards so a "no" still leaves a card in hand. */
+/** AI asks to go out only on the last foot card after draw, when books are set. */
 export function maybeAiChatSignal(
   state: GameState,
   seatIndex: number,
@@ -163,6 +163,7 @@ export function maybeAiChatSignal(
   const player = state.players[seatIndex]
   if (player.profile.isHuman) return null
   if (state.currentPlayerIndex !== seatIndex) return null
+  if (state.turnPhase !== 'play') return null
 
   const team = getTeam(state, player.profile.teamId)
   if (!teamCanGoOut(state, team.id)) return null
@@ -181,7 +182,7 @@ export function maybeAiChatSignal(
 
   const pub = buildAiPublicState(state, seatIndex)
   const readyToAsk =
-    pub.isPlayingFoot && pub.myFootCount === 0 && pub.myHand.length >= 2
+    pub.isPlayingFoot && pub.myFootCount === 0 && pub.myHand.length === 1
 
   if (readyToAsk) {
     return createReadyGoOutSignal(
@@ -192,6 +193,25 @@ export function maybeAiChatSignal(
   }
 
   return null
+}
+
+/** Seats where an AI partner still needs to reply to a teammate's go-out ask. */
+export function aiPartnerGoOutReplySeats(
+  state: GameState,
+  messages: ChatMessage[],
+): number[] {
+  const seats: number[] = []
+  const playerCount = state.playerCount as PlayerCount
+
+  for (let seat = 0; seat < state.playerCount; seat++) {
+    if (state.players[seat].profile.isHuman) continue
+    const partnerIdx = partnerSeat(seat, playerCount)
+    if (pendingPartnerGoOutRequest(messages, seat, partnerIdx)) {
+      seats.push(seat)
+    }
+  }
+
+  return seats
 }
 
 /** AI partner replies with a situational yes/no when teammate asks to go out. */

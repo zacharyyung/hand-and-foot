@@ -541,6 +541,32 @@ export function canGoToFoot(player: PlayerState): boolean {
   )
 }
 
+/** End turn without discarding when partner denied go-out on the last foot card. */
+export function passTurnKeepingLastFootCard(
+  state: GameState,
+): { state: GameState; error?: string } {
+  if (state.turnPhase !== 'play' && state.turnPhase !== 'discard') {
+    return { state, error: 'Cannot end turn yet.' }
+  }
+
+  const player = getCurrentPlayer(state)
+  if (!isLastFootCard(player)) {
+    return {
+      state,
+      error: 'Can only hold your last foot card when it is the only card in hand.',
+    }
+  }
+
+  const next: GameState = {
+    ...state,
+    turnPhase: 'draw',
+    meldPointsThisTurn: 0,
+    booksWithWildAddedThisTurn: [],
+  }
+
+  return { state: advanceTurn(next, state.currentPlayerIndex) }
+}
+
 /** Melding/adding every selected card empties the hand with foot still waiting. */
 export function willSkipAndRun(player: PlayerState, cardIds: string[]): boolean {
   return (

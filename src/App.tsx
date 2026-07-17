@@ -261,8 +261,9 @@ function App() {
         onGameChange={handleGameChange}
         chatMessages={chatMessages}
         autoSort={autoSort}
-        onChatSend={(message) => {
-          if (!game || !isAllowedChatMessage(game, message, chatMessages)) return
+        onChatSend={(message, validationState) => {
+          const g = validationState ?? game
+          if (!g || !isAllowedChatMessage(g, message, chatMessages)) return
           playSound('chat')
           setChatMessages((prev) => [...prev, message])
         }}

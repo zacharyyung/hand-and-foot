@@ -1,6 +1,6 @@
 import type { PlayerCount } from './teams'
 import { partnerSeat, teamIdForSeat } from './teams'
-import type { GameState } from './deal'
+import type { GameState, PlayerState } from './deal'
 import { teamHasCleanAndDirtyBooks } from './books'
 
 export type ChatMessageType =
@@ -27,11 +27,22 @@ export function isGoOutRequest(type: ChatMessageType): boolean {
   return type === 'ready_go_out'
 }
 
-/** Only the active player may send "I can go out!" — need 2+ cards so a "no" still leaves a card in hand. */
+function isOnLastFootCard(player: PlayerState): boolean {
+  return (
+    player.isPlayingFoot &&
+    player.hand.length === 1 &&
+    player.foot.length === 0 &&
+    !player.footOnHold
+  )
+}
+
+/** Active player on their last foot card with books ready — ready to discard and go out. */
 export function canInitiateGoOutSignal(state: GameState, seatIndex: number): boolean {
   if (state.phase !== 'playing' || state.currentPlayerIndex !== seatIndex) return false
+  if (state.turnPhase !== 'play') return false
   const player = state.players[seatIndex]
-  return player.hand.length >= 2
+  if (!isOnLastFootCard(player)) return false
+  return teamReadyToGoOut(state, player.profile.teamId)
 }
 
 function teamReadyToGoOut(state: GameState, teamId: number): boolean {
@@ -53,7 +64,7 @@ function partnerDeniedGoOut(
   return false
 }
 
-/** Partner said no to the latest go-out ask and it still needs a normal discard. */
+/** Partner said no to the latest go-out ask — requester keeps their last foot card. */
 export function unresolvedPartnerDenial(
   messages: ChatMessage[],
   requesterSeat: number,
@@ -291,9 +302,7 @@ export function isAwaitingPartnerGoOutClearance(
   messages: ChatMessage[],
 ): boolean {
   const player = state.players[seatIndex]
-  if (!player.isPlayingFoot || player.foot.length > 0 || player.footOnHold) {
-    return false
-  }
+  if (!isOnLastFootCard(player)) return false
 
   if (!teamReadyToGoOut(state, player.profile.teamId)) return false
 
@@ -362,14 +371,14 @@ export function getPartnerGoOutBlockReason(
   const myReady = latestReadyGoOutFrom(messages, seatIndex)
 
   if (!myReady) {
-    return 'Signal "I can go out!" on your turn with 2+ cards, then wait for your partner.'
+    return 'Signal "I can go out!" on your last foot card, then wait for your partner.'
   }
 
   if (awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx)) {
     return 'Waiting for your partner to reply in table chat.'
   }
 
-  return 'Your partner said not to go out — discard and keep at least one card in hand.'
+  return 'Your partner said not to go out — keep your last foot card and end your turn.'
 }
 
 /** Any team has signaled go-out intent in table chat (visible to everyone). */

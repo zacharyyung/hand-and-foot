@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import type { GameState } from '../game/deal'
+import { isLastFootCard } from '../game/actions'
 import type { ChatMessage } from '../game/chat'
 import {
   createApproveGoOutSignal,
   createDenyGoOutSignal,
   createReadyGoOutSignal,
+  canInitiateGoOutSignal,
   pendingPartnerGoOutRequest,
   READY_GO_OUT_SIGNAL_TEXT,
   awaitingPartnerGoOutResponse,
@@ -16,7 +18,7 @@ interface GameChatProps {
   game: GameState
   viewerSeat: number
   messages: ChatMessage[]
-  onSend: (message: ChatMessage) => void
+  onSend: (message: ChatMessage, validationState?: GameState) => void
 }
 
 export function GameChat({
@@ -33,7 +35,7 @@ export function GameChat({
   const partner = game.players[partnerIdx]
   const viewerIsHuman = viewer.profile.isHuman
   const isMyTurn = game.currentPlayerIndex === viewerSeat
-  const canSignalGoOut = isMyTurn && viewer.hand.length >= 2
+  const canSignalGoOut = canInitiateGoOutSignal(game, viewerSeat)
 
   const partnerRequest = pendingPartnerGoOutRequest(messages, viewerSeat, partnerIdx)
   const waitingForPartnerReply =
@@ -62,6 +64,7 @@ export function GameChat({
         viewer.profile.name,
         viewer.profile.avatar,
       ),
+      game,
     )
   }
 
@@ -80,6 +83,7 @@ export function GameChat({
             viewer.profile.name,
             viewer.profile.avatar,
           ),
+      game,
     )
   }
 
@@ -132,8 +136,8 @@ export function GameChat({
               <div>
                 <p className="font-display text-sm font-semibold text-ink">Table chat</p>
                 <p className="mt-0.5 text-[10px] leading-relaxed text-ink-muted">
-                  On your turn with 2+ cards, ask to go out. Only your partner can
-                  reply yes or no — if they say no, keep at least one card in hand.
+                  On your last foot card with books set, ask to go out. Only your partner can
+                  reply yes or no — if they say no, keep your last foot card and end your turn.
                 </p>
               </div>
               <button
@@ -197,8 +201,8 @@ export function GameChat({
             <div ref={listRef} className="table-chat-messages">
               {messages.length === 0 ? (
                 <p className="py-4 text-center text-[11px] leading-relaxed text-ink-faint">
-                  On your turn with 2+ cards, tap &ldquo;I can go out!&rdquo; when your
-                  books are set. Your partner replies Yes or No.
+                  On your last foot card with books set, tap &ldquo;I can go out!&rdquo; Your
+                  partner replies Yes or No before you discard.
                 </p>
               ) : (
                 messages.map((msg) => {
@@ -266,10 +270,16 @@ export function GameChat({
                   >
                     {READY_GO_OUT_SIGNAL_TEXT}
                   </button>
+                ) : isMyTurn && isLastFootCard(viewer) ? (
+                  <p className="rounded-lg bg-black/25 px-2.5 py-2 text-center text-[10px] leading-relaxed text-ink-muted">
+                    Finish your books before asking to go out on your last foot card.
+                    {partnerRequest
+                      ? ' You can still reply to your partner above.'
+                      : ''}
+                  </p>
                 ) : isMyTurn ? (
                   <p className="rounded-lg bg-black/25 px-2.5 py-2 text-center text-[10px] leading-relaxed text-ink-muted">
-                    Need at least 2 cards in hand to ask — so a &ldquo;no&rdquo; still
-                    leaves you a card to play.
+                    Ask to go out only on your last foot card after books are set.
                     {partnerRequest
                       ? ' You can still reply to your partner above.'
                       : ''}

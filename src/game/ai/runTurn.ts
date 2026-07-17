@@ -17,7 +17,7 @@ import {
 } from '../chat'
 import { findAddToBookActions } from './decisions'
 import { buildAiPublicState } from './publicState'
-import { maybeAiChatSignal, maybeAiPartnerGoOutResponse } from './chatSignals'
+import { maybeAiChatSignal } from './chatSignals'
 import {
   meldPressure,
   pickBestAddToBook,
@@ -50,16 +50,6 @@ export function runAiTurn(
   }
 
   if (current.phase !== 'playing') return { state: current, chatMessage }
-
-  const partnerResponse = maybeAiPartnerGoOutResponse(
-    current,
-    current.currentPlayerIndex,
-    messages,
-  )
-  if (partnerResponse) {
-    chatMessage = partnerResponse
-    messages = [...messages, partnerResponse]
-  }
 
   const maxPlays = difficulty === 'expert' ? 14 : 10
 

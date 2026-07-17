@@ -11,13 +11,12 @@ import {
   getCurrentPlayer,
   getTeam,
   isLastFootCard,
+  passTurnKeepingLastFootCard,
   startBook,
   validateStageBook,
   willSkipAndRun,
 } from '../game/actions'
 import { runAiTurn } from '../game/ai/runTurn'
-import { buildAiPublicState } from '../game/ai/publicState'
-import { pickDiscardCard } from '../game/ai/strategy'
 import { getViewerSeat } from '../game/tableLayout'
 import { mergeHandOrder, sortCardIdsByHand } from '../game/handOrder'
 import {
@@ -40,17 +39,18 @@ import { GameMessageBar } from './GameMessageBar'
 import { TEAM_COLORS, partnerSeat, type PlayerCount } from '../game/teams'
 import type { ChatMessage } from '../game/chat'
 import { getPartnerGoOutBlockReason, isAwaitingPartnerGoOutClearance, pendingPartnerGoOutRequest, unresolvedPartnerDenial } from '../game/chat'
-import { maybeAiPartnerGoOutResponse } from '../game/ai/chatSignals'
+import { aiPartnerGoOutReplySeats, maybeAiPartnerGoOutResponse } from '../game/ai/chatSignals'
 
 interface GameViewProps {
   game: GameState
   onGameChange: (game: GameState, options?: { recordHistory?: boolean }) => void
   chatMessages: ChatMessage[]
-  onChatSend: (message: ChatMessage) => void
+  onChatSend: (message: ChatMessage, validationState?: GameState) => void
   autoSort?: boolean
 }
 
 const AI_TURN_DELAY_MS = 900
+const AI_PARTNER_REPLY_DELAY_MS = 900
 
 function shortStatus(opts: {
   aiThinking: boolean
@@ -96,7 +96,7 @@ export function GameView({
   const prevViewerBooks = useRef(0)
   const chatRef = useRef(chatMessages)
   chatRef.current = chatMessages
-  const lastAiGoOutReplyRef = useRef(0)
+  const handledGoOutReplyKeys = useRef(new Set<string>())
   const handledDenyIds = useRef(new Set<string>())
 
   const viewerSeat = useMemo(() => getViewerSeat(game.players), [game.players])
@@ -274,70 +274,70 @@ export function GameView({
     prevViewerBooks.current = completedBooks
   }, [completedBooks])
 
-  /* AI partner analyzes and replies when human signals "I can go out!" */
+  /* Any AI partner replies when a teammate asks to go out (all teams, not just viewer). */
   useEffect(() => {
     if (game.phase !== 'playing') return
 
-    const partnerIdx = partnerSeat(viewerSeat, game.playerCount as PlayerCount)
-    const partner = game.players[partnerIdx]
-    if (!partner || partner.profile.isHuman) return
+    const playerCount = game.playerCount as PlayerCount
+    const timers: ReturnType<typeof setTimeout>[] = []
 
-    const pending = pendingPartnerGoOutRequest(chatMessages, partnerIdx, viewerSeat)
-    if (!pending || pending.timestamp <= lastAiGoOutReplyRef.current) return
+    for (const responderSeat of aiPartnerGoOutReplySeats(game, chatMessages)) {
+      const partnerIdx = partnerSeat(responderSeat, playerCount)
+      const pending = pendingPartnerGoOutRequest(chatMessages, responderSeat, partnerIdx)
+      if (!pending) continue
 
-    const requestTimestamp = pending.timestamp
-    const timer = setTimeout(() => {
-      const stillPending = pendingPartnerGoOutRequest(
-        chatRef.current,
-        partnerIdx,
-        viewerSeat,
+      const replyKey = `${pending.id}:${responderSeat}`
+      if (handledGoOutReplyKeys.current.has(replyKey)) continue
+
+      const requestId = pending.id
+      timers.push(
+        setTimeout(() => {
+          const stillPending = pendingPartnerGoOutRequest(
+            chatRef.current,
+            responderSeat,
+            partnerIdx,
+          )
+          if (!stillPending || stillPending.id !== requestId) return
+          if (handledGoOutReplyKeys.current.has(replyKey)) return
+
+          const response = maybeAiPartnerGoOutResponse(
+            game,
+            responderSeat,
+            chatRef.current,
+          )
+          if (!response) return
+
+          handledGoOutReplyKeys.current.add(replyKey)
+          onChatSend(response, game)
+        }, AI_PARTNER_REPLY_DELAY_MS),
       )
-      if (!stillPending || stillPending.timestamp !== requestTimestamp) return
+    }
 
-      const response = maybeAiPartnerGoOutResponse(game, partnerIdx, chatRef.current)
-      if (response) {
-        lastAiGoOutReplyRef.current = requestTimestamp
-        onChatSend(response)
-      }
-    }, 900)
+    return () => timers.forEach(clearTimeout)
+  }, [chatMessages, game, onChatSend])
 
-    return () => clearTimeout(timer)
-  }, [chatMessages, game, viewerSeat, onChatSend])
-
-  /* After partner says no, AI discards normally and keeps at least one card. */
+  /* After partner says no, keep the last foot card and pass the turn. */
   useEffect(() => {
-    if (game.phase !== 'playing' || current.profile.isHuman) return
-    if (game.turnPhase !== 'play') return
+    if (game.phase !== 'playing' || game.turnPhase !== 'play') return
 
-    const aiSeat = game.currentPlayerIndex
+    const seat = game.currentPlayerIndex
+    const player = game.players[seat]
+    if (!isLastFootCard(player)) return
+
     const denial = unresolvedPartnerDenial(
       chatMessages,
-      aiSeat,
+      seat,
       game.playerCount as PlayerCount,
     )
     if (!denial || handledDenyIds.current.has(denial.id)) return
 
-    const player = game.players[aiSeat]
-    if (player.hand.length < 2) return
-
     handledDenyIds.current.add(denial.id)
 
-    const team = getTeam(game, player.profile.teamId)
-    const pub = buildAiPublicState(game, aiSeat)
-    const difficulty = player.profile.aiDifficulty ?? 'normal'
-    const discardId = pickDiscardCard(
-      pub.myHand,
-      team.books,
-      difficulty,
-      false,
-    )
-    if (!discardId) return
-
-    const result = discardCard(game, discardId, chatMessages)
+    const result = passTurnKeepingLastFootCard(game)
     if (result.error) return
 
     onGameChange(result.state)
-  }, [game, chatMessages, current.profile.isHuman, onGameChange])
+  }, [game, chatMessages, onGameChange])
 
   useEffect(() => {
     if (game.phase !== 'playing' || current.profile.isHuman) {
@@ -346,20 +346,34 @@ export function GameView({
     }
 
     const aiSeat = game.currentPlayerIndex
+    const aiPlayer = game.players[aiSeat]
+    if (
+      isLastFootCard(aiPlayer) &&
+      unresolvedPartnerDenial(
+        chatMessages,
+        aiSeat,
+        game.playerCount as PlayerCount,
+      )
+    ) {
+      setAiThinking(false)
+      return
+    }
+
     if (isAwaitingPartnerGoOutClearance(game, aiSeat, chatMessages)) {
       setAiThinking(true)
       return
     }
 
+    const resumeDelay = canPlayerGoOut(game, chatMessages) ? 0 : AI_TURN_DELAY_MS
     setAiThinking(true)
     const timer = setTimeout(() => {
       const result = runAiTurn(game, chatRef.current)
-      onGameChange(result.state)
       if (result.chatMessage) {
-        onChatSend(result.chatMessage)
+        onChatSend(result.chatMessage, result.state)
       }
+      onGameChange(result.state)
       setAiThinking(false)
-    }, AI_TURN_DELAY_MS)
+    }, resumeDelay)
 
     return () => clearTimeout(timer)
   }, [game, chatMessages, current.profile.isHuman, onGameChange, onChatSend])
