@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import type { GameState } from '../game/deal'
-import { isLastFootCard } from '../game/actions'
 import type { ChatMessage } from '../game/chat'
 import {
   createApproveGoOutSignal,
@@ -136,8 +135,8 @@ export function GameChat({
               <div>
                 <p className="font-display text-sm font-semibold text-ink">Table chat</p>
                 <p className="mt-0.5 text-[10px] leading-relaxed text-ink-muted">
-                  On your last foot card with books set, ask to go out. Only your partner can
-                  reply yes or no — if they say no, keep your last foot card and end your turn.
+                  While playing your foot with books set, ask if you can go out. Your partner&apos;s
+                  reply is advice — you make the final call.
                 </p>
               </div>
               <button
@@ -166,7 +165,7 @@ export function GameChat({
                   Waiting for {partner.profile.avatar} {partner.profile.name}…
                 </p>
                 <p className="mt-1 text-[10px] text-ink-muted">
-                  You asked to go out — discard only after your partner says yes.
+                  You asked to go out — your partner&apos;s reply is advice, not a rule.
                 </p>
               </div>
             )}
@@ -177,7 +176,7 @@ export function GameChat({
                   {partner.profile.avatar} {partner.profile.name} says they can go out!
                 </p>
                 <p className="mt-1 text-[10px] text-ink-muted">
-                  Only you can reply — yes lets them go out, no tells them to keep playing.
+                  Only you can reply — yes encourages going out, no suggests waiting.
                 </p>
                 <div className="mt-2 flex gap-2">
                   <button
@@ -201,8 +200,8 @@ export function GameChat({
             <div ref={listRef} className="table-chat-messages">
               {messages.length === 0 ? (
                 <p className="py-4 text-center text-[11px] leading-relaxed text-ink-faint">
-                  On your last foot card with books set, tap &ldquo;I can go out!&rdquo; Your
-                  partner replies Yes or No before you discard.
+                  Playing your foot with books set? Tap &ldquo;I can go out!&rdquo; to check with
+                  your partner — their answer is advice, not a requirement.
                 </p>
               ) : (
                 messages.map((msg) => {
@@ -270,16 +269,16 @@ export function GameChat({
                   >
                     {READY_GO_OUT_SIGNAL_TEXT}
                   </button>
-                ) : isMyTurn && isLastFootCard(viewer) ? (
+                ) : isMyTurn && viewer.isPlayingFoot && !canSignalGoOut ? (
                   <p className="rounded-lg bg-black/25 px-2.5 py-2 text-center text-[10px] leading-relaxed text-ink-muted">
-                    Finish your books before asking to go out on your last foot card.
+                    Finish your books before asking to go out while playing your foot.
                     {partnerRequest
                       ? ' You can still reply to your partner above.'
                       : ''}
                   </p>
-                ) : isMyTurn ? (
+                ) : isMyTurn && viewer.isPlayingFoot ? (
                   <p className="rounded-lg bg-black/25 px-2.5 py-2 text-center text-[10px] leading-relaxed text-ink-muted">
-                    Ask to go out only on your last foot card after books are set.
+                    Ask your partner when you are ready — you decide whether to go out.
                     {partnerRequest
                       ? ' You can still reply to your partner above.'
                       : ''}

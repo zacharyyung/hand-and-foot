@@ -36,12 +36,12 @@ function isOnLastFootCard(player: PlayerState): boolean {
   )
 }
 
-/** Active player on their last foot card with books ready — ready to discard and go out. */
+/** Playing foot with books set — partner chat is advisory, not required to signal. */
 export function canInitiateGoOutSignal(state: GameState, seatIndex: number): boolean {
   if (state.phase !== 'playing' || state.currentPlayerIndex !== seatIndex) return false
   if (state.turnPhase !== 'play') return false
   const player = state.players[seatIndex]
-  if (!isOnLastFootCard(player)) return false
+  if (!player.isPlayingFoot) return false
   return teamReadyToGoOut(state, player.profile.teamId)
 }
 
@@ -64,7 +64,7 @@ function partnerDeniedGoOut(
   return false
 }
 
-/** Partner said no to the latest go-out ask — requester keeps their last foot card. */
+/** Partner said no to the latest go-out ask (advisory — does not block going out). */
 export function unresolvedPartnerDenial(
   messages: ChatMessage[],
   requesterSeat: number,
@@ -295,16 +295,22 @@ export function opponentsHoldManyCards(state: GameState, seatIndex: number): boo
   return total >= 18
 }
 
-/** Requester signaled go-out, books are set, and partner has not replied yet. */
+/** Whether partner advised against going out on the latest ask. */
+export function partnerAdvisedAgainstGoOut(
+  messages: ChatMessage[],
+  requesterSeat: number,
+  playerCount: PlayerCount,
+): boolean {
+  return unresolvedPartnerDenial(messages, requesterSeat, playerCount) !== null
+}
+
+/** Latest go-out ask still waiting on partner (informational — turn is not blocked). */
 export function isAwaitingPartnerGoOutClearance(
   state: GameState,
   seatIndex: number,
   messages: ChatMessage[],
 ): boolean {
-  const player = state.players[seatIndex]
-  if (!isOnLastFootCard(player)) return false
-
-  if (!teamReadyToGoOut(state, player.profile.teamId)) return false
+  if (!teamReadyToGoOut(state, state.players[seatIndex].profile.teamId)) return false
 
   const myReady = latestReadyGoOutFrom(messages, seatIndex)
   if (!myReady) return false
@@ -326,59 +332,89 @@ function partnerApprovedGoOut(
   return false
 }
 
-/** Partner cleared this player to attempt going out. */
+/** Partner replied yes to the latest go-out ask. */
+export function hasPartnerGoOutApproval(
+  state: GameState,
+  seatIndex: number,
+  messages: ChatMessage[],
+): boolean {
+  const partnerIdx = partnerSeat(seatIndex, state.playerCount as PlayerCount)
+  const myReady = latestReadyGoOutFrom(messages, seatIndex)
+  if (!myReady) return false
+  return partnerApprovedGoOut(messages, partnerIdx, myReady.timestamp)
+}
+
+/** @deprecated Partner clearance is advisory; use hasPartnerGoOutApproval or canGoOut. */
 export function hasPartnerGoOutClearance(
   state: GameState,
   seatIndex: number,
   messages: ChatMessage[],
 ): boolean {
+  return hasPartnerGoOutApproval(state, seatIndex, messages)
+}
+
+/** Whether AI should go out now after consulting partner chat. */
+export function shouldAiAttemptGoOut(
+  state: GameState,
+  seatIndex: number,
+  messages: ChatMessage[],
+): boolean {
   const player = state.players[seatIndex]
+  if (!player.isPlayingFoot || player.hand.length !== 1 || player.foot.length > 0) {
+    return false
+  }
+
+  const team = state.teams.find((t) => t.id === player.profile.teamId)
+  if (!team || !teamReadyToGoOut(state, team.id)) return false
+
+  if (hasPartnerGoOutApproval(state, seatIndex, messages)) return true
+
+  if (opponentsHoldManyCards(state, seatIndex)) return true
+
+  if (partnerAdvisedAgainstGoOut(messages, seatIndex, state.playerCount as PlayerCount)) {
+    return opponentsHoldManyCards(state, seatIndex)
+  }
+
+  return true
+}
+
+/** Advisory hint about partner go-out chat — never a hard block. */
+export function getPartnerGoOutHint(
+  state: GameState,
+  seatIndex: number,
+  messages: ChatMessage[],
+): string | null {
+  const player = state.players[seatIndex]
+  if (!player.isPlayingFoot || !isOnLastFootCard(player)) return null
+
+  const team = state.teams.find((t) => t.id === player.profile.teamId)
+  if (!team || !teamReadyToGoOut(state, team.id)) return null
+
   const partnerIdx = partnerSeat(seatIndex, state.playerCount as PlayerCount)
   const myReady = latestReadyGoOutFrom(messages, seatIndex)
 
-  if (player.profile.isHuman) {
-    if (!myReady) return false
-    return partnerApprovedGoOut(messages, partnerIdx, myReady.timestamp)
-  }
-
   if (!myReady) {
-    return opponentsHoldManyCards(state, seatIndex)
+    return 'Tip: ask your partner in table chat before you discard to go out.'
   }
 
-  if (partnerApprovedGoOut(messages, partnerIdx, myReady.timestamp)) return true
+  if (awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx)) {
+    return 'Waiting for partner — you may still go out if all requirements are met.'
+  }
 
-  const response = partnerResponseAfter(messages, partnerIdx, myReady.timestamp)
-  if (
-    response &&
-    partnerDeniedGoOut(messages, partnerIdx, myReady.timestamp)
-  ) {
-    return false
+  if (partnerAdvisedAgainstGoOut(messages, seatIndex, state.playerCount as PlayerCount)) {
+    return 'Partner suggests waiting, but you may go out if you think it is best.'
   }
-  if (response?.type === 'partner_reply') {
-    return opponentsHoldManyCards(state, seatIndex)
-  }
-  return false
+
+  return null
 }
 
+/** @deprecated Use getPartnerGoOutHint — partner chat is advisory only. */
 export function getPartnerGoOutBlockReason(
   state: GameState,
   seatIndex: number,
   messages: ChatMessage[],
 ): string | null {
-  if (hasPartnerGoOutClearance(state, seatIndex, messages)) return null
-
-  const partnerIdx = partnerSeat(seatIndex, state.playerCount as PlayerCount)
-  const myReady = latestReadyGoOutFrom(messages, seatIndex)
-
-  if (!myReady) {
-    return 'Signal "I can go out!" on your last foot card, then wait for your partner.'
-  }
-
-  if (awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx)) {
-    return 'Waiting for your partner to reply in table chat.'
-  }
-
-  return 'Your partner said not to go out — keep your last foot card and end your turn.'
+  return getPartnerGoOutHint(state, seatIndex, messages)
 }
 
 /** Any team has signaled go-out intent in table chat (visible to everyone). */

@@ -13,7 +13,7 @@ import { meldContributionFromCards, meldThreshold } from './scoring'
 import { applyRoundScores } from './roundScoring'
 import { nextSeatCounterClockwise, type PlayerCount } from './teams'
 import type { ChatMessage } from './chat'
-import { getPartnerGoOutBlockReason, hasPartnerGoOutClearance } from './chat'
+import { shouldAiAttemptGoOut } from './chat'
 
 export function getActiveCards(player: PlayerState): Card[] {
   return player.isPlayingFoot ? player.hand : player.hand
@@ -149,7 +149,8 @@ export function commitStagedMelds(
 
   const playerIndex = state.currentPlayerIndex
   const player = state.players[playerIndex]
-  const meldCheck = rejectLastFootMeld(player)
+  const allStagedIds = stagedGroups.flat()
+  const meldCheck = rejectFootMeld(player, allStagedIds)
   if (!meldCheck.ok) return { state, error: meldCheck.error }
 
   const team = getTeam(state, player.profile.teamId)
@@ -270,7 +271,7 @@ export function startBook(
 
   const playerIndex = state.currentPlayerIndex
   const player = state.players[playerIndex]
-  const meldCheck = rejectLastFootMeld(player)
+  const meldCheck = rejectFootMeld(player, cardIds)
   if (!meldCheck.ok) return { state, error: meldCheck.error }
 
   const team = getTeam(state, player.profile.teamId)
@@ -350,7 +351,7 @@ export function addToBook(
 
   const playerIndex = state.currentPlayerIndex
   const player = state.players[playerIndex]
-  const meldCheck = rejectLastFootMeld(player)
+  const meldCheck = rejectFootMeld(player, cardIds)
   if (!meldCheck.ok) return { state, error: meldCheck.error }
 
   const team = getTeam(state, player.profile.teamId)
@@ -420,7 +421,7 @@ export function canTeamGoOut(books: Book[], meldThresholdMet: boolean): boolean 
 export function discardCard(
   state: GameState,
   cardId: string,
-  chatMessages: ChatMessage[] = [],
+  _chatMessages: ChatMessage[] = [],
 ): { state: GameState; error?: string } {
   if (state.turnPhase !== 'play' && state.turnPhase !== 'discard') {
     return { state, error: 'You must draw before discarding.' }
@@ -442,25 +443,15 @@ export function discardCard(
           'Cannot go out — need 1 completed clean book and 1 completed dirty book (7+ each).',
       }
     }
-    if (!hasPartnerGoOutClearance(state, playerIndex, chatMessages)) {
-      return {
-        state,
-        error:
-          getPartnerGoOutBlockReason(state, playerIndex, chatMessages) ??
-          'Your partner has not cleared you to go out — wait for table chat.',
-      }
-    }
   }
 
   const willBeEmpty = player.hand.length === 1
-  const partnerCleared = hasPartnerGoOutClearance(state, playerIndex, chatMessages)
   const goingOut =
     willBeEmpty &&
     player.isPlayingFoot &&
     player.foot.length === 0 &&
     !player.footOnHold &&
-    canTeamGoOut(team.books, team.meldThresholdMet) &&
-    partnerCleared
+    canTeamGoOut(team.books, team.meldThresholdMet)
 
   const newHand = removeCardsFromHand(player.hand, [cardId])
   let updatedPlayer: PlayerState = { ...player, hand: newHand }
@@ -502,14 +493,15 @@ export function canGoOut(state: GameState): boolean {
   return canTeamGoOut(team.books, team.meldThresholdMet)
 }
 
-/** Whether the active player may go out, including partner chat clearance. */
+/** Whether the active player may discard to go out (partner chat is advisory). */
 export function canPlayerGoOut(
   state: GameState,
   chatMessages: ChatMessage[] = [],
 ): boolean {
   if (!canGoOut(state)) return false
   const player = getCurrentPlayer(state)
-  return hasPartnerGoOutClearance(state, player.profile.seatIndex, chatMessages)
+  if (player.profile.isHuman) return true
+  return shouldAiAttemptGoOut(state, player.profile.seatIndex, chatMessages)
 }
 
 /** Last card while playing the foot — must be discarded to go out, never melded. */
@@ -525,9 +517,28 @@ export function isLastFootCard(player: PlayerState): boolean {
 const LAST_FOOT_CARD_MELD_ERROR =
   'Your last foot card must be discarded to go out — you cannot meld it into a book.'
 
-function rejectLastFootMeld(player: PlayerState): { ok: false; error: string } | { ok: true } {
+const FOOT_MELD_MUST_LEAVE_DISCARD_ERROR =
+  'While playing your foot you must keep at least one card to discard — you cannot meld your whole hand.'
+
+/** True when a foot meld still leaves at least one card to discard this turn. */
+export function footMeldLeavesDiscard(
+  player: PlayerState,
+  meldCardIds: string[],
+): boolean {
+  if (!player.isPlayingFoot) return true
+  const meldIds = new Set(meldCardIds)
+  return player.hand.some((c) => !meldIds.has(c.id))
+}
+
+function rejectFootMeld(
+  player: PlayerState,
+  meldCardIds: string[],
+): { ok: false; error: string } | { ok: true } {
   if (isLastFootCard(player)) {
     return { ok: false, error: LAST_FOOT_CARD_MELD_ERROR }
+  }
+  if (!footMeldLeavesDiscard(player, meldCardIds)) {
+    return { ok: false, error: FOOT_MELD_MUST_LEAVE_DISCARD_ERROR }
   }
   return { ok: true }
 }

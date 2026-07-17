@@ -23,19 +23,23 @@ export const HUMAN_AVATARS = [
   '🐲',
 ] as const
 
-export const AVATARS = [...HUMAN_AVATARS, AI_AVATAR] as const
-
-export type Avatar = (typeof AVATARS)[number]
+export type Avatar = (typeof HUMAN_AVATARS)[number]
 
 export const AI_DIFFICULTIES: { value: AiDifficulty; label: string }[] = [
   { value: 'normal', label: 'Normal' },
   { value: 'expert', label: 'Expert' },
 ]
 
-export interface SetupPlayer {
+export interface SetupHuman {
   name: string
   age: number
   avatar: Avatar
+}
+
+export interface SetupPlayer {
+  name: string
+  age: number
+  avatar: string
   isHuman: boolean
   aiDifficulty: AiDifficulty
 }
@@ -45,19 +49,50 @@ interface SetupScreenProps {
   onPlayerCountChange: (count: PlayerCount) => void
   humanCount: number
   onHumanCountChange: (count: number) => void
-  players: SetupPlayer[]
-  onPlayersChange: (players: SetupPlayer[]) => void
+  humanPlayers: SetupHuman[]
+  onHumanPlayersChange: (players: SetupHuman[]) => void
+  aiDifficulty: AiDifficulty
+  onAiDifficultyChange: (difficulty: AiDifficulty) => void
   onStart: () => void
 }
 
-export function createDefaultSetupPlayers(count: number, humans = 1): SetupPlayer[] {
+export function createDefaultHumanPlayers(count: number): SetupHuman[] {
   return Array.from({ length: count }, (_, i) => ({
-    name: i < humans ? '' : `AI ${i + 1}`,
-    age: i < humans ? 0 : 0,
-    avatar: i < humans ? HUMAN_AVATARS[i % HUMAN_AVATARS.length] : AI_AVATAR,
-    isHuman: i < humans,
-    aiDifficulty: 'normal' as AiDifficulty,
+    name: '',
+    age: 0,
+    avatar: HUMAN_AVATARS[i % HUMAN_AVATARS.length],
   }))
+}
+
+export function buildSetupPlayers(
+  humanPlayers: SetupHuman[],
+  playerCount: PlayerCount,
+  aiDifficulty: AiDifficulty,
+): SetupPlayer[] {
+  return Array.from({ length: playerCount }, (_, i) => {
+    if (i < humanPlayers.length) {
+      const human = humanPlayers[i]
+      return {
+        name: human.name,
+        age: human.age,
+        avatar: human.avatar,
+        isHuman: true,
+        aiDifficulty: 'normal',
+      }
+    }
+    return {
+      name: `AI ${i + 1}`,
+      age: 0,
+      avatar: AI_AVATAR,
+      isHuman: false,
+      aiDifficulty,
+    }
+  })
+}
+
+/** @deprecated Use createDefaultHumanPlayers + buildSetupPlayers */
+export function createDefaultSetupPlayers(count: PlayerCount, humans = 1): SetupPlayer[] {
+  return buildSetupPlayers(createDefaultHumanPlayers(humans), count, 'normal')
 }
 
 export function SetupScreen({
@@ -65,58 +100,52 @@ export function SetupScreen({
   onPlayerCountChange,
   humanCount,
   onHumanCountChange,
-  players,
-  onPlayersChange,
+  humanPlayers,
+  onHumanPlayersChange,
+  aiDifficulty,
+  onAiDifficultyChange,
   onStart,
 }: SetupScreenProps) {
-  function updatePlayer(index: number, patch: Partial<SetupPlayer>) {
-    const next = [...players]
+  function updateHuman(index: number, patch: Partial<SetupHuman>) {
+    const next = [...humanPlayers]
     next[index] = { ...next[index], ...patch }
-    onPlayersChange(next)
+    onHumanPlayersChange(next)
   }
 
   function setHumanCount(count: number) {
     playSound('button')
     onHumanCountChange(count)
-    const next = players.map((p, i) => {
-      const isHuman = i < count
-      return {
-        ...p,
-        isHuman,
-        name: isHuman ? (p.isHuman ? p.name : '') : `AI ${i + 1}`,
-        age: isHuman ? (p.isHuman ? p.age : 0) : 0,
-        avatar: isHuman
-          ? p.isHuman
-            ? p.avatar
-            : HUMAN_AVATARS[i % HUMAN_AVATARS.length]
-          : AI_AVATAR,
-      }
-    })
-    onPlayersChange(next)
+    if (humanPlayers.length < count) {
+      onHumanPlayersChange([
+        ...humanPlayers,
+        ...createDefaultHumanPlayers(count).slice(humanPlayers.length),
+      ])
+    } else if (humanPlayers.length > count) {
+      onHumanPlayersChange(humanPlayers.slice(0, count))
+    }
   }
 
-  function toggleHuman(index: number) {
+  const humansValid = humanPlayers.every(
+    (p) => p.name.trim().length > 0 && p.age > 0,
+  )
+  const canStart = humanPlayers.length > 0 && humansValid
+
+  function adjustAge(index: number, delta: number) {
     playSound('button')
-    const isHuman = !players[index].isHuman
-    if (!isHuman && players.filter((p) => p.isHuman).length <= 1) return
-    updatePlayer(index, {
-      isHuman,
-      name: isHuman ? '' : `AI ${index + 1}`,
-      age: isHuman ? 0 : 0,
-      avatar: isHuman ? HUMAN_AVATARS[index % HUMAN_AVATARS.length] : AI_AVATAR,
-    })
-    const newHumanCount = players.filter((p, i) =>
-      i === index ? isHuman : p.isHuman,
-    ).length
-    onHumanCountChange(newHumanCount)
+    const current = humanPlayers[index].age || 0
+    const next = Math.min(120, Math.max(1, current + delta))
+    updateHuman(index, { age: next })
   }
 
-  const humansValid =
-    players.some((p) => p.isHuman) &&
-    players
-      .filter((p) => p.isHuman)
-      .every((p) => p.name.trim().length > 0 && p.age > 0)
-  const canStart = humansValid
+  function setupChoiceClass(selected: boolean, sizeClass: string): string {
+    return [
+      'setup-choice font-display transition-all duration-150 ease-press',
+      sizeClass,
+      selected ? 'setup-choice-selected' : 'font-semibold',
+    ].join(' ')
+  }
+
+  const aiCount = playerCount - humanCount
 
   return (
     <div className="relative mx-auto max-w-2xl px-6 py-12 sm:py-16">
@@ -144,18 +173,15 @@ export function SetupScreen({
                 playSound('button')
                 onPlayerCountChange(count)
               }}
-              className={`min-w-[4.5rem] rounded-xl px-4 py-2.5 transition-all duration-150 ease-press ${
-                playerCount === count
-                  ? 'bg-accent text-felt-deep shadow-md'
-                  : 'bg-white/10 text-ink-soft hover:bg-white/15'
-              }`}
+              className={setupChoiceClass(
+                playerCount === count,
+                'min-w-[4.5rem] rounded-xl px-4 py-2.5',
+              )}
             >
-              <span className="block font-display text-lg font-semibold leading-none">
-                {count}
-              </span>
+              <span className="block text-lg font-[inherit] leading-none">{count}</span>
               <span
-                className={`mt-0.5 block text-[10px] ${
-                  playerCount === count ? 'text-felt-deep/70' : 'text-ink-faint'
+                className={`setup-choice-sub mt-0.5 block text-[10px] ${
+                  playerCount === count ? '' : 'font-normal text-ink-faint'
                 }`}
               >
                 {count / 2} teams
@@ -165,7 +191,7 @@ export function SetupScreen({
         </div>
       </section>
 
-      <section className="mb-10">
+      <section className="mb-8">
         <label className="mb-3 block text-center text-[11px] font-medium uppercase tracking-[0.14em] text-ink-muted">
           Humans at the table
         </label>
@@ -175,53 +201,68 @@ export function SetupScreen({
               key={count}
               type="button"
               onClick={() => setHumanCount(count)}
-              className={`min-w-[3rem] rounded-xl px-3 py-2 transition-all duration-150 ${
-                humanCount === count
-                  ? 'bg-accent text-felt-deep'
-                  : 'bg-white/10 text-ink-soft hover:bg-white/15'
-              }`}
+              className={setupChoiceClass(
+                humanCount === count,
+                'min-w-[3rem] rounded-xl px-3 py-2',
+              )}
             >
-              <span className="font-display text-base font-semibold">{count}</span>
+              <span className="text-base font-[inherit] leading-none">{count}</span>
             </button>
           ))}
         </div>
       </section>
 
+      {aiCount > 0 && (
+        <section className="mb-10">
+          <label className="mb-3 block text-center text-[11px] font-medium uppercase tracking-[0.14em] text-ink-muted">
+            AI expertise
+          </label>
+          <div className="flex flex-wrap justify-center gap-2">
+            {AI_DIFFICULTIES.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => {
+                  playSound('button')
+                  onAiDifficultyChange(option.value)
+                }}
+                className={setupChoiceClass(
+                  aiDifficulty === option.value,
+                  'min-w-[5.5rem] rounded-xl px-4 py-2.5',
+                )}
+              >
+                <span className="text-base font-[inherit] leading-none">{option.label}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
       <div className="space-y-3">
-        {players.map((player, index) => (
+        {humanPlayers.map((player, index) => (
           <div
             key={index}
             className="rounded-2xl bg-black/25 px-4 py-3.5 backdrop-blur-sm"
           >
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm font-medium text-ink">
-                Seat {index + 1}
+                Player {index + 1}
                 <span className="ml-2 text-[11px] font-normal text-ink-faint">
-                  Team {teamIdForSeat(index, playerCount) + 1}
+                  Seat {index + 1} · Team {teamIdForSeat(index, playerCount) + 1}
                 </span>
               </p>
-              <button
-                onClick={() => toggleHuman(index)}
-                className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold ${
-                  player.isHuman
-                    ? 'bg-sky-500/20 text-sky-200'
-                    : 'bg-white/10 text-ink-muted'
-                }`}
-              >
-                {player.isHuman ? 'Human' : 'AI'}
-              </button>
             </div>
 
             <div className="flex flex-wrap items-end gap-4">
               <div className="flex flex-col gap-1">
                 <span className="text-[10px] text-ink-faint">Avatar</span>
                 <div className="flex flex-wrap gap-1">
-                  {AVATARS.map((avatar) => (
+                  {HUMAN_AVATARS.map((avatar) => (
                     <button
                       key={avatar}
                       onClick={() => {
                         playSound('select')
-                        updatePlayer(index, { avatar })
+                        updateHuman(index, { avatar })
                       }}
                       className={`rounded-lg px-1.5 py-1 text-lg transition ${
                         player.avatar === avatar
@@ -235,61 +276,48 @@ export function SetupScreen({
                 </div>
               </div>
 
-              {player.isHuman ? (
-                <>
-                  <label className="flex flex-col gap-1">
-                    <span className="text-[10px] text-ink-faint">Name</span>
-                    <input
-                      value={player.name}
-                      onChange={(e) => updatePlayer(index, { name: e.target.value })}
-                      placeholder={`Player ${index + 1}`}
-                      className="rounded-xl border-0 bg-white/10 px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:ring-1 focus:ring-accent/50"
-                    />
-                  </label>
-                  <label className="flex flex-col gap-1">
-                    <span className="text-[10px] text-ink-faint">Age</span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={120}
-                      value={player.age || ''}
-                      onChange={(e) =>
-                        updatePlayer(index, { age: Number(e.target.value) })
-                      }
-                      className="w-20 rounded-xl border-0 bg-white/10 px-3 py-2 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-accent/50"
-                    />
-                  </label>
-                </>
-              ) : (
-                <>
-                  <label className="flex flex-col gap-1">
-                    <span className="text-[10px] text-ink-faint">AI name</span>
-                    <input
-                      value={player.name}
-                      onChange={(e) => updatePlayer(index, { name: e.target.value })}
-                      className="rounded-xl border-0 bg-white/10 px-3 py-2 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-accent/50"
-                    />
-                  </label>
-                  <label className="flex flex-col gap-1">
-                    <span className="text-[10px] text-ink-faint">Expertise</span>
-                    <select
-                      value={player.aiDifficulty}
-                      onChange={(e) =>
-                        updatePlayer(index, {
-                          aiDifficulty: e.target.value as AiDifficulty,
-                        })
-                      }
-                      className="rounded-xl border-0 bg-white/10 px-3 py-2 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-accent/50"
-                    >
-                      {AI_DIFFICULTIES.map((d) => (
-                        <option key={d.value} value={d.value} className="bg-felt-dark">
-                          {d.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </>
-              )}
+              <label className="flex flex-col gap-1">
+                <span className="text-[10px] text-ink-faint">Name</span>
+                <input
+                  value={player.name}
+                  onChange={(e) => updateHuman(index, { name: e.target.value })}
+                  placeholder={`Player ${index + 1}`}
+                  className="field-control px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[10px] text-ink-faint">Age</span>
+                <div className="field-age-group">
+                  <button
+                    type="button"
+                    className="field-stepper"
+                    aria-label="Decrease age"
+                    disabled={player.age <= 1}
+                    onClick={() => adjustAge(index, -1)}
+                  >
+                    −
+                  </button>
+                  <input
+                    type="number"
+                    min={1}
+                    max={120}
+                    value={player.age || ''}
+                    onChange={(e) =>
+                      updateHuman(index, { age: Number(e.target.value) })
+                    }
+                    className="field-control field-control--number py-2 text-sm"
+                  />
+                  <button
+                    type="button"
+                    className="field-stepper"
+                    aria-label="Increase age"
+                    disabled={player.age >= 120}
+                    onClick={() => adjustAge(index, 1)}
+                  >
+                    +
+                  </button>
+                </div>
+              </label>
             </div>
           </div>
         ))}

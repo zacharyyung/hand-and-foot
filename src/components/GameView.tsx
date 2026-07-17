@@ -10,8 +10,8 @@ import {
   drawCards,
   getCurrentPlayer,
   getTeam,
+  footMeldLeavesDiscard,
   isLastFootCard,
-  passTurnKeepingLastFootCard,
   startBook,
   validateStageBook,
   willSkipAndRun,
@@ -38,7 +38,7 @@ import { GameChat } from './GameChat'
 import { GameMessageBar } from './GameMessageBar'
 import { TEAM_COLORS, partnerSeat, type PlayerCount } from '../game/teams'
 import type { ChatMessage } from '../game/chat'
-import { getPartnerGoOutBlockReason, isAwaitingPartnerGoOutClearance, pendingPartnerGoOutRequest, unresolvedPartnerDenial } from '../game/chat'
+import { getPartnerGoOutHint, pendingPartnerGoOutRequest } from '../game/chat'
 import { aiPartnerGoOutReplySeats, maybeAiPartnerGoOutResponse } from '../game/ai/chatSignals'
 
 interface GameViewProps {
@@ -97,7 +97,6 @@ export function GameView({
   const chatRef = useRef(chatMessages)
   chatRef.current = chatMessages
   const handledGoOutReplyKeys = useRef(new Set<string>())
-  const handledDenyIds = useRef(new Set<string>())
 
   const viewerSeat = useMemo(() => getViewerSeat(game.players), [game.players])
   const viewer = game.players[viewerSeat]
@@ -202,7 +201,7 @@ export function GameView({
     if (!lastFootCard || goingOut) return null
     const bookReason = getGoOutBlockReason(team.books, team.meldThresholdMet)
     if (bookReason) return bookReason
-    return getPartnerGoOutBlockReason(game, viewerSeat, chatMessages)
+    return getPartnerGoOutHint(game, viewerSeat, chatMessages)
   }, [
     lastFootCard,
     goingOut,
@@ -212,8 +211,38 @@ export function GameView({
     viewerSeat,
     chatMessages,
   ])
-  const playerHint = error ? null : wildBlockReason ?? goOutBlockReason
   const mustDiscardLastFoot = lastFootCard
+  const footMeldUsesAllCards = useMemo(() => {
+    if (!viewer.isPlayingFoot || !isMyTurn || game.turnPhase !== 'play') return false
+    if (isLastFootCard(viewer)) return true
+
+    const stagedIds = stagedBooks.flatMap((b) => b.cardIds)
+    if (stagedIds.length > 0 && !footMeldLeavesDiscard(viewer, stagedIds)) {
+      return true
+    }
+
+    if (selectedIds.length > 0 && !footMeldLeavesDiscard(viewer, selectedIds)) {
+      return true
+    }
+
+    const stagedAndSelected = [...new Set([...stagedIds, ...selectedIds])]
+    return (
+      stagedAndSelected.length > 0 &&
+      !footMeldLeavesDiscard(viewer, stagedAndSelected)
+    )
+  }, [
+    viewer,
+    isMyTurn,
+    game.turnPhase,
+    stagedBooks,
+    selectedIds,
+  ])
+  const footMeldHint = useMemo(() => {
+    if (!footMeldUsesAllCards || goingOut) return null
+    if (isLastFootCard(viewer)) return null
+    return 'Keep at least one card to discard — you cannot meld your whole foot.'
+  }, [footMeldUsesAllCards, goingOut, viewer])
+  const playerHint = error ? null : wildBlockReason ?? footMeldHint ?? goOutBlockReason
   const goToFootDiscard =
     isMyTurn && canGoToFoot(viewer) && selectedIds.length === 1
   const skipAndRunSelected =
@@ -316,51 +345,9 @@ export function GameView({
     return () => timers.forEach(clearTimeout)
   }, [chatMessages, game, onChatSend])
 
-  /* After partner says no, keep the last foot card and pass the turn. */
-  useEffect(() => {
-    if (game.phase !== 'playing' || game.turnPhase !== 'play') return
-
-    const seat = game.currentPlayerIndex
-    const player = game.players[seat]
-    if (!isLastFootCard(player)) return
-
-    const denial = unresolvedPartnerDenial(
-      chatMessages,
-      seat,
-      game.playerCount as PlayerCount,
-    )
-    if (!denial || handledDenyIds.current.has(denial.id)) return
-
-    handledDenyIds.current.add(denial.id)
-
-    const result = passTurnKeepingLastFootCard(game)
-    if (result.error) return
-
-    onGameChange(result.state)
-  }, [game, chatMessages, onGameChange])
-
   useEffect(() => {
     if (game.phase !== 'playing' || current.profile.isHuman) {
       setAiThinking(false)
-      return
-    }
-
-    const aiSeat = game.currentPlayerIndex
-    const aiPlayer = game.players[aiSeat]
-    if (
-      isLastFootCard(aiPlayer) &&
-      unresolvedPartnerDenial(
-        chatMessages,
-        aiSeat,
-        game.playerCount as PlayerCount,
-      )
-    ) {
-      setAiThinking(false)
-      return
-    }
-
-    if (isAwaitingPartnerGoOutClearance(game, aiSeat, chatMessages)) {
-      setAiThinking(true)
       return
     }
 
@@ -585,6 +572,8 @@ export function GameView({
   })
 
   const canDraw = isMyTurn && game.turnPhase === 'draw'
+  const showStagingRibbon =
+    isMyTurn && needsStagedMeld && game.turnPhase === 'play'
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden">
@@ -629,53 +618,79 @@ export function GameView({
 
         {isHumanViewer && (
           <div
-            className="relative z-20 flex max-h-[min(32vh,320px)] shrink-0 flex-col overflow-hidden sm:max-h-[min(30vh,340px)]"
+            className="south-player-dock relative z-20 flex max-h-[min(34vh,340px)] shrink-0 flex-col overflow-hidden sm:max-h-[min(32vh,360px)]"
             style={{
               background:
                 'linear-gradient(to top, rgba(6,20,14,0.92) 0%, rgba(8,28,18,0.78) 70%, rgba(8,28,18,0.45) 100%)',
               boxShadow: `inset 0 1px 0 ${teamColor}33`,
             }}
           >
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-              {isMyTurn && needsStagedMeld && game.turnPhase === 'play' && (
-                <StagingArea
-                  stagedBooks={stagedBooks}
-                  requiredPoints={requiredMeld}
-                  onRemove={handleRemoveStaged}
-                  onClear={() => setStagedBooks([])}
-                  compact
-                  ribbon
-                />
-              )}
-
-              <div className="flex shrink-0 flex-wrap items-center justify-center gap-x-3 gap-y-0.5 px-3 py-0.5 sm:px-4">
-                <span className="flex items-center gap-1.5 text-[10px] tabular-nums text-ink-faint">
-                  <span className="seat-chip-pile" title="Hand cards">
-                    <span className="seat-chip-pile-label">H</span>
-                    <span className="seat-chip-pile-count">{playerHandCount(viewer)}</span>
-                  </span>
-                  <span className="seat-chip-pile" title="Foot cards">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden pb-0.5">
+              <div className="south-dock-hand-meta flex shrink-0 items-center gap-x-2.5 gap-y-1 px-3 py-1.5 sm:gap-x-3 sm:px-4 sm:py-2">
+                <span className="flex shrink-0 items-center gap-1.5 text-[10px] tabular-nums text-ink-faint">
+                  {(!viewer.isPlayingFoot || playerHandCount(viewer) > 0) && (
+                    <span className="seat-chip-pile" title="Hand cards">
+                      <span className="seat-chip-pile-label">H</span>
+                      <span className="seat-chip-pile-count">{playerHandCount(viewer)}</span>
+                    </span>
+                  )}
+                  <span
+                    className={[
+                      'seat-chip-pile',
+                      viewer.isPlayingFoot ? 'seat-chip-pile-foot-active' : '',
+                      viewer.footOnHold ? 'seat-chip-pile-foot-hold' : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
+                    title={
+                      viewer.isPlayingFoot
+                        ? 'Playing foot'
+                        : viewer.footOnHold
+                          ? 'Foot on hold'
+                          : 'Foot cards'
+                    }
+                  >
                     <span className="seat-chip-pile-label">F</span>
                     <span className="seat-chip-pile-count">{playerFootCount(viewer)}</span>
                   </span>
-                  {viewer.isPlayingFoot && (
-                    <span className="ml-1.5 text-accent">Foot</span>
-                  )}
                   {selectedIds.length > 0 && (
-                    <span className="ml-1.5 text-ink-muted">{selectedPoints} pts</span>
+                    <span className="text-ink-muted">{selectedPoints} pts</span>
                   )}
                 </span>
+
+                <div className="flex min-h-[1.125rem] min-w-0 flex-1 items-center justify-center px-0.5">
+                  {showStagingRibbon && stagedBooks.length === 0 && (
+                    <p className="truncate text-center text-[10px] leading-snug text-accent/85 sm:text-[11px]">
+                      Stage private melds · need{' '}
+                      <span className="font-semibold tabular-nums text-accent">
+                        {requiredMeld}+
+                      </span>
+                    </p>
+                  )}
+                  {showStagingRibbon && stagedBooks.length > 0 && (
+                    <StagingArea
+                      stagedBooks={stagedBooks}
+                      requiredPoints={requiredMeld}
+                      onRemove={handleRemoveStaged}
+                      onClear={() => setStagedBooks([])}
+                      compact
+                      ribbon
+                      embedded
+                    />
+                  )}
+                </div>
+
                 <button
                   type="button"
                   onClick={handleAutoSort}
                   disabled={viewer.hand.length < 2}
-                  className="rounded-md border border-white/20 bg-white/10 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-ink-soft shadow-sm transition hover:border-white/30 hover:bg-white/18 hover:text-ink active:translate-y-px disabled:opacity-30"
+                  className="shrink-0 rounded-md border border-white/20 bg-white/10 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-ink-soft shadow-sm transition hover:border-white/30 hover:bg-white/18 hover:text-ink active:translate-y-px disabled:opacity-30"
                 >
                   Sort
                 </button>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-1 sm:px-4">
+              <div className="theme-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-1 sm:px-4 sm:py-1.5">
                 <HandCards
                   hand={handForDisplay}
                   handOrder={displayHandOrder}
@@ -715,7 +730,10 @@ export function GameView({
                             <>
                               <button
                                 onClick={handleStage}
-                                disabled={selectedIds.length < 3}
+                                disabled={
+                                  selectedIds.length < 3 ||
+                                  footMeldUsesAllCards
+                                }
                                 className="btn-secondary disabled:opacity-35"
                               >
                                 Stage
@@ -723,7 +741,9 @@ export function GameView({
                               <button
                                 onClick={handleMeld}
                                 disabled={
-                                  stagedBooks.length === 0 || stagedPoints < requiredMeld
+                                  stagedBooks.length === 0 ||
+                                  stagedPoints < requiredMeld ||
+                                  footMeldUsesAllCards
                                 }
                                 className="btn-primary disabled:opacity-35"
                               >
@@ -735,7 +755,9 @@ export function GameView({
                           !mustDiscardLastFoot && (
                             <button
                               onClick={handleStartBook}
-                              disabled={selectedIds.length < 3}
+                              disabled={
+                                selectedIds.length < 3 || footMeldUsesAllCards
+                              }
                               className="btn-secondary disabled:opacity-35"
                             >
                               Start book
@@ -751,7 +773,7 @@ export function GameView({
                                 onChange={(e) =>
                                   setSelectedAddBookId(e.target.value || null)
                                 }
-                                className="max-w-[11rem] rounded-lg border border-white/15 bg-black/40 px-2 py-2 text-xs text-ink"
+                                className="field-control field-control--compact max-w-[11rem]"
                                 aria-label="Choose book to add to"
                               >
                                 {addBookOptions.map((book) => {
@@ -771,7 +793,11 @@ export function GameView({
                             )}
                             <button
                               onClick={handleAddToBook}
-                              disabled={selectedIds.length === 0 || !matchedAddBook}
+                              disabled={
+                                selectedIds.length === 0 ||
+                                !matchedAddBook ||
+                                footMeldUsesAllCards
+                              }
                               className="btn-secondary disabled:opacity-35"
                             >
                               {matchedAddBook

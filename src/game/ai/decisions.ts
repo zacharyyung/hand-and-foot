@@ -44,12 +44,28 @@ function wildsInHand(hand: Card[]): Card[] {
   return hand.filter(isWildCard)
 }
 
-export function findStartBookActions(hand: Card[], teamBooks: Book[]): AiAction[] {
+function footMeldKeepsDiscard(
+  hand: Card[],
+  meldCardIds: string[],
+  isPlayingFoot: boolean,
+): boolean {
+  if (!isPlayingFoot) return true
+  const meldIds = new Set(meldCardIds)
+  return hand.some((c) => !meldIds.has(c.id))
+}
+
+export function findStartBookActions(
+  hand: Card[],
+  teamBooks: Book[],
+  isPlayingFoot = false,
+): AiAction[] {
   const actions: AiAction[] = []
   const ranks = new Set<Rank>()
   const playable = hand.filter((c) => !isRedThree(c))
 
   for (const combo of combinations(playable, 3, Math.min(7, playable.length))) {
+    const cardIds = combo.map((c) => c.id)
+    if (!footMeldKeepsDiscard(hand, cardIds, isPlayingFoot)) continue
     const check = canStartBook(combo, teamBooks)
     if (!check.ok) continue
     if (ranks.has(check.rank)) continue
@@ -70,14 +86,14 @@ export function findAddToBookActions(
   isPlayingFoot = false,
   booksWithWildAddedThisTurn: string[] = [],
 ): Extract<AiAction, { type: 'addToBook' }>[] {
-  if (isPlayingFoot && hand.length === 1) return []
-
   const actions: Extract<AiAction, { type: 'addToBook' }>[] = []
   const playable = hand.filter((c) => !isRedThree(c))
 
   for (const book of teamBooks) {
     for (const size of [1, 2, 3, 4]) {
       for (const combo of combinations(playable, size, size)) {
+        const cardIds = combo.map((c) => c.id)
+        if (!footMeldKeepsDiscard(hand, cardIds, isPlayingFoot)) continue
         const check = canAddToBook(book, combo, {
           wildAlreadyAddedThisTurn: booksWithWildAddedThisTurn.includes(book.id),
         })
@@ -126,14 +142,24 @@ export function pickDiscardCard(
   if (redThrees.length > 0) return redThrees[0].id
 
   const wilds = hand.filter((c) => isWildCard(c) && !isRedThree(c))
+  const jokers = wilds.filter((c) => c.rank === 'Joker')
+  const deuces = wilds.filter((c) => c.rank === '2')
   const naturals = hand.filter((c) => !isWildCard(c) && !isRedThree(c))
 
   if (naturals.length > 0) {
     return naturals.sort((a, b) => cardPointValue(b) - cardPointValue(a))[0].id
   }
 
-  if (wilds.length > 0) {
-    return wilds.sort((a, b) => cardPointValue(a) - cardPointValue(b))[0].id
+  if (deuces.length > 0) {
+    return deuces.sort((a, b) => cardPointValue(a) - cardPointValue(b))[0].id
+  }
+
+  if (jokers.length >= 3) {
+    return jokers[0].id
+  }
+
+  if (jokers.length > 0) {
+    return jokers[0].id
   }
 
   return hand[0].id

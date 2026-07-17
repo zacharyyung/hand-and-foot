@@ -2,6 +2,8 @@ import type { GameState } from '../deal'
 import { getTeam } from '../actions'
 import { getGoOutBlockReason } from '../books'
 import { buildAiPublicState } from './publicState'
+import { isRedThree } from '../cards'
+import { heldCardPenalty } from '../scoring'
 import {
   APPROVE_GO_OUT_TEXT,
   awaitingPartnerGoOutResponse,
@@ -9,11 +11,8 @@ import {
   createDenyGoOutSignal,
   createReadyGoOutSignal,
   DENY_GO_OUT_TEXT,
-  hasPartnerGoOutClearance,
-  latestReadyGoOutFrom,
   pendingPartnerGoOutRequest,
   teamCanGoOut,
-  unresolvedPartnerDenial,
   type ChatMessage,
 } from '../chat'
 import type { PlayerCount } from '../teams'
@@ -61,6 +60,10 @@ export function analyzePartnerGoOutRequest(
   const aiCardsLeft = pub.myHand.length + pub.myFootCount
   const aiAlsoLow = aiCardsLeft <= 4
 
+  const aiHand = player.hand
+  const redThrees = aiHand.filter(isRedThree).length
+  const handPenalty = heldCardPenalty(aiHand)
+
   let score = 0
   if (teamCanGoOut(state, team.id)) score += 4
   if (partnerClosing) score += 5
@@ -71,6 +74,9 @@ export function analyzePartnerGoOutRequest(
   if (opponentLow && !opponentRacing) score += 1
   if (aiCardsLeft >= 10 && opponentCards >= 14) score -= 2
   if (aiAlsoLow) score += 2
+  if (redThrees > 0) score -= 3 + redThrees * 2
+  if (handPenalty >= 45) score -= 5
+  else if (handPenalty >= 30) score -= 3
 
   if (difficulty === 'expert') {
     if (opponentRacing && !partnerClosing) score -= 2
@@ -142,6 +148,18 @@ export function analyzePartnerGoOutRequest(
       message: `${DENY_GO_OUT_TEXT} I still have cards to meld — wait a bit.`,
     }
   }
+  if (redThrees > 0 && handPenalty >= 25) {
+    return {
+      approve: false,
+      message: `${DENY_GO_OUT_TEXT} I still have red threes and high-value cards to play.`,
+    }
+  }
+  if (handPenalty >= 40) {
+    return {
+      approve: false,
+      message: `${DENY_GO_OUT_TEXT} I still have a lot of points in my hand.`,
+    }
+  }
   if (!partnerClosing && partnerHand > 3) {
     return {
       approve: false,
@@ -154,7 +172,7 @@ export function analyzePartnerGoOutRequest(
   }
 }
 
-/** AI asks to go out only on the last foot card after draw, when books are set. */
+/** AI asks partner when in foot with books set — chat is advisory. */
 export function maybeAiChatSignal(
   state: GameState,
   seatIndex: number,
@@ -171,28 +189,17 @@ export function maybeAiChatSignal(
   const partnerIdx = partnerSeat(seatIndex, state.playerCount as PlayerCount)
   if (awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx)) return null
 
-  const ownLatest = latestReadyGoOutFrom(messages, seatIndex)
-  if (ownLatest && hasPartnerGoOutClearance(state, seatIndex, messages)) {
-    return null
-  }
-
-  if (unresolvedPartnerDenial(messages, seatIndex, state.playerCount as PlayerCount)) {
-    return null
-  }
-
   const pub = buildAiPublicState(state, seatIndex)
-  const readyToAsk =
-    pub.isPlayingFoot && pub.myFootCount === 0 && pub.myHand.length === 1
+  if (!pub.isPlayingFoot) return null
 
-  if (readyToAsk) {
-    return createReadyGoOutSignal(
-      seatIndex,
-      player.profile.name,
-      player.profile.avatar,
-    )
-  }
+  const closing = pub.myFootCount === 0 && pub.myHand.length <= 4
+  if (!closing) return null
 
-  return null
+  return createReadyGoOutSignal(
+    seatIndex,
+    player.profile.name,
+    player.profile.avatar,
+  )
 }
 
 /** Seats where an AI partner still needs to reply to a teammate's go-out ask. */

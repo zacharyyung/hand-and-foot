@@ -56,12 +56,28 @@ interface StartOption {
   clean: boolean
 }
 
-function getStartOptions(hand: Card[], teamBooks: Book[]): StartOption[] {
+function footMeldKeepsDiscard(
+  hand: Card[],
+  meldCardIds: string[],
+  isPlayingFoot: boolean,
+): boolean {
+  if (!isPlayingFoot) return true
+  const meldIds = new Set(meldCardIds)
+  return hand.some((c) => !meldIds.has(c.id))
+}
+
+function getStartOptions(
+  hand: Card[],
+  teamBooks: Book[],
+  isPlayingFoot = false,
+): StartOption[] {
   const options: StartOption[] = []
   const seen = new Set<Rank>()
   const playable = hand.filter((c) => !isRedThree(c))
 
   for (const combo of combinations(playable, 3, Math.min(7, playable.length))) {
+    const cardIds = combo.map((c) => c.id)
+    if (!footMeldKeepsDiscard(hand, cardIds, isPlayingFoot)) continue
     const check = canStartBook(combo, teamBooks)
     if (!check.ok || seen.has(check.rank)) continue
     seen.add(check.rank)
@@ -83,8 +99,9 @@ export function planInitialMeld(
   required: number,
   urgency: 'low' | 'medium' | 'high',
   difficulty: AiDifficulty = 'normal',
+  isPlayingFoot = false,
 ): string[][] | null {
-  const options = getStartOptions(hand, teamBooks)
+  const options = getStartOptions(hand, teamBooks, isPlayingFoot)
   if (options.length === 0) return null
 
   const needsDirty = teamNeedsDirtyBook(teamBooks)
@@ -121,6 +138,7 @@ export function planInitialMeld(
   }
 
   const sorted = [...options].sort((a, b) => scoreOption(b) - scoreOption(a))
+  const allowDirtyStack = urgency !== 'low' || required <= 50
 
   function dirtyBooksInPlan(chosen: string[][]): number {
     return chosen.filter((ids) =>
@@ -151,7 +169,7 @@ export function planInitialMeld(
     if (
       !opt.clean &&
       dirtyBooksInPlan(chosen) >= 1 &&
-      urgency === 'low'
+      !allowDirtyStack
     ) {
       return search(index + 1, used, chosen, points)
     }
@@ -167,7 +185,8 @@ export function planInitialMeld(
   }
 
   const plan = search(0, new Set(), [], 0)
-  if (!plan || difficulty !== 'expert' || urgency !== 'low') return plan
+  if (!plan) return null
+  if (difficulty !== 'expert' || urgency !== 'low' || required <= 50) return plan
 
   const cleanOnly = options.filter((o) => o.clean)
   if (cleanOnly.length > 0) {
@@ -239,6 +258,11 @@ export function meldPressure(pub: AiPublicState): 'low' | 'medium' | 'high' {
     level = 'high'
   }
 
+  // Opening rounds (50-point meld): don't stall — treat as at least medium until in.
+  if (!pub.teamMeldThresholdMet && pub.requiredMeld <= 50 && level === 'low') {
+    level = 'medium'
+  }
+
   if (pub.isPlayingFoot && pub.myFootCount >= 9 && level === 'low') {
     level = 'medium'
   }
@@ -246,11 +270,23 @@ export function meldPressure(pub: AiPublicState): 'low' | 'medium' | 'high' {
   return level
 }
 
+/** Urgency used for initial 50+ meld planning — less picky than mid-game hoarding. */
+export function initialMeldUrgency(
+  required: number,
+  urgency: 'low' | 'medium' | 'high',
+): 'low' | 'medium' | 'high' {
+  if (required <= 50) return urgency === 'high' ? 'high' : 'medium'
+  if (required <= 100 && urgency === 'low') return 'medium'
+  return urgency
+}
+
 export function shouldRandomlySkipMeld(
   difficulty: AiDifficulty,
   urgency: 'low' | 'medium' | 'high',
   kind: 'add' | 'endTurn',
+  teamMeldThresholdMet = true,
 ): boolean {
+  if (!teamMeldThresholdMet) return false
   if (difficulty === 'expert' || urgency === 'high') return false
   if (kind === 'add') {
     return Math.random() < (urgency === 'low' ? 0.08 : 0.02)
@@ -338,8 +374,8 @@ export function hasAlternativeWildTarget(
 }
 
 /**
- * Wild on a clean book is almost always wrong for going out.
- * Only allow when there is a concrete strategic reason.
+ * Wild on a clean book costs a 300-point bonus — only allow when dumping/endgame
+ * or completing the team's required dirty book to go out.
  */
 export function justifyDirtyingCleanBook(
   book: Book,
@@ -354,7 +390,14 @@ export function justifyDirtyingCleanBook(
 
   const urgency = meldPressure(pub)
   const heldCards = pub.myHand.length + pub.myFootCount
-  if (heldCards >= 16 && urgency !== 'low') return true
+  const alternative = hasAlternativeWildTarget(
+    pub.myHand,
+    pub.myTeamBooks,
+    book.id,
+    booksWithWildAddedThisTurn,
+  )
+
+  if (alternative) return false
 
   const books = pub.myTeamBooks
   const newSize = book.cards.length + cards.length
@@ -363,42 +406,48 @@ export function justifyDirtyingCleanBook(
     (b) => b.id !== book.id && b.cards.length >= 7 && isCleanBook(b),
   )
   const needsDirtyCompleted = !teamHasCompletedDirtyBook(books)
-  const alternative = hasAlternativeWildTarget(
-    pub.myHand,
-    books,
-    book.id,
-    booksWithWildAddedThisTurn,
-  )
+  const earlyRound = pub.teamScore <= 999 && urgency === 'low'
 
-  // Close a 6-card clean book as dirty when team already has a completed clean
-  // and still needs a completed dirty book to go out.
-  if (
-    book.cards.length === 6 &&
+  if (earlyRound) return false
+
+  const completesForGoOut =
     completes &&
     otherCompletedClean &&
-    needsDirtyCompleted
+    needsDirtyCompleted &&
+    book.cards.length >= 6
+
+  if (completesForGoOut && (urgency !== 'low' || book.cards.length === 6)) {
+    return true
+  }
+
+  if (
+    urgency === 'high' &&
+    heldCards <= 6 &&
+    pub.myHand.length <= 3 &&
+    partnerNearGoOut(pub.otherPlayers, pub.myTeamId, chatMessages, state)
   ) {
     return true
   }
 
-  // Partner is about to go out — dump hand including wild when no dirty book to take it.
-  if (partnerNearGoOut(pub.otherPlayers, pub.myTeamId, chatMessages, state) && !alternative && pub.myHand.length <= 5) {
-    return true
-  }
-
-  // Must shed wild before discard; no dirty book can accept it.
-  if (pub.myHand.length <= 3 && !alternative) {
-    return true
-  }
-
-  // Opponent racing: finish a large clean book as dirty when team has clean done and needs dirty.
   if (
+    urgency === 'high' &&
+    pub.myHand.length <= 2 &&
+    opponentRacing(
+      pub.otherPlayers,
+      pub.myTeamId,
+      chatMessages,
+      state?.playerCount as PlayerCount | undefined,
+    )
+  ) {
+    return true
+  }
+
+  if (
+    urgency === 'high' &&
+    heldCards >= 14 &&
+    pub.stockCount <= 25 &&
     completes &&
-    book.cards.length >= 5 &&
-    otherCompletedClean &&
-    needsDirtyCompleted &&
-    opponentRacing(pub.otherPlayers, pub.myTeamId, chatMessages, state?.playerCount as PlayerCount | undefined) &&
-    !alternative
+    book.cards.length >= 5
   ) {
     return true
   }
@@ -411,8 +460,9 @@ export function pickBestStartWhenUnlocked(
   teamBooks: Book[],
   urgency: 'low' | 'medium' | 'high',
   difficulty: AiDifficulty,
+  isPlayingFoot = false,
 ): string[] | null {
-  const options = getStartOptions(hand, teamBooks)
+  const options = getStartOptions(hand, teamBooks, isPlayingFoot)
   if (options.length === 0) return null
 
   const needsDirty = teamNeedsDirtyBook(teamBooks)
@@ -452,11 +502,12 @@ export function pickBestStartWhenUnlocked(
   const cleanStarts = scored.filter((s) => s.opt.clean)
   const preferCleanOnly =
     cleanStarts.length > 0 &&
-    (difficulty === 'expert' || !needsDirty || urgency === 'low')
+    urgency === 'low' &&
+    !needsDirty &&
+    difficulty === 'expert'
 
   if (preferCleanOnly) {
     if (
-      difficulty === 'normal' &&
       urgency === 'low' &&
       Math.random() < 0.12 &&
       cleanStarts.length > 1
@@ -621,7 +672,14 @@ export function pickLoneWildAdd(
     (book) => !isCleanBook(book) && bookWildCount(book) < 2,
   )
 
-  for (const wild of wilds) {
+  // Prefer placing jokers before deuces.
+  const orderedWilds = [...wilds].sort((a, b) => {
+    if (a.rank === 'Joker' && b.rank !== 'Joker') return -1
+    if (b.rank === 'Joker' && a.rank !== 'Joker') return 1
+    return cardPointValue(b) - cardPointValue(a)
+  })
+
+  for (const wild of orderedWilds) {
     for (const book of dirtyBooks) {
       if (booksWithWildAddedThisTurn.includes(book.id)) continue
       const check = canAddToBook(book, [wild], {
@@ -636,7 +694,41 @@ export function pickLoneWildAdd(
   return null
 }
 
-/** Never discard wilds while naturals remain; among wilds only, shed deuces before jokers. */
+/** Start a dirty book with a wild (especially a joker) instead of discarding it. */
+export function pickWildStartBook(
+  hand: Card[],
+  teamBooks: Book[],
+  isPlayingFoot = false,
+): string[] | null {
+  const wilds = hand.filter((c) => isWildCard(c) && !isRedThree(c))
+  if (wilds.length === 0) return null
+
+  const dirtyStarts = getStartOptions(hand, teamBooks, isPlayingFoot).filter((opt) => !opt.clean)
+  if (dirtyStarts.length === 0) return null
+
+  const usesWild = dirtyStarts.filter((opt) =>
+    opt.cardIds.some((id) => {
+      const card = hand.find((c) => c.id === id)
+      return card && isWildCard(card)
+    }),
+  )
+  const pool = usesWild.length > 0 ? usesWild : dirtyStarts
+
+  pool.sort((a, b) => {
+    const aJoker = a.cardIds.some(
+      (id) => hand.find((c) => c.id === id)?.rank === 'Joker',
+    )
+    const bJoker = b.cardIds.some(
+      (id) => hand.find((c) => c.id === id)?.rank === 'Joker',
+    )
+    if (aJoker !== bJoker) return aJoker ? -1 : 1
+    return b.score - a.score
+  })
+
+  return pool[0]?.cardIds ?? null
+}
+
+/** Never discard jokers while naturals or deuces remain; only shed jokers when holding 3+. */
 export function pickDiscardCard(
   hand: Card[],
   teamBooks: Book[],
@@ -661,8 +753,20 @@ export function pickDiscardCard(
   const teamRanks = new Set(teamBooks.map((b) => b.rank))
 
   const wilds = hand.filter((c) => isWildCard(c) && !isRedThree(c))
+  const jokers = wilds.filter((c) => c.rank === 'Joker')
+  const deuces = wilds.filter((c) => c.rank === '2')
   const naturals = hand.filter((c) => !isWildCard(c) && !isRedThree(c))
-  const candidates = naturals.length > 0 ? naturals : wilds
+
+  let candidates: Card[]
+  if (naturals.length > 0) {
+    candidates = naturals
+  } else if (deuces.length > 0) {
+    candidates = deuces
+  } else if (jokers.length > 0) {
+    candidates = jokers
+  } else {
+    candidates = hand.filter((c) => !isRedThree(c))
+  }
 
   const scored = candidates.map((card) => {
     const penalty = cardPointValue(card)
@@ -674,7 +778,7 @@ export function pickDiscardCard(
       if (sameRank.length >= 3) discardScore -= 30
       if (teamRanks.has(card.rank)) discardScore -= 25
     } else if (card.rank === 'Joker') {
-      discardScore -= 150
+      discardScore -= 500
     } else {
       discardScore -= 100
     }

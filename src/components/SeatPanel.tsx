@@ -111,21 +111,32 @@ export function SeatPanel({
           <div className="seat-chip-meta">
             <span className="seat-chip-role">{roleLabel}</span>
             <span className="seat-chip-piles">
-              <span className="seat-chip-pile" title="Hand cards">
-                <span className="seat-chip-pile-label">H</span>
-                <span className="seat-chip-pile-count">{handCount}</span>
-              </span>
-              <span className="seat-chip-pile" title="Foot cards">
+              {(!player.isPlayingFoot || handCount > 0) && (
+                <span className="seat-chip-pile" title="Hand cards">
+                  <span className="seat-chip-pile-label">H</span>
+                  <span className="seat-chip-pile-count">{handCount}</span>
+                </span>
+              )}
+              <span
+                className={[
+                  'seat-chip-pile',
+                  player.isPlayingFoot ? 'seat-chip-pile-foot-active' : '',
+                  player.footOnHold ? 'seat-chip-pile-foot-hold' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                title={
+                  player.isPlayingFoot
+                    ? 'Playing foot'
+                    : player.footOnHold
+                      ? 'Foot on hold'
+                      : 'Foot cards'
+                }
+              >
                 <span className="seat-chip-pile-label">F</span>
                 <span className="seat-chip-pile-count">{footCount}</span>
               </span>
             </span>
-            {player.isPlayingFoot && (
-              <span className="seat-chip-inline-status seat-chip-inline-foot">Foot</span>
-            )}
-            {player.footOnHold && (
-              <span className="seat-chip-inline-status seat-chip-inline-hold">Hold</span>
-            )}
           </div>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
-import type { GameState } from './game/deal'
+import type { AiDifficulty, GameState } from './game/deal'
 import { startNewGame } from './game/deal'
 import { applyRoundScores, startNextRound } from './game/roundScoring'
 import type { ChatMessage } from './game/chat'
@@ -23,8 +23,8 @@ import {
 } from './components/VoteOverlays'
 import {
   SetupScreen,
-  createDefaultSetupPlayers,
-  type SetupPlayer,
+  buildSetupPlayers,
+  createDefaultHumanPlayers,
 } from './components/SetupScreen'
 import { InstructionsButton, InstructionsOverlay } from './components/InstructionsOverlay'
 import { SoundToggle } from './components/SoundToggle'
@@ -36,9 +36,8 @@ const RESTART_NOTICE_MS = 2400
 function App() {
   const [playerCount, setPlayerCount] = useState<PlayerCount>(4)
   const [humanCount, setHumanCount] = useState(1)
-  const [setupPlayers, setSetupPlayers] = useState<SetupPlayer[]>(() =>
-    createDefaultSetupPlayers(4, 1),
-  )
+  const [humanPlayers, setHumanPlayers] = useState(() => createDefaultHumanPlayers(1))
+  const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>('normal')
   const [game, setGame] = useState<GameState | null>(null)
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [showInstructions, setShowInstructions] = useState(false)
@@ -69,7 +68,25 @@ function App() {
     setPlayerCount(count)
     const humans = Math.max(1, Math.min(humanCount, count))
     setHumanCount(humans)
-    setSetupPlayers(createDefaultSetupPlayers(count, humans))
+    setHumanPlayers((prev) => {
+      if (prev.length < humans) {
+        return [
+          ...prev,
+          ...createDefaultHumanPlayers(humans).slice(prev.length),
+        ]
+      }
+      return prev.slice(0, humans)
+    })
+  }
+
+  function handleHumanCountChange(count: number) {
+    setHumanCount(count)
+    setHumanPlayers((prev) => {
+      if (prev.length < count) {
+        return [...prev, ...createDefaultHumanPlayers(count).slice(prev.length)]
+      }
+      return prev.slice(0, count)
+    })
   }
 
   function handleStart() {
@@ -77,7 +94,12 @@ function App() {
     playSound('threshold')
     setChatMessages([])
     resetSession()
-    setGame(startNewGame(setupPlayers, playerCount))
+    setGame(
+      startNewGame(
+        buildSetupPlayers(humanPlayers, playerCount, aiDifficulty),
+        playerCount,
+      ),
+    )
   }
 
   function handleGameChange(
@@ -106,7 +128,12 @@ function App() {
       playSound('button')
       setChatMessages([])
       resetSession()
-      setGame(startNewGame(setupPlayers, playerCount))
+      setGame(
+        startNewGame(
+          buildSetupPlayers(humanPlayers, playerCount, aiDifficulty),
+          playerCount,
+        ),
+      )
     }, RESTART_NOTICE_MS)
   }
 
@@ -197,9 +224,11 @@ function App() {
         playerCount={playerCount}
         onPlayerCountChange={handlePlayerCountChange}
         humanCount={humanCount}
-        onHumanCountChange={setHumanCount}
-        players={setupPlayers}
-        onPlayersChange={setSetupPlayers}
+        onHumanCountChange={handleHumanCountChange}
+        humanPlayers={humanPlayers}
+        onHumanPlayersChange={setHumanPlayers}
+        aiDifficulty={aiDifficulty}
+        onAiDifficultyChange={setAiDifficulty}
         onStart={handleStart}
       />
     )

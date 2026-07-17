@@ -16,8 +16,10 @@ interface StagingAreaProps {
   onRemove: (id: string) => void
   onClear: () => void
   compact?: boolean
-  /** Slim top ribbon above the hand toolbar in the player dock. */
+  /** Slim inline strip in the south dock hand meta row. */
   ribbon?: boolean
+  /** Sit inside the H/F toolbar row without extra vertical padding. */
+  embedded?: boolean
 }
 
 export function StagingArea({
@@ -27,6 +29,7 @@ export function StagingArea({
   onClear,
   compact = false,
   ribbon = false,
+  embedded = false,
 }: StagingAreaProps) {
   const stagedPoints = stagedBooks.reduce(
     (sum, book) => sum + meldContributionFromCards(book.cards),
@@ -35,6 +38,7 @@ export function StagingArea({
   const met = stagedPoints >= requiredPoints
 
   if (stagedBooks.length === 0) {
+    if (ribbon && embedded) return null
     if (ribbon) {
       return (
         <div className="px-3 py-1 sm:px-4 lg:px-6">
@@ -56,43 +60,45 @@ export function StagingArea({
   }
 
   if (ribbon) {
+    const rowClass = embedded
+      ? 'flex min-w-0 flex-1 flex-wrap items-center justify-center gap-x-2 gap-y-0.5'
+      : 'animate-fade-up flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 px-3 py-1.5 sm:px-4 lg:px-6'
+
     return (
-      <div className="animate-fade-up px-3 py-1.5 sm:px-4 lg:px-6">
-        <div className="flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1">
-          <p
-            className={`font-display text-sm font-semibold tabular-nums ${
-              met ? 'text-accent' : 'text-ink-soft'
-            }`}
-          >
-            {stagedPoints}
-            <span className="text-ink-faint">/{requiredPoints}</span>
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-1.5">
-            {stagedBooks.map((book) => (
-              <div
-                key={book.id}
-                className="flex items-center gap-1 rounded-lg bg-black/25 px-1.5 py-0.5"
+      <div className={rowClass}>
+        <p
+          className={`font-display text-xs font-semibold tabular-nums sm:text-sm ${
+            met ? 'text-accent' : 'text-ink-soft'
+          }`}
+        >
+          {stagedPoints}
+          <span className="text-ink-faint">/{requiredPoints}</span>
+        </p>
+        <div className="flex flex-wrap items-center justify-center gap-1">
+          {stagedBooks.map((book) => (
+            <div
+              key={book.id}
+              className="flex items-center gap-1 rounded-lg bg-black/25 px-1.5 py-0.5"
+            >
+              <CardFan cards={cardsForBookFan(book.cards)} small />
+              <button
+                type="button"
+                onClick={() => onRemove(book.id)}
+                className="ml-0.5 text-[11px] leading-none text-ink-muted hover:text-red-300"
+                aria-label={`Remove staged ${book.rank}s book`}
               >
-                <CardFan cards={cardsForBookFan(book.cards)} small />
-                <button
-                  type="button"
-                  onClick={() => onRemove(book.id)}
-                  className="ml-0.5 text-[11px] leading-none text-ink-muted hover:text-red-300"
-                  aria-label={`Remove staged ${book.rank}s book`}
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-          </div>
-          <button
-            type="button"
-            onClick={onClear}
-            className="text-[10px] text-ink-faint hover:text-ink-soft"
-          >
-            Clear
-          </button>
+                ×
+              </button>
+            </div>
+          ))}
         </div>
+        <button
+          type="button"
+          onClick={onClear}
+          className="text-[10px] text-ink-faint hover:text-ink-soft"
+        >
+          Clear
+        </button>
       </div>
     )
   }

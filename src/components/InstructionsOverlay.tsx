@@ -12,7 +12,7 @@ export function InstructionsOverlay({ open, onClose }: InstructionsOverlayProps)
       onClick={onClose}
     >
       <div
-        className="animate-fade-up max-h-[85vh] max-w-lg overflow-y-auto rounded-2xl bg-felt-dark p-6 shadow-2xl"
+        className="theme-scroll animate-fade-up max-h-[85vh] max-w-lg overflow-y-auto rounded-2xl bg-felt-dark p-6 shadow-2xl"
         style={{ boxShadow: '0 0 0 1px rgba(255,255,255,0.08), 0 24px 64px rgba(0,0,0,0.5)' }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -86,10 +86,10 @@ export function InstructionsOverlay({ open, onClose }: InstructionsOverlayProps)
           <section>
             <h3 className="mb-1 font-semibold text-ink">Table chat</h3>
             <p>
-              Use <strong>Table chat</strong> on your <strong>last foot card</strong> when books
-              are set to signal <strong>I can go out!</strong> Only your partner can reply with
-              Yes or No. If they say no, keep your last foot card and end your turn — go out only
-              after they approve.
+              Use <strong>Table chat</strong> while playing your <strong>foot</strong> with books
+              set to ask <strong>I can go out!</strong> Your partner replies Yes or No with
+              advice — especially if they still hold high-value cards or red threes. You may still
+              go out if all requirements are met and you think it is the right move.
             </p>
           </section>
 

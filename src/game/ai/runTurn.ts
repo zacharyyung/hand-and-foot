@@ -11,19 +11,17 @@ import {
 } from '../actions'
 import type { GameState } from '../deal'
 import type { ChatMessage } from '../chat'
-import {
-  hasPartnerGoOutClearance,
-  isAwaitingPartnerGoOutClearance,
-} from '../chat'
 import { findAddToBookActions } from './decisions'
 import { buildAiPublicState } from './publicState'
 import { maybeAiChatSignal } from './chatSignals'
 import {
+  initialMeldUrgency,
   meldPressure,
   pickBestAddToBook,
   pickBestStartWhenUnlocked,
   pickDiscardCard,
   pickLoneWildAdd,
+  pickWildStartBook,
   planInitialMeld,
   shouldRandomlySkipMeld,
 } from './strategy'
@@ -64,8 +62,7 @@ export function runAiTurn(
     if (
       pub.isPlayingFoot &&
       pub.myHand.length === 1 &&
-      canTeamGoOut(team.books, team.meldThresholdMet) &&
-      !hasPartnerGoOutClearance(current, current.currentPlayerIndex, messages)
+      canTeamGoOut(team.books, team.meldThresholdMet)
     ) {
       break
     }
@@ -73,13 +70,26 @@ export function runAiTurn(
     let played = false
 
     if (!pub.teamMeldThresholdMet) {
-      const plan = planInitialMeld(
+      const required = Math.max(0, pub.requiredMeld - pub.meldPointsThisTurn)
+      const openUrgency = initialMeldUrgency(pub.requiredMeld, urgency)
+      let plan = planInitialMeld(
         pub.myHand,
         pub.myTeamBooks,
-        Math.max(0, pub.requiredMeld - pub.meldPointsThisTurn),
-        urgency,
+        required,
+        openUrgency,
         difficulty,
+        pub.isPlayingFoot,
       )
+      if (!plan && openUrgency !== 'high') {
+        plan = planInitialMeld(
+          pub.myHand,
+          pub.myTeamBooks,
+          required,
+          'high',
+          difficulty,
+          pub.isPlayingFoot,
+        )
+      }
 
       if (plan && plan.length > 0) {
         const result = commitStagedMelds(current, plan)
@@ -112,7 +122,7 @@ export function runAiTurn(
         if (!bestAdd) break
 
         triedAdds.add(`${bestAdd.bookId}:${bestAdd.cardIds.join(',')}`)
-        if (shouldRandomlySkipMeld(difficulty, urgency, 'add')) continue
+        if (shouldRandomlySkipMeld(difficulty, urgency, 'add', pub.teamMeldThresholdMet)) continue
 
         const result = addToBook(current, bestAdd.bookId, bestAdd.cardIds)
         if (!result.error) {
@@ -128,6 +138,7 @@ export function runAiTurn(
           refreshed.myTeamBooks,
           urgency,
           difficulty,
+          refreshed.isPlayingFoot,
         )
         if (startIds) {
           const result = startBook(current, startIds)
@@ -141,7 +152,7 @@ export function runAiTurn(
 
     if (!played) break
 
-    if (shouldRandomlySkipMeld(difficulty, urgency, 'endTurn')) break
+    if (shouldRandomlySkipMeld(difficulty, urgency, 'endTurn', pub.teamMeldThresholdMet)) break
   }
 
   if (current.turnPhase === 'play') {
@@ -149,16 +160,6 @@ export function runAiTurn(
     if (goOutSignal && !chatMessage) {
       chatMessage = goOutSignal
       messages = [...messages, goOutSignal]
-    }
-
-    if (
-      isAwaitingPartnerGoOutClearance(
-        current,
-        current.currentPlayerIndex,
-        messages,
-      )
-    ) {
-      return { state: current, chatMessage }
     }
 
     const pub = buildAiPublicState(current, current.currentPlayerIndex)
@@ -173,6 +174,21 @@ export function runAiTurn(
       const wildResult = addToBook(current, loneWild.bookId, [loneWild.cardId])
       if (!wildResult.error) {
         current = wildResult.state
+      }
+    } else if (!goingOut) {
+      const refreshed = buildAiPublicState(current, current.currentPlayerIndex)
+      if (refreshed.teamMeldThresholdMet) {
+        const wildStart = pickWildStartBook(
+          refreshed.myHand,
+          refreshed.myTeamBooks,
+          refreshed.isPlayingFoot,
+        )
+        if (wildStart) {
+          const startResult = startBook(current, wildStart)
+          if (!startResult.error) {
+            current = startResult.state
+          }
+        }
       }
     }
 
