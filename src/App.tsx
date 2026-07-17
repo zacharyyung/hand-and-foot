@@ -67,7 +67,7 @@ function App() {
 
   function handlePlayerCountChange(count: PlayerCount) {
     setPlayerCount(count)
-    const humans = Math.min(humanCount, count)
+    const humans = Math.max(1, Math.min(humanCount, count))
     setHumanCount(humans)
     setSetupPlayers(createDefaultSetupPlayers(count, humans))
   }

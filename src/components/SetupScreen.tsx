@@ -98,6 +98,7 @@ export function SetupScreen({
   function toggleHuman(index: number) {
     playSound('button')
     const isHuman = !players[index].isHuman
+    if (!isHuman && players.filter((p) => p.isHuman).length <= 1) return
     updatePlayer(index, {
       isHuman,
       name: isHuman ? '' : `AI ${index + 1}`,
@@ -110,9 +111,11 @@ export function SetupScreen({
     onHumanCountChange(newHumanCount)
   }
 
-  const humansValid = players
-    .filter((p) => p.isHuman)
-    .every((p) => p.name.trim().length > 0 && p.age > 0)
+  const humansValid =
+    players.some((p) => p.isHuman) &&
+    players
+      .filter((p) => p.isHuman)
+      .every((p) => p.name.trim().length > 0 && p.age > 0)
   const canStart = humansValid
 
   return (
@@ -167,7 +170,7 @@ export function SetupScreen({
           Humans at the table
         </label>
         <div className="flex flex-wrap justify-center gap-2">
-          {Array.from({ length: playerCount + 1 }, (_, i) => i).map((count) => (
+          {Array.from({ length: playerCount }, (_, i) => i + 1).map((count) => (
             <button
               key={count}
               type="button"
