@@ -23,6 +23,7 @@ import {
   pickBestAddToBook,
   pickBestStartWhenUnlocked,
   pickDiscardCard,
+  pickLoneWildAdd,
   planInitialMeld,
 } from './strategy'
 
@@ -69,7 +70,7 @@ export function runAiTurn(
     const team = getTeam(current, pub.myTeamId)
     if (
       pub.isPlayingFoot &&
-      pub.myHand.length <= 2 &&
+      pub.myHand.length === 1 &&
       canTeamGoOut(team.books, team.meldThresholdMet) &&
       !hasPartnerGoOutClearance(current, current.currentPlayerIndex, messages)
     ) {
@@ -173,9 +174,22 @@ export function runAiTurn(
     const pub = buildAiPublicState(current, current.currentPlayerIndex)
     const goingOut = canPlayerGoOut(current, messages)
 
-    const discardId = pickDiscardCard(
+    const loneWild = pickLoneWildAdd(
       pub.myHand,
       pub.myTeamBooks,
+      current.booksWithWildAddedThisTurn,
+    )
+    if (loneWild && !goingOut) {
+      const wildResult = addToBook(current, loneWild.bookId, [loneWild.cardId])
+      if (!wildResult.error) {
+        current = wildResult.state
+      }
+    }
+
+    const discardPub = buildAiPublicState(current, current.currentPlayerIndex)
+    const discardId = pickDiscardCard(
+      discardPub.myHand,
+      discardPub.myTeamBooks,
       difficulty,
       goingOut,
     )

@@ -107,34 +107,36 @@ export function findAddToBookActions(
 
 export function pickDiscardCard(
   hand: Card[],
-  difficulty: 'normal' | 'expert',
+  _teamBooks: Book[],
+  _difficulty: 'normal' | 'expert',
   goingOut: boolean,
 ): string {
   if (hand.length === 0) return ''
-  if (goingOut) return hand[0].id
+  if (goingOut) {
+    const naturals = hand.filter((c) => !isWildCard(c) && !isRedThree(c))
+    if (naturals.length > 0) {
+      return naturals.sort((a, b) => cardPointValue(b) - cardPointValue(a))[0].id
+    }
+    const deuces = hand.filter((c) => c.rank === '2')
+    if (deuces.length > 0) return deuces[0].id
+    return hand[0].id
+  }
 
   const redThrees = hand.filter(isRedThree)
   if (redThrees.length > 0) return redThrees[0].id
 
-  const ranked = hand
-    .map((card) => ({
-      card,
-      penalty: isRedThree(card) ? 300 : cardPointValue(card),
-      keep: isWildCard(card),
-    }))
-    .sort((a, b) => {
-      if (a.keep !== b.keep) return a.keep ? 1 : -1
-      return b.penalty - a.penalty
-    })
+  const wilds = hand.filter((c) => isWildCard(c) && !isRedThree(c))
+  const naturals = hand.filter((c) => !isWildCard(c) && !isRedThree(c))
 
-  if (difficulty === 'normal' && Math.random() < 0.2) {
-    const nonWild = hand.filter((c) => !isWildCard(c) && !isRedThree(c))
-    if (nonWild.length > 0) {
-      return nonWild[Math.floor(Math.random() * nonWild.length)].id
-    }
+  if (naturals.length > 0) {
+    return naturals.sort((a, b) => cardPointValue(b) - cardPointValue(a))[0].id
   }
 
-  return ranked[0].card.id
+  if (wilds.length > 0) {
+    return wilds.sort((a, b) => cardPointValue(a) - cardPointValue(b))[0].id
+  }
+
+  return hand[0].id
 }
 
 export function tableRanksSeen(books: Book[]): Set<Rank> {

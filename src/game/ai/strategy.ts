@@ -537,6 +537,35 @@ export function pickBestAddToBook(
   return pool[0].action
 }
 
+/** Place a lone wild on a dirty book before the AI is forced to discard it. */
+export function pickLoneWildAdd(
+  hand: Card[],
+  teamBooks: Book[],
+  booksWithWildAddedThisTurn: string[],
+): { bookId: string; cardId: string } | null {
+  const wilds = hand.filter((c) => isWildCard(c) && !isRedThree(c))
+  if (wilds.length === 0) return null
+
+  const dirtyBooks = teamBooks.filter(
+    (book) => !isCleanBook(book) && bookWildCount(book) < 2,
+  )
+
+  for (const wild of wilds) {
+    for (const book of dirtyBooks) {
+      if (booksWithWildAddedThisTurn.includes(book.id)) continue
+      const check = canAddToBook(book, [wild], {
+        wildAlreadyAddedThisTurn: false,
+      })
+      if (check.ok) {
+        return { bookId: book.id, cardId: wild.id }
+      }
+    }
+  }
+
+  return null
+}
+
+/** Never discard wilds while naturals remain; among wilds only, shed deuces before jokers. */
 export function pickDiscardCard(
   hand: Card[],
   teamBooks: Book[],
@@ -544,7 +573,15 @@ export function pickDiscardCard(
   goingOut: boolean,
 ): string {
   if (hand.length === 0) return ''
-  if (goingOut) return hand[0].id
+  if (goingOut) {
+    const naturals = hand.filter((c) => !isWildCard(c) && !isRedThree(c))
+    if (naturals.length > 0) {
+      return naturals.sort((a, b) => cardPointValue(b) - cardPointValue(a))[0].id
+    }
+    const deuces = hand.filter((c) => c.rank === '2')
+    if (deuces.length > 0) return deuces[0].id
+    return hand[0].id
+  }
 
   const redThrees = hand.filter(isRedThree)
   if (redThrees.length > 0) return redThrees[0].id
@@ -552,21 +589,26 @@ export function pickDiscardCard(
   const rankGroups = groupByRank(hand)
   const teamRanks = new Set(teamBooks.map((b) => b.rank))
 
-  const candidates = hand.filter((c) => !isRedThree(c))
+  const wilds = hand.filter((c) => isWildCard(c) && !isRedThree(c))
+  const naturals = hand.filter((c) => !isWildCard(c) && !isRedThree(c))
+  const candidates = naturals.length > 0 ? naturals : wilds
 
   const scored = candidates.map((card) => {
     const penalty = cardPointValue(card)
     let discardScore = penalty
 
-    if (isWildCard(card)) discardScore -= 80
-    else {
+    if (!isWildCard(card)) {
       const sameRank = rankGroups.get(card.rank) ?? []
       if (sameRank.length >= 2) discardScore -= 40
       if (sameRank.length >= 3) discardScore -= 30
       if (teamRanks.has(card.rank)) discardScore -= 25
+    } else if (card.rank === 'Joker') {
+      discardScore -= 150
+    } else {
+      discardScore -= 100
     }
 
-    if (difficulty === 'normal' && Math.random() < 0.15) {
+    if (difficulty === 'normal' && !isWildCard(card) && Math.random() < 0.15) {
       discardScore += Math.random() * 12
     }
 
