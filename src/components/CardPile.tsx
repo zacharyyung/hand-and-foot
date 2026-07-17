@@ -1,6 +1,7 @@
 import type { Card as CardType } from '../game/cards'
 import type { CardMotionKind } from '../game/cardMotion'
 import type { FlightAnchor } from '../game/flightAnchors'
+import { stackRotationDeg } from './cardFanLayout'
 import { Card } from './Card'
 import { AnimatedCardShell } from './AnimatedCardShell'
 
@@ -47,28 +48,32 @@ export function CardPile({
 
   const pile = (
     <div
-      className={`relative transition-transform duration-200 ease-settle ${
+      className={`relative transition-transform duration-[220ms] ease-snappy ${
         highlight ? 'scale-[1.04]' : ''
-      } ${interactive ? 'cursor-pointer hover:-translate-y-0.5' : ''}`}
+      } ${interactive ? 'cursor-pointer hover:-translate-y-0.5 hover:z-[60]' : ''}`}
       {...(flightAnchor ? { 'data-flight-anchor': flightAnchor } : {})}
     >
       {/* Depth layers under the top card */}
       {depth > 1 &&
-        Array.from({ length: depth - 1 }).map((_, i) => (
+        Array.from({ length: depth - 1 }).map((_, i) => {
+          const tilt = stackRotationDeg(flightAnchor ?? 'pile', i)
+          return (
           <div
             key={i}
-            className="absolute"
+            className="absolute transition-transform duration-[220ms] ease-snappy"
             style={{
               left: (i + 1) * 1.5,
               top: (i + 1) * 1.5,
               zIndex: i,
               opacity: 0.55 + i * 0.1,
+              transform: `rotate(${tilt}deg)`,
+              transformOrigin: 'center center',
             }}
             aria-hidden
           >
             <Card faceDown small={small} />
           </div>
-        ))}
+        )})}
 
       {displayTopCard ? (
         <div

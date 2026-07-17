@@ -35,7 +35,9 @@
   --wild-soft: #8a3d5f;
 
   --ease-settle: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-snappy: cubic-bezier(0.2, 0.8, 0.2, 1);
   --ease-press: cubic-bezier(0.4, 0, 0.2, 1);
+  --card-motion-ms: 220ms;
 
   --space-1: 0.25rem;
   --space-2: 0.5rem;
@@ -490,7 +492,7 @@
     position: relative;
     user-select: none;
     border-radius: 0.55rem;
-    transition: transform 200ms var(--ease-settle);
+    transition: transform var(--card-motion-ms) var(--ease-snappy);
     box-shadow:
       0 1px 2px rgba(0, 0, 0, 0.14),
       0 3px 8px rgba(0, 0, 0, 0.16),
@@ -918,6 +920,23 @@
 
   .hand-card-at-rest .playing-card {
     transition: none;
+  }
+
+  .hand-card-slot {
+    will-change: transform, opacity;
+    backface-visibility: hidden;
+    transform: translateZ(0);
+  }
+
+  .hand-card-slot--in-flight {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .hand-card-slot--visible {
+    visibility: visible;
+    opacity: 1;
   }
 
   .book-card-at-rest .playing-card {

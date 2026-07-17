@@ -40,12 +40,12 @@ export function CardFan({
       aria-label={`${cards.length} cards`}
     >
       {cards.map((card, index) => {
-        const rot = layout.rotation(index)
+        const rot = layout.rotation(index, card.id)
         const hidden = isCardHidden?.(card.id)
         return (
           <div
             key={card.id}
-            className="absolute top-0"
+            className="absolute top-0 transition-transform duration-[220ms] ease-snappy"
             style={{
               left: index * layout.step,
               zIndex: index,

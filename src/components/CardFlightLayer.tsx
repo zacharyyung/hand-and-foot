@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import type { ActiveCardFlight } from '../game/cardFlight'
 import { getAnchorPoint, prefersReducedCardMotion } from '../game/flightAnchors'
 import type { AnchorPoint } from '../game/flightAnchors'
+import { bookFanFlightCenter } from './cardFanLayout'
 import { Card } from './Card'
 import { CardFan } from './CardFan'
 
@@ -11,8 +12,8 @@ interface CardFlightLayerProps {
   onSettle: (flightId: string) => void
 }
 
-/** Decelerate only — no overshoot that reads as a landing bounce. */
-const FLIGHT_EASING = 'cubic-bezier(0.33, 0, 0.2, 1)'
+/** Snappy deceleration — fast start, clean stop, no floaty glide. */
+const FLIGHT_EASING = 'cubic-bezier(0.2, 0.8, 0.2, 1)'
 
 const ROTATION_LEAD: Record<ActiveCardFlight['kind'], number> = {
   draw: -0.6,
@@ -54,6 +55,33 @@ function waitForAnchors(
 
 function flightTransform(x: number, y: number, rotationDeg: number): string {
   return `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%) rotate(${rotationDeg}deg)`
+}
+
+function resolveFlightTarget(
+  flight: ActiveCardFlight,
+  anchor: AnchorPoint,
+): AnchorPoint {
+  if (typeof flight.to !== 'string' || !flight.to.startsWith('book-')) {
+    return anchor
+  }
+
+  const totalCards = flight.bookLayout?.totalCards ?? flight.cards.length
+  const incomingCards = flight.bookLayout?.incomingCards ?? flight.cards.length
+  const stacked =
+    flight.bookLayout?.stacked ??
+    (totalCards >= 7 && incomingCards >= totalCards)
+
+  const el = document.querySelector(`[data-flight-anchor="${flight.to}"]`)
+  const container = el?.parentElement
+  if (!container) return anchor
+
+  const rect = container.getBoundingClientRect()
+  const target = bookFanFlightCenter(totalCards, incomingCards, { small: true, stacked })
+  return {
+    x: rect.left + target.x,
+    y: rect.top + target.y,
+    rotation: flight.cards.length > 1 ? 0 : target.rotation,
+  }
 }
 
 function FlyingCardContent({ flight }: { flight: ActiveCardFlight }) {
@@ -101,15 +129,22 @@ function FlyingCardStack({
     const finishFlight = () => {
       if (cancelled || finished.current) return
       finished.current = true
-      // Leave the element exactly where the transition ended — no transform snap.
+      // Reveal destination slots before hiding the flyer to avoid a blank frame.
       onSettleRef.current()
+      requestAnimationFrame(() => {
+        if (cancelled) return
+        const el = ref.current
+        if (el) el.style.opacity = '0'
+      })
     }
 
     const runFlight = (from: AnchorPoint, to: AnchorPoint) => {
       const el = ref.current
       if (!el || cancelled) return
 
-      const endRot = to.rotation ?? 0
+      const resolvedTo = resolveFlightTarget(flight, to)
+      const endRot =
+        flight.kind === 'place' && flight.cards.length > 1 ? 0 : (resolvedTo.rotation ?? 0)
       const startRot = endRot + rotLead
 
       transformEndHandler = (event: TransitionEvent) => {
@@ -131,7 +166,7 @@ function FlyingCardStack({
           node.addEventListener('transitionend', transformEndHandler)
           node.style.transition = `transform ${flight.duration}ms ${FLIGHT_EASING}`
           node.style.transitionDelay = `${flight.delay}ms`
-          node.style.transform = flightTransform(to.x, to.y, endRot)
+          node.style.transform = flightTransform(resolvedTo.x, resolvedTo.y, endRot)
         })
       })
 
@@ -181,7 +216,7 @@ function FlyingCardStack({
   return (
     <div
       ref={ref}
-      className="card-flight-piece"
+      className="card-flight-piece will-change-transform"
       style={{ opacity: visible ? 1 : 0 }}
       aria-hidden
     >

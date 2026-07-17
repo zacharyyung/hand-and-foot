@@ -18,6 +18,11 @@ export interface CardFlightRequest {
   to: FlightAnchor
   kind: CardMotionKind
   faceDown?: boolean
+  bookLayout?: {
+    totalCards: number
+    incomingCards: number
+    stacked?: boolean
+  }
 }
 
 export interface ActiveCardFlight extends CardFlightRequest {
@@ -28,9 +33,9 @@ export interface ActiveCardFlight extends CardFlightRequest {
 }
 
 const FLIGHT_DURATION: Record<CardMotionKind, number> = {
-  draw: 240,
-  place: 300,
-  discard: 280,
+  draw: 220,
+  place: 250,
+  discard: 220,
 }
 
 /** Hand fan spread — keep in sync with draw flight duration. */

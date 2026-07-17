@@ -3,9 +3,9 @@ import { useCallback, useRef, useState } from 'react'
 export type CardMotionKind = 'draw' | 'place' | 'discard'
 
 export const CARD_MOTION_DURATION: Record<CardMotionKind, number> = {
-  draw: 320,
-  place: 380,
-  discard: 350,
+  draw: 220,
+  place: 240,
+  discard: 220,
 }
 
 /** Manual settle cues (e.g. hand reorder) — table flights use CardFlightLayer. */

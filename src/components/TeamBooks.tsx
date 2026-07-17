@@ -68,8 +68,8 @@ function BookDisplay({
   const wilds = bookWildCount(book)
   const fanCards = cardsForBookFan(book.cards)
   const layout = cardFanLayout(fanCards.length, { small: true, stacked: completed })
-  const landingIndex = Math.max(0, fanCards.length - 1)
-  const landing = layout.slotCenter(landingIndex)
+  const landingIndex = Math.max(0, Math.floor((fanCards.length - 1) / 2))
+  const landing = { x: layout.fanWidth / 2, y: layout.cardHeight / 2 }
 
   return (
     <div
