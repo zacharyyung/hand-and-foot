@@ -13,7 +13,7 @@ import { meldContributionFromCards, meldThreshold } from './scoring'
 import { applyRoundScores } from './roundScoring'
 import { nextSeatCounterClockwise, type PlayerCount } from './teams'
 import type { ChatMessage } from './chat'
-import { hasPartnerGoOutClearance } from './chat'
+import { getPartnerGoOutBlockReason, hasPartnerGoOutClearance } from './chat'
 
 export function getActiveCards(player: PlayerState): Card[] {
   return player.isPlayingFoot ? player.hand : player.hand
@@ -442,21 +442,18 @@ export function discardCard(
           'Cannot go out — need 1 completed clean book and 1 completed dirty book (7+ each).',
       }
     }
-    if (
-      !player.profile.isHuman &&
-      !hasPartnerGoOutClearance(state, playerIndex, chatMessages)
-    ) {
+    if (!hasPartnerGoOutClearance(state, playerIndex, chatMessages)) {
       return {
         state,
-        error: 'Your partner has not cleared you to go out — wait for table chat.',
+        error:
+          getPartnerGoOutBlockReason(state, playerIndex, chatMessages) ??
+          'Your partner has not cleared you to go out — wait for table chat.',
       }
     }
   }
 
   const willBeEmpty = player.hand.length === 1
-  const partnerCleared =
-    player.profile.isHuman ||
-    hasPartnerGoOutClearance(state, playerIndex, chatMessages)
+  const partnerCleared = hasPartnerGoOutClearance(state, playerIndex, chatMessages)
   const goingOut =
     willBeEmpty &&
     player.isPlayingFoot &&
@@ -505,14 +502,13 @@ export function canGoOut(state: GameState): boolean {
   return canTeamGoOut(team.books, team.meldThresholdMet)
 }
 
-/** Whether the active player may go out, including partner chat clearance for AI. */
+/** Whether the active player may go out, including partner chat clearance. */
 export function canPlayerGoOut(
   state: GameState,
   chatMessages: ChatMessage[] = [],
 ): boolean {
   if (!canGoOut(state)) return false
   const player = getCurrentPlayer(state)
-  if (player.profile.isHuman) return true
   return hasPartnerGoOutClearance(state, player.profile.seatIndex, chatMessages)
 }
 

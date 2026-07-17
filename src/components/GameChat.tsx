@@ -4,7 +4,6 @@ import type { ChatMessage } from '../game/chat'
 import {
   createApproveGoOutSignal,
   createDenyGoOutSignal,
-  createPartnerReplySignal,
   createReadyGoOutSignal,
   pendingPartnerGoOutRequest,
   READY_GO_OUT_SIGNAL_TEXT,
@@ -27,7 +26,6 @@ export function GameChat({
   onSend,
 }: GameChatProps) {
   const [open, setOpen] = useState(false)
-  const [customReply, setCustomReply] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
 
   const viewer = game.players[viewerSeat]
@@ -37,10 +35,11 @@ export function GameChat({
   const isMyTurn = game.currentPlayerIndex === viewerSeat
 
   const partnerRequest = pendingPartnerGoOutRequest(messages, viewerSeat, partnerIdx)
-  const waitingForAiReview =
+  const waitingForPartnerReply =
     viewerIsHuman &&
-    !partner.profile.isHuman &&
     awaitingPartnerGoOutResponse(messages, viewerSeat, partnerIdx)
+  const waitingForAiReview =
+    waitingForPartnerReply && !partner.profile.isHuman
 
   useEffect(() => {
     const el = listRef.current
@@ -48,14 +47,10 @@ export function GameChat({
   }, [messages, open])
 
   useEffect(() => {
-    if ((partnerRequest || waitingForAiReview) && viewerIsHuman) {
+    if ((partnerRequest || waitingForPartnerReply) && viewerIsHuman) {
       setOpen(true)
     }
-  }, [partnerRequest, waitingForAiReview, viewerIsHuman])
-
-  useEffect(() => {
-    if (!partnerRequest) setCustomReply('')
-  }, [partnerRequest])
+  }, [partnerRequest, waitingForPartnerReply, viewerIsHuman])
 
   function sendReadyGoOut() {
     if (!viewerIsHuman || !isMyTurn) return
@@ -85,22 +80,6 @@ export function GameChat({
             viewer.profile.avatar,
           ),
     )
-    setCustomReply('')
-  }
-
-  function sendCustomPartnerReply() {
-    const text = customReply.trim()
-    if (!viewerIsHuman || !partnerRequest || text.length === 0) return
-    playSound('chat')
-    onSend(
-      createPartnerReplySignal(
-        viewer.profile.seatIndex,
-        viewer.profile.name,
-        viewer.profile.avatar,
-        text,
-      ),
-    )
-    setCustomReply('')
   }
 
   return (
@@ -112,7 +91,7 @@ export function GameChat({
           setOpen((v) => !v)
         }}
         className={`corner-control corner-control-bl table-chat-chip ${
-          partnerRequest || waitingForAiReview ? 'table-chat-chip-alert' : ''
+          partnerRequest || waitingForPartnerReply ? 'table-chat-chip-alert' : ''
         }`}
         aria-expanded={open}
         aria-haspopup="dialog"
@@ -123,12 +102,12 @@ export function GameChat({
             !
           </span>
         )}
-        {!partnerRequest && waitingForAiReview && (
+        {!partnerRequest && waitingForPartnerReply && (
           <span className="table-chat-chip-badge table-chat-chip-badge-alert" aria-hidden>
             …
           </span>
         )}
-        {!partnerRequest && !waitingForAiReview && messages.length > 0 && (
+        {!partnerRequest && !waitingForPartnerReply && messages.length > 0 && (
           <span className="table-chat-chip-badge" aria-label={`${messages.length} messages`}>
             {messages.length}
           </span>
@@ -152,8 +131,8 @@ export function GameChat({
               <div>
                 <p className="font-display text-sm font-semibold text-ink">Table chat</p>
                 <p className="mt-0.5 text-[10px] leading-relaxed text-ink-muted">
-                  Say you can go out on your turn only. Your partner can reply
-                  anytime — even when it is not their turn.
+                  On your turn, signal when you can go out. Only your partner can
+                  reply yes or no — other players cannot join this conversation.
                 </p>
               </div>
               <button
@@ -171,7 +150,18 @@ export function GameChat({
                   Waiting for {partner.profile.avatar} {partner.profile.name}…
                 </p>
                 <p className="mt-1 text-[10px] text-ink-muted">
-                  Your partner is reviewing whether you should go out.
+                  Your partner is deciding whether you should go out.
+                </p>
+              </div>
+            )}
+
+            {waitingForPartnerReply && partner.profile.isHuman && (
+              <div className="table-chat-partner-prompt">
+                <p className="text-[11px] font-semibold text-ink">
+                  Waiting for {partner.profile.avatar} {partner.profile.name}…
+                </p>
+                <p className="mt-1 text-[10px] text-ink-muted">
+                  You asked to go out — discard only after your partner says yes.
                 </p>
               </div>
             )}
@@ -182,7 +172,7 @@ export function GameChat({
                   {partner.profile.avatar} {partner.profile.name} says they can go out!
                 </p>
                 <p className="mt-1 text-[10px] text-ink-muted">
-                  Only you can reply — even when it is not your turn.
+                  Only you can reply — yes lets them go out, no tells them to keep playing.
                 </p>
                 <div className="mt-2 flex gap-2">
                   <button
@@ -200,35 +190,14 @@ export function GameChat({
                     No
                   </button>
                 </div>
-                <div className="mt-2 flex gap-1.5">
-                  <input
-                    type="text"
-                    value={customReply}
-                    onChange={(e) => setCustomReply(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') sendCustomPartnerReply()
-                    }}
-                    placeholder="Custom reply…"
-                    className="min-w-0 flex-1 rounded-lg border border-white/12 bg-black/30 px-2.5 py-2 text-[11px] text-ink placeholder:text-ink-faint"
-                    aria-label="Custom partner reply"
-                  />
-                  <button
-                    type="button"
-                    onClick={sendCustomPartnerReply}
-                    disabled={customReply.trim().length === 0}
-                    className="btn-secondary shrink-0 px-3 py-2 text-[11px] disabled:opacity-35"
-                  >
-                    Send
-                  </button>
-                </div>
               </div>
             )}
 
             <div ref={listRef} className="table-chat-messages">
               {messages.length === 0 ? (
                 <p className="py-4 text-center text-[11px] leading-relaxed text-ink-faint">
-                  On your turn, signal when you can go out. Your partner can reply
-                  with Yes, No, or a custom message.
+                  On your turn, tap &ldquo;I can go out!&rdquo; when your books are set.
+                  Your partner replies with Yes or No.
                 </p>
               ) : (
                 messages.map((msg) => {

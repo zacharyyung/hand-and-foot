@@ -3,7 +3,7 @@ import type { GameState } from './game/deal'
 import { startNewGame } from './game/deal'
 import { applyRoundScores, startNextRound } from './game/roundScoring'
 import type { ChatMessage } from './game/chat'
-import { canInitiateGoOutSignal } from './game/chat'
+import { isAllowedChatMessage } from './game/chat'
 import { loadMutePreference, playSound, unlockAudio } from './game/audio'
 import { loadAutoSortPreference, saveAutoSortPreference } from './game/preferences'
 import type { UndoVoteRequest } from './game/votes'
@@ -262,13 +262,7 @@ function App() {
         chatMessages={chatMessages}
         autoSort={autoSort}
         onChatSend={(message) => {
-          if (
-            message.type === 'ready_go_out' &&
-            game &&
-            !canInitiateGoOutSignal(game, message.senderSeatIndex)
-          ) {
-            return
-          }
+          if (!game || !isAllowedChatMessage(game, message, chatMessages)) return
           playSound('chat')
           setChatMessages((prev) => [...prev, message])
         }}

@@ -87,8 +87,9 @@ export function InstructionsOverlay({ open, onClose }: InstructionsOverlayProps)
             <h3 className="mb-1 font-semibold text-ink">Table chat</h3>
             <p>
               Use <strong>Table chat</strong> on your turn to signal{' '}
-              <strong>I can go out!</strong> Your partner can reply anytime with
-              Yes, No, or a custom message.
+              <strong>I can go out!</strong> Only your partner can reply with Yes or
+              No — other players cannot join that conversation. Go out only after
+              your partner approves.
             </p>
           </section>
 

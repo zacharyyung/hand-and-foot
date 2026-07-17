@@ -3,8 +3,8 @@ import type { GameState } from '../game/deal'
 import { playerFootCount, playerHandCount } from '../game/deal'
 import {
   addToBook,
-  canGoOut,
   canGoToFoot,
+  canPlayerGoOut,
   commitStagedMelds,
   discardCard,
   drawCards,
@@ -37,7 +37,7 @@ import { GameChat } from './GameChat'
 import { GameMessageBar } from './GameMessageBar'
 import { TEAM_COLORS, partnerSeat, type PlayerCount } from '../game/teams'
 import type { ChatMessage } from '../game/chat'
-import { pendingPartnerGoOutRequest } from '../game/chat'
+import { getPartnerGoOutBlockReason, pendingPartnerGoOutRequest } from '../game/chat'
 import { maybeAiPartnerGoOutResponse } from '../game/ai/chatSignals'
 
 interface GameViewProps {
@@ -193,10 +193,22 @@ export function GameView({
     selectedIds,
     team.books,
   ])
-  const goingOut = isMyTurn && canGoOut(game)
+  const goingOut = isMyTurn && canPlayerGoOut(game, chatMessages)
   const lastFootCard = isMyTurn && isLastFootCard(viewer) && game.turnPhase === 'play'
-  const goOutBlockReason =
-    lastFootCard && !goingOut ? getGoOutBlockReason(team.books, team.meldThresholdMet) : null
+  const goOutBlockReason = useMemo(() => {
+    if (!lastFootCard || goingOut) return null
+    const bookReason = getGoOutBlockReason(team.books, team.meldThresholdMet)
+    if (bookReason) return bookReason
+    return getPartnerGoOutBlockReason(game, viewerSeat, chatMessages)
+  }, [
+    lastFootCard,
+    goingOut,
+    team.books,
+    team.meldThresholdMet,
+    game,
+    viewerSeat,
+    chatMessages,
+  ])
   const playerHint = error ? null : wildBlockReason ?? goOutBlockReason
   const mustDiscardLastFoot = lastFootCard
   const goToFootDiscard =

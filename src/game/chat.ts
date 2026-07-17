@@ -32,6 +32,38 @@ export function canInitiateGoOutSignal(state: GameState, seatIndex: number): boo
   return state.phase === 'playing' && state.currentPlayerIndex === seatIndex
 }
 
+/** Only the partner of a pending go-out request may reply yes/no. */
+export function canRespondToPartnerGoOutRequest(
+  messages: ChatMessage[],
+  responderSeat: number,
+  playerCount: PlayerCount,
+): boolean {
+  const partnerIdx = partnerSeat(responderSeat, playerCount)
+  return pendingPartnerGoOutRequest(messages, responderSeat, partnerIdx) !== null
+}
+
+export function isAllowedChatMessage(
+  state: GameState,
+  message: ChatMessage,
+  existingMessages: ChatMessage[],
+): boolean {
+  if (state.phase !== 'playing') return false
+
+  if (message.type === 'ready_go_out') {
+    return canInitiateGoOutSignal(state, message.senderSeatIndex)
+  }
+
+  if (isGoOutResponse(message.type)) {
+    return canRespondToPartnerGoOutRequest(
+      existingMessages,
+      message.senderSeatIndex,
+      state.playerCount as PlayerCount,
+    )
+  }
+
+  return false
+}
+
 export function isGoOutResponse(type: ChatMessageType): boolean {
   return type === 'approve_go_out' || type === 'deny_go_out' || type === 'partner_reply'
 }
@@ -204,34 +236,66 @@ export function opponentsHoldManyCards(state: GameState, seatIndex: number): boo
   return total >= 18
 }
 
-/** Partner cleared this player to attempt going out (AI only; humans are never blocked). */
+function partnerApprovedGoOut(
+  messages: ChatMessage[],
+  partnerIdx: number,
+  afterTimestamp: number,
+): boolean {
+  const response = partnerResponseAfter(messages, partnerIdx, afterTimestamp)
+  if (response?.type === 'approve_go_out') return true
+  if (response?.type === 'partner_reply') {
+    return parsePartnerReplyIntent(response.text) === 'approve'
+  }
+  return false
+}
+
+/** Partner cleared this player to attempt going out. */
 export function hasPartnerGoOutClearance(
   state: GameState,
   seatIndex: number,
   messages: ChatMessage[],
 ): boolean {
   const player = state.players[seatIndex]
-  if (player.profile.isHuman) return true
-
   const partnerIdx = partnerSeat(seatIndex, state.playerCount as PlayerCount)
   const myReady = latestReadyGoOutFrom(messages, seatIndex)
+
+  if (player.profile.isHuman) {
+    if (!myReady) return false
+    return partnerApprovedGoOut(messages, partnerIdx, myReady.timestamp)
+  }
 
   if (!myReady) {
     return opponentsHoldManyCards(state, seatIndex)
   }
 
+  if (partnerApprovedGoOut(messages, partnerIdx, myReady.timestamp)) return true
+
   const response = partnerResponseAfter(messages, partnerIdx, myReady.timestamp)
-  if (response?.type === 'approve_go_out') return true
-  if (response?.type === 'partner_reply') {
-    const intent = parsePartnerReplyIntent(response.text)
-    if (intent === 'approve') return true
-    if (intent === 'deny') return opponentsHoldManyCards(state, seatIndex)
-    return false
-  }
-  if (response?.type === 'deny_go_out') {
+  if (response?.type === 'deny_go_out' || response?.type === 'partner_reply') {
     return opponentsHoldManyCards(state, seatIndex)
   }
   return false
+}
+
+export function getPartnerGoOutBlockReason(
+  state: GameState,
+  seatIndex: number,
+  messages: ChatMessage[],
+): string | null {
+  if (hasPartnerGoOutClearance(state, seatIndex, messages)) return null
+
+  const partnerIdx = partnerSeat(seatIndex, state.playerCount as PlayerCount)
+  const myReady = latestReadyGoOutFrom(messages, seatIndex)
+
+  if (!myReady) {
+    return 'Signal "I can go out!" in table chat on your turn, then wait for your partner.'
+  }
+
+  if (awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx)) {
+    return 'Waiting for your partner to reply in table chat.'
+  }
+
+  return 'Your partner said not to go out — play on.'
 }
 
 /** Any team has signaled go-out intent in table chat (visible to everyone). */
