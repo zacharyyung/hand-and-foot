@@ -19,12 +19,13 @@ import { findAddToBookActions } from './decisions'
 import { buildAiPublicState } from './publicState'
 import { maybeAiChatSignal, maybeAiPartnerGoOutResponse } from './chatSignals'
 import {
-  meldUrgency,
+  meldPressure,
   pickBestAddToBook,
   pickBestStartWhenUnlocked,
   pickDiscardCard,
   pickLoneWildAdd,
   planInitialMeld,
+  shouldRandomlySkipMeld,
 } from './strategy'
 
 export interface AiTurnResult {
@@ -68,6 +69,8 @@ export function runAiTurn(
 
     const pub = buildAiPublicState(current, current.currentPlayerIndex)
     const team = getTeam(current, pub.myTeamId)
+    const urgency = meldPressure(pub)
+    const addAttempts = urgency === 'high' ? 4 : urgency === 'medium' ? 3 : 2
     if (
       pub.isPlayingFoot &&
       pub.myHand.length === 1 &&
@@ -76,8 +79,6 @@ export function runAiTurn(
     ) {
       break
     }
-
-    const urgency = meldUrgency(pub.teamScore)
 
     let played = false
 
@@ -106,7 +107,7 @@ export function runAiTurn(
       )
       const triedAdds = new Set<string>()
 
-      for (let attempt = 0; attempt < 2 && !played; attempt++) {
+      for (let attempt = 0; attempt < addAttempts && !played; attempt++) {
         const remaining = addActions.filter(
           (a) => !triedAdds.has(`${a.bookId}:${a.cardIds.join(',')}`),
         )
@@ -121,8 +122,7 @@ export function runAiTurn(
         if (!bestAdd) break
 
         triedAdds.add(`${bestAdd.bookId}:${bestAdd.cardIds.join(',')}`)
-        const skipAdd = difficulty === 'normal' && Math.random() < 0.08
-        if (skipAdd) continue
+        if (shouldRandomlySkipMeld(difficulty, urgency, 'add')) continue
 
         const result = addToBook(current, bestAdd.bookId, bestAdd.cardIds)
         if (!result.error) {
@@ -151,7 +151,7 @@ export function runAiTurn(
 
     if (!played) break
 
-    if (difficulty === 'normal' && Math.random() < 0.1) break
+    if (shouldRandomlySkipMeld(difficulty, urgency, 'endTurn')) break
   }
 
   if (current.turnPhase === 'play') {

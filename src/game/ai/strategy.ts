@@ -151,7 +151,7 @@ export function planInitialMeld(
     if (
       !opt.clean &&
       dirtyBooksInPlan(chosen) >= 1 &&
-      urgency !== 'high'
+      urgency === 'low'
     ) {
       return search(index + 1, used, chosen, points)
     }
@@ -167,7 +167,7 @@ export function planInitialMeld(
   }
 
   const plan = search(0, new Set(), [], 0)
-  if (!plan || difficulty !== 'expert') return plan
+  if (!plan || difficulty !== 'expert' || urgency !== 'low') return plan
 
   const cleanOnly = options.filter((o) => o.clean)
   if (cleanOnly.length > 0) {
@@ -218,6 +218,44 @@ export function meldUrgency(teamScore: number): 'low' | 'medium' | 'high' {
   if (req >= 150) return 'high'
   if (req >= 100) return 'medium'
   return 'low'
+}
+
+/** How hard the AI should push to meld — rises with meld limits, hand size, and a shrinking stock. */
+export function meldPressure(pub: AiPublicState): 'low' | 'medium' | 'high' {
+  let level = meldUrgency(pub.teamScore)
+  const held = pub.myHand.length + pub.myFootCount
+
+  if (held >= 22) return 'high'
+  if (held >= 18) level = 'high'
+  else if (held >= 14 && level === 'low') level = 'medium'
+
+  if (pub.stockCount <= 20 && held >= 8) level = 'high'
+  else if (pub.stockCount <= 40 && held >= 10 && level === 'low') level = 'medium'
+
+  if (!pub.teamMeldThresholdMet && pub.requiredMeld >= 100 && level === 'low') {
+    level = 'medium'
+  }
+  if (!pub.teamMeldThresholdMet && pub.requiredMeld >= 150) {
+    level = 'high'
+  }
+
+  if (pub.isPlayingFoot && pub.myFootCount >= 9 && level === 'low') {
+    level = 'medium'
+  }
+
+  return level
+}
+
+export function shouldRandomlySkipMeld(
+  difficulty: AiDifficulty,
+  urgency: 'low' | 'medium' | 'high',
+  kind: 'add' | 'endTurn',
+): boolean {
+  if (difficulty === 'expert' || urgency === 'high') return false
+  if (kind === 'add') {
+    return Math.random() < (urgency === 'low' ? 0.08 : 0.02)
+  }
+  return Math.random() < (urgency === 'low' ? 0.1 : 0.03)
 }
 
 export function teamNeedsDirtyBook(books: Book[]): boolean {
@@ -314,6 +352,10 @@ export function justifyDirtyingCleanBook(
   if (!isCleanBook(book)) return true
   if (countWildsInCards(cards) === 0) return true
 
+  const urgency = meldPressure(pub)
+  const heldCards = pub.myHand.length + pub.myFootCount
+  if (heldCards >= 16 && urgency !== 'low') return true
+
   const books = pub.myTeamBooks
   const newSize = book.cards.length + cards.length
   const completes = newSize >= 7
@@ -408,14 +450,28 @@ export function pickBestStartWhenUnlocked(
   scored.sort((a, b) => b.value - a.value)
 
   const cleanStarts = scored.filter((s) => s.opt.clean)
-  if (cleanStarts.length > 0 && (difficulty === 'expert' || !needsDirty)) {
-    if (difficulty === 'normal' && Math.random() < 0.12 && cleanStarts.length > 1) {
+  const preferCleanOnly =
+    cleanStarts.length > 0 &&
+    (difficulty === 'expert' || !needsDirty || urgency === 'low')
+
+  if (preferCleanOnly) {
+    if (
+      difficulty === 'normal' &&
+      urgency === 'low' &&
+      Math.random() < 0.12 &&
+      cleanStarts.length > 1
+    ) {
       return cleanStarts[1].opt.cardIds
     }
     return cleanStarts[0].opt.cardIds
   }
 
-  if (difficulty === 'normal' && Math.random() < 0.12 && scored.length > 1) {
+  if (
+    difficulty === 'normal' &&
+    urgency === 'low' &&
+    Math.random() < 0.12 &&
+    scored.length > 1
+  ) {
     return scored[1].opt.cardIds
   }
 
@@ -451,6 +507,10 @@ export function pickBestAddToBook(
   })
 
   if (allowed.length === 0) return null
+
+  const urgency = meldPressure(pub)
+  const heldCards = pub.myHand.length + pub.myFootCount
+  const aggressive = urgency === 'high' || (urgency === 'medium' && heldCards >= 12)
 
   const scored = allowed.map((action) => {
     const book = teamBooks.find((b) => b.id === action.bookId)!
@@ -508,6 +568,11 @@ export function pickBestAddToBook(
       score += 35
     }
 
+    if (aggressive) {
+      score += cards.length * (urgency === 'high' ? 28 : 14)
+      score += Math.min(heldCards, 24) * (urgency === 'high' ? 2 : 1)
+    }
+
     return { action, score }
   })
 
@@ -519,8 +584,9 @@ export function pickBestAddToBook(
     return isCleanBook(book) && countWildsInCards(cards) === 0
   })
 
-  const pool =
-    naturalOnClean.length > 0
+  const pool = aggressive
+    ? scored
+    : naturalOnClean.length > 0
       ? naturalOnClean
       : scored.filter(({ action }) => {
           const book = teamBooks.find((b) => b.id === action.bookId)!
@@ -530,7 +596,12 @@ export function pickBestAddToBook(
 
   if (pool.length === 0) return null
 
-  if (difficulty === 'normal' && Math.random() < 0.08 && pool.length > 1) {
+  if (
+    difficulty === 'normal' &&
+    urgency === 'low' &&
+    Math.random() < 0.08 &&
+    pool.length > 1
+  ) {
     return pool[1].action
   }
 
