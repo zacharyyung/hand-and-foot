@@ -11,7 +11,10 @@ import {
 } from '../actions'
 import type { GameState } from '../deal'
 import type { ChatMessage } from '../chat'
-import { hasPartnerGoOutClearance } from '../chat'
+import {
+  hasPartnerGoOutClearance,
+  isAwaitingPartnerGoOutClearance,
+} from '../chat'
 import { findAddToBookActions } from './decisions'
 import { buildAiPublicState } from './publicState'
 import { maybeAiChatSignal, maybeAiPartnerGoOutResponse } from './chatSignals'
@@ -151,14 +154,24 @@ export function runAiTurn(
   }
 
   if (current.turnPhase === 'play') {
-    const pub = buildAiPublicState(current, current.currentPlayerIndex)
-    const goingOut = canPlayerGoOut(current, messages)
-
     const goOutSignal = maybeAiChatSignal(current, current.currentPlayerIndex, messages)
     if (goOutSignal && !chatMessage) {
       chatMessage = goOutSignal
       messages = [...messages, goOutSignal]
     }
+
+    if (
+      isAwaitingPartnerGoOutClearance(
+        current,
+        current.currentPlayerIndex,
+        messages,
+      )
+    ) {
+      return { state: current, chatMessage }
+    }
+
+    const pub = buildAiPublicState(current, current.currentPlayerIndex)
+    const goingOut = canPlayerGoOut(current, messages)
 
     const discardId = pickDiscardCard(
       pub.myHand,

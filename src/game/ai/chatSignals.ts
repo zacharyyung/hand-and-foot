@@ -4,13 +4,16 @@ import { getGoOutBlockReason } from '../books'
 import { buildAiPublicState } from './publicState'
 import {
   APPROVE_GO_OUT_TEXT,
+  awaitingPartnerGoOutResponse,
   createApproveGoOutSignal,
   createDenyGoOutSignal,
   createReadyGoOutSignal,
   DENY_GO_OUT_TEXT,
+  hasPartnerGoOutClearance,
   latestReadyGoOutFrom,
   pendingPartnerGoOutRequest,
   teamCanGoOut,
+  unresolvedPartnerDenial,
   type ChatMessage,
 } from '../chat'
 import type { PlayerCount } from '../teams'
@@ -151,7 +154,7 @@ export function analyzePartnerGoOutRequest(
   }
 }
 
-/** AI posts "I can go out!" when closing the round. */
+/** AI asks to go out with 2+ foot cards so a "no" still leaves a card in hand. */
 export function maybeAiChatSignal(
   state: GameState,
   seatIndex: number,
@@ -164,20 +167,23 @@ export function maybeAiChatSignal(
   const team = getTeam(state, player.profile.teamId)
   if (!teamCanGoOut(state, team.id)) return null
 
+  const partnerIdx = partnerSeat(seatIndex, state.playerCount as PlayerCount)
+  if (awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx)) return null
+
   const ownLatest = latestReadyGoOutFrom(messages, seatIndex)
-  if (ownLatest) return null
+  if (ownLatest && hasPartnerGoOutClearance(state, seatIndex, messages)) {
+    return null
+  }
+
+  if (unresolvedPartnerDenial(messages, seatIndex, state.playerCount as PlayerCount)) {
+    return null
+  }
 
   const pub = buildAiPublicState(state, seatIndex)
-  const partnerIdx = partnerSeat(seatIndex, state.playerCount as PlayerCount)
-  const partner = pub.otherPlayers.find((p) => p.seatIndex === partnerIdx)
+  const readyToAsk =
+    pub.isPlayingFoot && pub.myFootCount === 0 && pub.myHand.length >= 2
 
-  const selfClosing =
-    pub.isPlayingFoot && pub.myHand.length <= 3 && pub.myFootCount === 0
-  const teamLow =
-    pub.myHand.length + pub.myFootCount <= 4 ||
-    (partner !== undefined && partner.handCount + partner.footCount <= 4)
-
-  if (selfClosing || teamLow) {
+  if (readyToAsk) {
     return createReadyGoOutSignal(
       seatIndex,
       player.profile.name,

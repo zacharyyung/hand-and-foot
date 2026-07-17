@@ -33,6 +33,7 @@ export function GameChat({
   const partner = game.players[partnerIdx]
   const viewerIsHuman = viewer.profile.isHuman
   const isMyTurn = game.currentPlayerIndex === viewerSeat
+  const canSignalGoOut = isMyTurn && viewer.hand.length >= 2
 
   const partnerRequest = pendingPartnerGoOutRequest(messages, viewerSeat, partnerIdx)
   const waitingForPartnerReply =
@@ -53,7 +54,7 @@ export function GameChat({
   }, [partnerRequest, waitingForPartnerReply, viewerIsHuman])
 
   function sendReadyGoOut() {
-    if (!viewerIsHuman || !isMyTurn) return
+    if (!viewerIsHuman || !canSignalGoOut) return
     playSound('chat')
     onSend(
       createReadyGoOutSignal(
@@ -131,8 +132,8 @@ export function GameChat({
               <div>
                 <p className="font-display text-sm font-semibold text-ink">Table chat</p>
                 <p className="mt-0.5 text-[10px] leading-relaxed text-ink-muted">
-                  On your turn, signal when you can go out. Only your partner can
-                  reply yes or no — other players cannot join this conversation.
+                  On your turn with 2+ cards, ask to go out. Only your partner can
+                  reply yes or no — if they say no, keep at least one card in hand.
                 </p>
               </div>
               <button
@@ -196,8 +197,8 @@ export function GameChat({
             <div ref={listRef} className="table-chat-messages">
               {messages.length === 0 ? (
                 <p className="py-4 text-center text-[11px] leading-relaxed text-ink-faint">
-                  On your turn, tap &ldquo;I can go out!&rdquo; when your books are set.
-                  Your partner replies with Yes or No.
+                  On your turn with 2+ cards, tap &ldquo;I can go out!&rdquo; when your
+                  books are set. Your partner replies Yes or No.
                 </p>
               ) : (
                 messages.map((msg) => {
@@ -257,7 +258,7 @@ export function GameChat({
                   Partner: {partner.profile.avatar} {partner.profile.name}
                 </p>
 
-                {isMyTurn ? (
+                {canSignalGoOut ? (
                   <button
                     type="button"
                     onClick={sendReadyGoOut}
@@ -265,6 +266,14 @@ export function GameChat({
                   >
                     {READY_GO_OUT_SIGNAL_TEXT}
                   </button>
+                ) : isMyTurn ? (
+                  <p className="rounded-lg bg-black/25 px-2.5 py-2 text-center text-[10px] leading-relaxed text-ink-muted">
+                    Need at least 2 cards in hand to ask — so a &ldquo;no&rdquo; still
+                    leaves you a card to play.
+                    {partnerRequest
+                      ? ' You can still reply to your partner above.'
+                      : ''}
+                  </p>
                 ) : (
                   <p className="rounded-lg bg-black/25 px-2.5 py-2 text-center text-[10px] leading-relaxed text-ink-muted">
                     Wait for your turn to say you can go out.

@@ -27,9 +27,57 @@ export function isGoOutRequest(type: ChatMessageType): boolean {
   return type === 'ready_go_out'
 }
 
-/** Only the active player may send "I can go out!" */
+/** Only the active player may send "I can go out!" — need 2+ cards so a "no" still leaves a card in hand. */
 export function canInitiateGoOutSignal(state: GameState, seatIndex: number): boolean {
-  return state.phase === 'playing' && state.currentPlayerIndex === seatIndex
+  if (state.phase !== 'playing' || state.currentPlayerIndex !== seatIndex) return false
+  const player = state.players[seatIndex]
+  return player.hand.length >= 2
+}
+
+function teamReadyToGoOut(state: GameState, teamId: number): boolean {
+  const team = state.teams.find((t) => t.id === teamId)
+  if (!team?.meldThresholdMet) return false
+  return teamHasCleanAndDirtyBooks(team.books)
+}
+
+function partnerDeniedGoOut(
+  messages: ChatMessage[],
+  partnerIdx: number,
+  afterTimestamp: number,
+): boolean {
+  const response = partnerResponseAfter(messages, partnerIdx, afterTimestamp)
+  if (response?.type === 'deny_go_out') return true
+  if (response?.type === 'partner_reply') {
+    return parsePartnerReplyIntent(response.text) === 'deny'
+  }
+  return false
+}
+
+/** Partner said no to the latest go-out ask and it still needs a normal discard. */
+export function unresolvedPartnerDenial(
+  messages: ChatMessage[],
+  requesterSeat: number,
+  playerCount: PlayerCount,
+): ChatMessage | null {
+  const latest = latestReadyGoOutFrom(messages, requesterSeat)
+  if (!latest) return null
+
+  const partnerIdx = partnerSeat(requesterSeat, playerCount)
+  if (awaitingPartnerGoOutResponse(messages, requesterSeat, partnerIdx)) return null
+
+  const response = partnerResponseAfter(messages, partnerIdx, latest.timestamp)
+  if (!response || !isGoOutResponse(response.type)) return null
+  if (!partnerDeniedGoOut(messages, partnerIdx, latest.timestamp)) {
+    return null
+  }
+
+  const laterAsk = messages.some(
+    (m) =>
+      m.type === 'ready_go_out' &&
+      m.senderSeatIndex === requesterSeat &&
+      m.timestamp > response.timestamp,
+  )
+  return laterAsk ? null : response
 }
 
 /** Only the partner of a pending go-out request may reply yes/no. */
@@ -236,6 +284,26 @@ export function opponentsHoldManyCards(state: GameState, seatIndex: number): boo
   return total >= 18
 }
 
+/** Requester signaled go-out, books are set, and partner has not replied yet. */
+export function isAwaitingPartnerGoOutClearance(
+  state: GameState,
+  seatIndex: number,
+  messages: ChatMessage[],
+): boolean {
+  const player = state.players[seatIndex]
+  if (!player.isPlayingFoot || player.foot.length > 0 || player.footOnHold) {
+    return false
+  }
+
+  if (!teamReadyToGoOut(state, player.profile.teamId)) return false
+
+  const myReady = latestReadyGoOutFrom(messages, seatIndex)
+  if (!myReady) return false
+
+  const partnerIdx = partnerSeat(seatIndex, state.playerCount as PlayerCount)
+  return awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx)
+}
+
 function partnerApprovedGoOut(
   messages: ChatMessage[],
   partnerIdx: number,
@@ -271,7 +339,13 @@ export function hasPartnerGoOutClearance(
   if (partnerApprovedGoOut(messages, partnerIdx, myReady.timestamp)) return true
 
   const response = partnerResponseAfter(messages, partnerIdx, myReady.timestamp)
-  if (response?.type === 'deny_go_out' || response?.type === 'partner_reply') {
+  if (
+    response &&
+    partnerDeniedGoOut(messages, partnerIdx, myReady.timestamp)
+  ) {
+    return false
+  }
+  if (response?.type === 'partner_reply') {
     return opponentsHoldManyCards(state, seatIndex)
   }
   return false
@@ -288,14 +362,14 @@ export function getPartnerGoOutBlockReason(
   const myReady = latestReadyGoOutFrom(messages, seatIndex)
 
   if (!myReady) {
-    return 'Signal "I can go out!" in table chat on your turn, then wait for your partner.'
+    return 'Signal "I can go out!" on your turn with 2+ cards, then wait for your partner.'
   }
 
   if (awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx)) {
     return 'Waiting for your partner to reply in table chat.'
   }
 
-  return 'Your partner said not to go out — play on.'
+  return 'Your partner said not to go out — discard and keep at least one card in hand.'
 }
 
 /** Any team has signaled go-out intent in table chat (visible to everyone). */

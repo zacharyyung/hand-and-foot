@@ -16,6 +16,8 @@ import {
   willSkipAndRun,
 } from '../game/actions'
 import { runAiTurn } from '../game/ai/runTurn'
+import { buildAiPublicState } from '../game/ai/publicState'
+import { pickDiscardCard } from '../game/ai/strategy'
 import { getViewerSeat } from '../game/tableLayout'
 import { mergeHandOrder, sortCardIdsByHand } from '../game/handOrder'
 import {
@@ -37,7 +39,7 @@ import { GameChat } from './GameChat'
 import { GameMessageBar } from './GameMessageBar'
 import { TEAM_COLORS, partnerSeat, type PlayerCount } from '../game/teams'
 import type { ChatMessage } from '../game/chat'
-import { getPartnerGoOutBlockReason, pendingPartnerGoOutRequest } from '../game/chat'
+import { getPartnerGoOutBlockReason, isAwaitingPartnerGoOutClearance, pendingPartnerGoOutRequest, unresolvedPartnerDenial } from '../game/chat'
 import { maybeAiPartnerGoOutResponse } from '../game/ai/chatSignals'
 
 interface GameViewProps {
@@ -95,6 +97,7 @@ export function GameView({
   const chatRef = useRef(chatMessages)
   chatRef.current = chatMessages
   const lastAiGoOutReplyRef = useRef(0)
+  const handledDenyIds = useRef(new Set<string>())
 
   const viewerSeat = useMemo(() => getViewerSeat(game.players), [game.players])
   const viewer = game.players[viewerSeat]
@@ -301,9 +304,50 @@ export function GameView({
     return () => clearTimeout(timer)
   }, [chatMessages, game, viewerSeat, onChatSend])
 
+  /* After partner says no, AI discards normally and keeps at least one card. */
+  useEffect(() => {
+    if (game.phase !== 'playing' || current.profile.isHuman) return
+    if (game.turnPhase !== 'play') return
+
+    const aiSeat = game.currentPlayerIndex
+    const denial = unresolvedPartnerDenial(
+      chatMessages,
+      aiSeat,
+      game.playerCount as PlayerCount,
+    )
+    if (!denial || handledDenyIds.current.has(denial.id)) return
+
+    const player = game.players[aiSeat]
+    if (player.hand.length < 2) return
+
+    handledDenyIds.current.add(denial.id)
+
+    const team = getTeam(game, player.profile.teamId)
+    const pub = buildAiPublicState(game, aiSeat)
+    const difficulty = player.profile.aiDifficulty ?? 'normal'
+    const discardId = pickDiscardCard(
+      pub.myHand,
+      team.books,
+      difficulty,
+      false,
+    )
+    if (!discardId) return
+
+    const result = discardCard(game, discardId, chatMessages)
+    if (result.error) return
+
+    onGameChange(result.state)
+  }, [game, chatMessages, current.profile.isHuman, onGameChange])
+
   useEffect(() => {
     if (game.phase !== 'playing' || current.profile.isHuman) {
       setAiThinking(false)
+      return
+    }
+
+    const aiSeat = game.currentPlayerIndex
+    if (isAwaitingPartnerGoOutClearance(game, aiSeat, chatMessages)) {
+      setAiThinking(true)
       return
     }
 
@@ -318,7 +362,7 @@ export function GameView({
     }, AI_TURN_DELAY_MS)
 
     return () => clearTimeout(timer)
-  }, [game, current.profile.isHuman, onGameChange, onChatSend])
+  }, [game, chatMessages, current.profile.isHuman, onGameChange, onChatSend])
 
   function toggleCard(cardId: string) {
     if (!isMyTurn || game.turnPhase === 'draw') return
