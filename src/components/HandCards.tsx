@@ -191,15 +191,15 @@ export function HandCards({
 
   return (
     <div
-      className="relative mx-auto flex w-full max-w-5xl justify-center px-2"
-      style={{ minHeight: n > 0 ? '6.25rem' : undefined }}
+      className="hand-cards-spread relative mx-auto flex w-full max-w-5xl justify-center px-2"
+      style={{ minHeight: n > 0 ? 'min(6.25rem, 22dvh)' : undefined }}
       onMouseLeave={() => setHoverCardId(null)}
     >
       <div
         className="relative transition-[width] ease-snappy will-change-[width]"
         style={{
           width: fanLayout.fanWidth,
-          height: '5.75rem',
+          height: 'min(5.75rem, 21dvh)',
           transitionDuration: `${handSpreadMs}ms`,
         }}
       >

@@ -72,6 +72,11 @@
     color-scheme: dark;
     scrollbar-width: thin;
     scrollbar-color: rgba(139, 99, 64, 0.62) rgba(0, 0, 0, 0.16);
+    /* iOS safe areas — used by dock + fixed corner controls */
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
   }
 
   html::-webkit-scrollbar {
@@ -107,6 +112,7 @@
 @layer components {
   /* Room behind the table */
   .room-bg {
+    min-height: 100dvh;
     background:
       radial-gradient(ellipse 90% 70% at 50% 42%, transparent 30%, rgba(0, 0, 0, 0.45) 100%),
       radial-gradient(ellipse 60% 50% at 50% 35%, rgba(36, 112, 72, 0.35), transparent 70%),
@@ -741,14 +747,20 @@
 
   .corner-control-br {
     position: fixed;
-    right: 0.75rem;
-    bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+    right: max(0.75rem, var(--safe-right));
+    bottom: max(0.75rem, var(--safe-bottom));
   }
 
   .corner-control-bl {
     position: fixed;
-    left: 0.75rem;
-    bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+    left: max(0.75rem, var(--safe-left));
+    bottom: max(0.75rem, var(--safe-bottom));
+  }
+
+  /* Lift chat/settings above the player action row while a hand is visible */
+  html[data-game-playing] .corner-control-bl,
+  html[data-game-playing] .corner-control-br {
+    bottom: calc(max(0.75rem, var(--safe-bottom)) + var(--game-corner-lift, 3.75rem));
   }
 
   .table-chat-chip {
@@ -804,14 +816,22 @@
   }
 
   .corner-popover-br {
-    right: 0.75rem;
-    bottom: calc(max(0.75rem, env(safe-area-inset-bottom, 0px)) + 2.5rem);
+    right: max(0.75rem, var(--safe-right));
+    bottom: calc(max(0.75rem, var(--safe-bottom)) + 2.5rem);
   }
 
   .corner-popover-bl {
-    left: 0.75rem;
-    bottom: calc(max(0.75rem, env(safe-area-inset-bottom, 0px)) + 2.5rem);
-    width: min(19rem, calc(100vw - 1.5rem));
+    left: max(0.75rem, var(--safe-left));
+    bottom: calc(max(0.75rem, var(--safe-bottom)) + 2.5rem);
+    width: min(19rem, calc(100vw - 1.5rem - var(--safe-left) - var(--safe-right)));
+  }
+
+  html[data-game-playing] .corner-popover-br {
+    bottom: calc(max(0.75rem, var(--safe-bottom)) + var(--game-corner-lift, 3.75rem) + 2.5rem);
+  }
+
+  html[data-game-playing] .corner-popover-bl {
+    bottom: calc(max(0.75rem, var(--safe-bottom)) + var(--game-corner-lift, 3.75rem) + 2.5rem);
   }
 
   .table-chat-panel {
@@ -944,21 +964,96 @@
   }
 
   /* South dock: stable hand meta + action row heights */
+  .game-play-shell {
+    height: 100dvh;
+    max-height: 100dvh;
+    padding-top: var(--safe-top);
+    padding-left: var(--safe-left);
+    padding-right: var(--safe-right);
+    padding-bottom: var(--safe-bottom);
+  }
+
   .south-player-dock {
-    padding-bottom: max(0.25rem, env(safe-area-inset-bottom, 0px));
+    --dock-max-h: min(
+      42dvh,
+      calc(100dvh - 9rem - var(--safe-top) - var(--safe-bottom))
+    );
+    max-height: var(--dock-max-h);
+    min-height: 0;
+    padding-bottom: max(0.375rem, calc(var(--safe-bottom) * 0.25));
   }
 
   .south-dock-hand-meta {
-    min-height: 2.375rem;
+    min-height: 2rem;
   }
 
   .south-dock-sort {
-    min-height: 2.25rem;
+    min-height: 2rem;
+  }
+
+  .south-dock-hand-scroll {
+    min-height: 3.5rem;
+    max-height: min(7.5rem, 28dvh);
   }
 
   .game-action-slot {
-    min-height: 3.5rem;
-    padding-bottom: 0.125rem;
+    min-height: 2.75rem;
+    padding-bottom: max(0.25rem, calc(var(--safe-bottom) * 0.35));
+  }
+
+  @media (max-height: 900px) {
+    .south-player-dock {
+      --dock-max-h: min(
+        38dvh,
+        calc(100dvh - 8rem - var(--safe-top) - var(--safe-bottom))
+      );
+    }
+
+    .south-dock-hand-scroll {
+      max-height: min(6.5rem, 24dvh);
+    }
+
+    html[data-game-playing] {
+      --game-corner-lift: 4.25rem;
+    }
+  }
+
+  @media (max-height: 750px) {
+    .hand-cards-spread {
+      min-height: 4.5rem !important;
+    }
+
+    .hand-cards-spread > div {
+      height: min(5rem, 19dvh) !important;
+    }
+
+    .south-player-dock {
+      --dock-max-h: min(
+        36dvh,
+        calc(100dvh - 7rem - var(--safe-top) - var(--safe-bottom))
+      );
+    }
+
+    .south-dock-hand-scroll {
+      min-height: 3rem;
+      max-height: min(5.5rem, 22dvh);
+    }
+
+    .south-dock-hand-meta {
+      min-height: 1.75rem;
+      padding-top: 0.25rem;
+      padding-bottom: 0.25rem;
+    }
+
+    .game-action-slot {
+      min-height: 2.5rem;
+      padding-top: 0.375rem;
+      padding-bottom: max(0.375rem, var(--safe-bottom));
+    }
+
+    html[data-game-playing] {
+      --game-corner-lift: 4.5rem;
+    }
   }
 }
 

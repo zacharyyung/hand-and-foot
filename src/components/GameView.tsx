@@ -928,8 +928,15 @@ export function GameView({
     game.turnPhase === 'play' &&
     (needsStagedMeld || stagedBooks.length > 0)
 
+  useEffect(() => {
+    document.documentElement.dataset.gamePlaying = 'true'
+    return () => {
+      delete document.documentElement.dataset.gamePlaying
+    }
+  }, [])
+
   return (
-    <div className="flex h-dvh flex-col overflow-hidden">
+    <div className="game-play-shell flex min-h-0 flex-col overflow-hidden">
       {/* Slim top rail — scores & status only */}
       <header className="relative z-20 shrink-0 px-3 py-2 sm:px-5">
         <div className="flex items-center justify-between gap-3">
@@ -978,15 +985,15 @@ export function GameView({
 
         {isHumanViewer && (
           <div
-            className="south-player-dock relative z-20 flex max-h-[min(34vh,340px)] shrink-0 flex-col overflow-hidden sm:max-h-[min(32vh,360px)]"
+            className="south-player-dock relative z-20 flex min-h-0 shrink-0 flex-col overflow-hidden"
             style={{
               background:
                 'linear-gradient(to top, rgba(6,20,14,0.92) 0%, rgba(8,28,18,0.78) 70%, rgba(8,28,18,0.45) 100%)',
               boxShadow: `inset 0 1px 0 ${teamColor}33`,
             }}
           >
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden pb-0.5">
-              <div className="south-dock-hand-meta flex shrink-0 items-center gap-x-2.5 gap-y-1 px-3 py-1.5 sm:gap-x-3 sm:px-4 sm:py-2">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="south-dock-hand-meta flex shrink-0 items-center gap-x-2 gap-y-1 px-3 py-1 sm:gap-x-3 sm:px-4 sm:py-1.5">
                 <span className="flex shrink-0 items-center gap-1.5 text-[10px] tabular-nums text-ink-faint">
                   {(!viewer.isPlayingFoot || playerHandCount(viewer) > 0) && (
                     <span className="seat-chip-pile" title="Hand cards">
@@ -1044,7 +1051,7 @@ export function GameView({
               </div>
 
               <div
-                className="theme-scroll relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-1 sm:px-4 sm:py-1.5"
+                className="south-dock-hand-scroll theme-scroll relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-0.5 sm:px-4 sm:py-1"
                 data-flight-anchor="hand"
               >
                 <HandCards
@@ -1063,7 +1070,7 @@ export function GameView({
               </div>
 
               {!autoSort && (
-                <div className="south-dock-sort flex shrink-0 justify-center px-3 py-1 sm:px-4">
+                <div className="south-dock-sort flex shrink-0 justify-center px-3 py-0.5 sm:px-4 sm:py-1">
                   <button
                     type="button"
                     onClick={handleAutoSort}
@@ -1084,7 +1091,7 @@ export function GameView({
               />
 
               <div
-                className="game-action-slot flex min-h-[3.25rem] shrink-0 flex-wrap items-center justify-center gap-2 px-3 py-2 sm:px-4"
+                className="game-action-slot flex shrink-0 flex-wrap items-center justify-center gap-1.5 px-3 py-1.5 sm:gap-2 sm:px-4 sm:py-2"
                 aria-hidden={!isMyTurn}
               >
                 {isMyTurn && (
