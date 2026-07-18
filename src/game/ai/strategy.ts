@@ -17,6 +17,7 @@ import { cardPointValue, meldThreshold, meldContributionFromCards } from '../sco
 import type { PlayerCount } from '../teams'
 import type { AiDifficulty } from '../deal'
 import type { AiPublicState } from './publicState'
+import { footMeldAllowedForHand } from '../actions'
 import { findAddToBookActions, findStartBookActions, type AiAction } from './decisions'
 
 function combinations<T>(items: T[], min: number, max: number): T[][] {
@@ -60,16 +61,23 @@ function footMeldKeepsDiscard(
   hand: Card[],
   meldCardIds: string[],
   isPlayingFoot: boolean,
+  booksAfterMeld: Book[],
+  meldThresholdMetAfterMeld: boolean,
 ): boolean {
-  if (!isPlayingFoot) return true
-  const meldIds = new Set(meldCardIds)
-  return hand.some((c) => !meldIds.has(c.id))
+  return footMeldAllowedForHand(
+    hand,
+    meldCardIds,
+    isPlayingFoot,
+    booksAfterMeld,
+    meldThresholdMetAfterMeld,
+  )
 }
 
 function getStartOptions(
   hand: Card[],
   teamBooks: Book[],
   isPlayingFoot = false,
+  meldThresholdMetAfterMeld = true,
 ): StartOption[] {
   const options: StartOption[] = []
   const seen = new Set<Rank>()
@@ -77,9 +85,26 @@ function getStartOptions(
 
   for (const combo of combinations(playable, 3, Math.min(7, playable.length))) {
     const cardIds = combo.map((c) => c.id)
-    if (!footMeldKeepsDiscard(hand, cardIds, isPlayingFoot)) continue
     const check = canStartBook(combo, teamBooks)
     if (!check.ok || seen.has(check.rank)) continue
+    const projectedBook: Book = {
+      id: `preview-${check.rank}`,
+      rank: check.rank,
+      cards: combo,
+      teamId: teamBooks[0]?.teamId ?? 0,
+      startedBySeatIndex: 0,
+    }
+    if (
+      !footMeldKeepsDiscard(
+        hand,
+        cardIds,
+        isPlayingFoot,
+        [...teamBooks, projectedBook],
+        meldThresholdMetAfterMeld,
+      )
+    ) {
+      continue
+    }
     seen.add(check.rank)
     options.push({
       cardIds: combo.map((c) => c.id),

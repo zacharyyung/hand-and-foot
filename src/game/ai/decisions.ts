@@ -2,6 +2,7 @@ import type { Card, Rank } from '../cards'
 import { isRedThree, isWildCard } from '../cards'
 import type { Book } from '../books'
 import { bookWildCount, canAddToBook, canStartBook, countWildsInCards, naturalRank } from '../books'
+import { footMeldAllowedForHand } from '../actions'
 import { cardPointValue, meldContributionFromCards } from '../scoring'
 
 export type AiAction =
@@ -48,16 +49,23 @@ function footMeldKeepsDiscard(
   hand: Card[],
   meldCardIds: string[],
   isPlayingFoot: boolean,
+  booksAfterMeld: Book[],
+  meldThresholdMetAfterMeld: boolean,
 ): boolean {
-  if (!isPlayingFoot) return true
-  const meldIds = new Set(meldCardIds)
-  return hand.some((c) => !meldIds.has(c.id))
+  return footMeldAllowedForHand(
+    hand,
+    meldCardIds,
+    isPlayingFoot,
+    booksAfterMeld,
+    meldThresholdMetAfterMeld,
+  )
 }
 
 export function findStartBookActions(
   hand: Card[],
   teamBooks: Book[],
   isPlayingFoot = false,
+  meldThresholdMet = true,
 ): AiAction[] {
   const actions: AiAction[] = []
   const ranks = new Set<Rank>()
@@ -65,9 +73,26 @@ export function findStartBookActions(
 
   for (const combo of combinations(playable, 3, Math.min(7, playable.length))) {
     const cardIds = combo.map((c) => c.id)
-    if (!footMeldKeepsDiscard(hand, cardIds, isPlayingFoot)) continue
     const check = canStartBook(combo, teamBooks)
     if (!check.ok) continue
+    const projectedBook: Book = {
+      id: `preview-${check.rank}`,
+      rank: check.rank,
+      cards: combo,
+      teamId: teamBooks[0]?.teamId ?? 0,
+      startedBySeatIndex: 0,
+    }
+    if (
+      !footMeldKeepsDiscard(
+        hand,
+        cardIds,
+        isPlayingFoot,
+        [...teamBooks, projectedBook],
+        meldThresholdMet,
+      )
+    ) {
+      continue
+    }
     if (ranks.has(check.rank)) continue
     ranks.add(check.rank)
     actions.push({
@@ -85,6 +110,7 @@ export function findAddToBookActions(
   teamBooks: Book[],
   isPlayingFoot = false,
   booksWithWildAddedThisTurn: string[] = [],
+  meldThresholdMet = true,
 ): Extract<AiAction, { type: 'addToBook' }>[] {
   const actions: Extract<AiAction, { type: 'addToBook' }>[] = []
   const playable = hand.filter((c) => !isRedThree(c))
@@ -93,11 +119,22 @@ export function findAddToBookActions(
     for (const size of [1, 2, 3, 4]) {
       for (const combo of combinations(playable, size, size)) {
         const cardIds = combo.map((c) => c.id)
-        if (!footMeldKeepsDiscard(hand, cardIds, isPlayingFoot)) continue
         const check = canAddToBook(book, combo, {
           wildAlreadyAddedThisTurn: booksWithWildAddedThisTurn.includes(book.id),
         })
         if (!check.ok) continue
+        const updatedBook = { ...book, cards: [...book.cards, ...combo] }
+        if (
+          !footMeldKeepsDiscard(
+            hand,
+            cardIds,
+            isPlayingFoot,
+            teamBooks.map((b) => (b.id === book.id ? updatedBook : b)),
+            meldThresholdMet,
+          )
+        ) {
+          continue
+        }
         const newSize = book.cards.length + combo.length
         const wildsInCombo = countWildsInCards(combo)
         const bookIsClean = bookWildCount(book) === 0

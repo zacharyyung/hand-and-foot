@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Card } from '../game/cards'
 import type { GameState } from '../game/deal'
 import { playerFootCount, playerHandCount } from '../game/deal'
@@ -11,6 +11,7 @@ import {
   drawCards,
   getCurrentPlayer,
   getTeam,
+  checkFootMeld,
   footMeldLeavesDiscard,
   isLastFootCard,
   startBook,
@@ -21,6 +22,8 @@ import { runAiTurn } from '../game/ai/runTurn'
 import { getViewerSeat } from '../game/tableLayout'
 import { mergeHandOrder, sortCardIdsByHand } from '../game/handOrder'
 import {
+  canStartBook,
+  canAddToBook,
   findAllBooksForSelectedCards,
   findBookForSelectedCards,
   getGoOutBlockReason,
@@ -28,6 +31,8 @@ import {
   needsAddBookPicker,
   shouldWarnDiscardToBook,
   bookWildCount,
+  cardsForBookFan,
+  type Book,
 } from '../game/books'
 import { meldContributionFromCards, meldThreshold, sumCardPoints } from '../game/scoring'
 import { playSound, unlockAudio } from '../game/audio'
@@ -139,9 +144,13 @@ export function GameView({
       stagingFlightIdsRef.current.delete(id)
       stagingBookIdByCardRef.current.delete(id)
     }
-    if (meldFlightPendingRef.current && stagingFlightIdsRef.current.size === 0) {
-      meldFlightPendingRef.current = false
-      setStagedBooks([])
+    if (meldFlightPendingRef.current) {
+      setStagedBooks((prev) =>
+        prev.filter((book) => book.cardIds.some((id) => stagingFlightIdsRef.current.has(id))),
+      )
+      if (stagingFlightIdsRef.current.size === 0) {
+        meldFlightPendingRef.current = false
+      }
     }
   }
 
@@ -156,6 +165,7 @@ export function GameView({
   function queueHandToTargetFlight(
     cards: Card[],
     to: CardFlightRequest['to'],
+    bookLayout?: CardFlightRequest['bookLayout'],
   ) {
     if (cards.length === 0) return
     retainHandCardsForFlight(cards)
@@ -166,6 +176,7 @@ export function GameView({
         from: handFlightAnchor(sourceCard.id),
         to,
         kind: 'place',
+        bookLayout,
       },
     ])
   }
@@ -294,39 +305,155 @@ export function GameView({
     chatMessages,
   ])
   const mustDiscardLastFoot = lastFootCard
-  const footMeldUsesAllCards = useMemo(() => {
-    if (!viewer.isPlayingFoot || !isMyTurn || game.turnPhase !== 'play') return false
-    if (isLastFootCard(viewer)) return true
+  const footMeldBlockReason = useMemo((): string | null => {
+    if (!viewer.isPlayingFoot || !isMyTurn || game.turnPhase !== 'play') return null
+    if (isLastFootCard(viewer)) return null
 
-    const stagedIds = stagedBooks.flatMap((b) => b.cardIds)
-    if (stagedIds.length > 0 && !footMeldLeavesDiscard(viewer, stagedIds)) {
-      return true
+    const tryCheck = (cardIds: string[], books: Book[], thresholdMet: boolean) => {
+      if (cardIds.length === 0) return null
+      const result = checkFootMeld(viewer, cardIds, books, thresholdMet)
+      return result.ok ? null : result.error
     }
 
+    const stagedIds = stagedBooks.flatMap((b) => b.cardIds)
+
     if (selectedIds.length > 0 && !footMeldLeavesDiscard(viewer, selectedIds)) {
-      return true
+      return 'Keep at least one card to discard — you cannot meld your whole foot.'
+    }
+
+    if (stagedIds.length > 0 && !footMeldLeavesDiscard(viewer, stagedIds)) {
+      return 'Keep at least one card to discard — you cannot meld your whole foot.'
     }
 
     const stagedAndSelected = [...new Set([...stagedIds, ...selectedIds])]
-    return (
+    if (
       stagedAndSelected.length > 0 &&
       !footMeldLeavesDiscard(viewer, stagedAndSelected)
-    )
+    ) {
+      return 'Keep at least one card to discard — you cannot meld your whole foot.'
+    }
+
+    if (stagedIds.length > 0) {
+      let virtualBooks: Book[] = [...team.books]
+      for (const staged of stagedBooks) {
+        virtualBooks = [
+          ...virtualBooks,
+          {
+            id: staged.id,
+            rank: staged.rank,
+            cards: staged.cards,
+            teamId: team.id,
+            startedBySeatIndex: viewerSeat,
+          },
+        ]
+      }
+      const stagedReason = tryCheck(stagedIds, virtualBooks, true)
+      if (stagedReason) return stagedReason
+    }
+
+    if (needsStagedMeld && selectedIds.length >= 3) {
+      const cards = viewer.hand.filter((c) => selectedIds.includes(c.id))
+      const stageCheck = validateStageBook(
+        viewer.hand,
+        selectedIds,
+        team.books,
+        stagedBooks.map((b) => b.rank),
+      )
+      if (stageCheck.ok) {
+        let virtualBooks: Book[] = [...team.books]
+        for (const staged of stagedBooks) {
+          virtualBooks = [
+            ...virtualBooks,
+            {
+              id: staged.id,
+              rank: staged.rank,
+              cards: staged.cards,
+              teamId: team.id,
+              startedBySeatIndex: viewerSeat,
+            },
+          ]
+        }
+        virtualBooks = [
+          ...virtualBooks,
+          {
+            id: 'preview-stage',
+            rank: stageCheck.rank,
+            cards,
+            teamId: team.id,
+            startedBySeatIndex: viewerSeat,
+          },
+        ]
+        const stageReason = tryCheck(stagedAndSelected, virtualBooks, true)
+        if (stageReason) return stageReason
+      }
+    }
+
+    if (team.meldThresholdMet && matchedAddBook && selectedIds.length > 0) {
+      const selected = viewer.hand.filter((c) => selectedIds.includes(c.id))
+      const addCheck = canAddToBook(matchedAddBook, selected, {
+        wildAlreadyAddedThisTurn: game.booksWithWildAddedThisTurn.includes(
+          matchedAddBook.id,
+        ),
+      })
+      if (addCheck.ok) {
+        const updatedBook = {
+          ...matchedAddBook,
+          cards: [...matchedAddBook.cards, ...selected],
+        }
+        const books = team.books.map((b) =>
+          b.id === matchedAddBook.id ? updatedBook : b,
+        )
+        const addReason = tryCheck(selectedIds, books, team.meldThresholdMet)
+        if (addReason) return addReason
+      }
+    }
+
+    if (selectedIds.length >= 3 && team.meldThresholdMet) {
+      const selected = viewer.hand.filter((c) => selectedIds.includes(c.id))
+      const startCheck = canStartBook(selected, team.books)
+      if (startCheck.ok) {
+        const projectedBook: Book = {
+          id: 'preview-start',
+          rank: startCheck.rank,
+          cards: selected,
+          teamId: team.id,
+          startedBySeatIndex: viewerSeat,
+        }
+        const startReason = tryCheck(
+          selectedIds,
+          [...team.books, projectedBook],
+          team.meldThresholdMet,
+        )
+        if (startReason) return startReason
+      }
+    }
+
+    return null
   }, [
     viewer,
     isMyTurn,
     game.turnPhase,
+    game.booksWithWildAddedThisTurn,
     stagedBooks,
     selectedIds,
+    team.books,
+    team.id,
+    team.meldThresholdMet,
+    viewerSeat,
+    needsStagedMeld,
+    matchedAddBook,
   ])
+  const footMeldBlocked = footMeldBlockReason !== null
   const footMeldHint = useMemo(() => {
-    if (!footMeldUsesAllCards || goingOut) return null
-    if (isLastFootCard(viewer)) return null
-    return 'Keep at least one card to discard — you cannot meld your whole foot.'
-  }, [footMeldUsesAllCards, goingOut, viewer])
+    if (!footMeldBlocked || goingOut || isLastFootCard(viewer)) return null
+    return footMeldBlockReason
+  }, [footMeldBlocked, footMeldBlockReason, goingOut, viewer])
   const playerHint = error ? null : wildBlockReason ?? footMeldHint ?? goOutBlockReason
   const goToFootDiscard =
-    isMyTurn && canGoToFoot(viewer) && selectedIds.length === 1
+    isMyTurn &&
+    canGoToFoot(viewer) &&
+    selectedIds.length === 1 &&
+    addBookOptions.length === 0
   const skipAndRunSelected =
     isMyTurn && willSkipAndRun(viewer, selectedIds)
   const skipAndRunMeld =
@@ -339,9 +466,17 @@ export function GameView({
       : selectedIds.length < 3
   const teamColor = TEAM_COLORS[viewer.profile.teamId]
 
-  useEffect(() => {
-    setHandOrder((prev) => mergeHandOrder(prev, viewer.hand))
-  }, [handKey, viewer.hand])
+  useLayoutEffect(() => {
+    setHandOrder((prev) => {
+      const merged = mergeHandOrder(prev, viewer.hand)
+      if (autoSort && isHumanViewer) {
+        const display = viewer.hand.filter((c) => !stagedCardIds.has(c.id))
+        const staged = merged.filter((id) => stagedCardIds.has(id))
+        return [...sortCardIdsByHand(display), ...staged]
+      }
+      return merged
+    })
+  }, [handKey, viewer.hand, autoSort, isHumanViewer, stagedCardIds])
 
   useEffect(() => {
     setStagedBooks([])
@@ -506,7 +641,7 @@ export function GameView({
     }
     const newBook = getTeam(result.state, team.id).books.find((b) => !prevBookIds.has(b.id))
     if (newBook) {
-      queueHandToTargetFlight(cards, bookFlightAnchor(newBook.id))
+      queueHandToTargetFlight(cardsForBookFan(cards), bookFlightAnchor(newBook.id))
     }
     setSelectedIds([])
     setError(null)
@@ -524,13 +659,27 @@ export function GameView({
       return
     }
     const cards = viewer.hand.filter((c) => selectedIds.includes(c.id))
+    const fanCards = cardsForBookFan(cards)
     const result = addToBook(game, matchedAddBook.id, selectedIds)
     if (result.error) {
       setError(result.error)
       playSound('invalid')
       return
     }
-    queueHandToTargetFlight(cards, bookFlightAnchor(matchedAddBook.id))
+    const updatedBook = getTeam(result.state, team.id).books.find(
+      (b) => b.id === matchedAddBook.id,
+    )
+    queueHandToTargetFlight(
+      fanCards,
+      bookFlightAnchor(matchedAddBook.id),
+      updatedBook
+        ? {
+            totalCards: updatedBook.cards.length,
+            incomingCards: fanCards.length,
+            stacked: updatedBook.cards.length >= 7,
+          }
+        : undefined,
+    )
     setSelectedIds([])
     setSelectedAddBookId(null)
     setError(null)
@@ -613,6 +762,39 @@ export function GameView({
       return
     }
     const cards = viewer.hand.filter((c) => selectedIds.includes(c.id))
+    let virtualBooks: Book[] = [...team.books]
+    for (const staged of stagedBooks) {
+      virtualBooks = [
+        ...virtualBooks,
+        {
+          id: staged.id,
+          rank: staged.rank,
+          cards: staged.cards,
+          teamId: team.id,
+          startedBySeatIndex: viewerSeat,
+        },
+      ]
+    }
+    virtualBooks = [
+      ...virtualBooks,
+      {
+        id: 'preview-stage',
+        rank: check.rank,
+        cards,
+        teamId: team.id,
+        startedBySeatIndex: viewerSeat,
+      },
+    ]
+    const stagedAndSelected = [
+      ...new Set([...stagedBooks.flatMap((b) => b.cardIds), ...selectedIds]),
+    ]
+    const footCheck = checkFootMeld(viewer, stagedAndSelected, virtualBooks, true)
+    if (!footCheck.ok) {
+      setError(footCheck.error)
+      playSound('invalid')
+      return
+    }
+    const fanCards = cardsForBookFan(cards)
     const bookId = `staged-${Date.now()}-${Math.random()}`
     setStagedBooks((prev) => [
       ...prev,
@@ -623,7 +805,7 @@ export function GameView({
         cards,
       },
     ])
-    queueHandToTargetFlight(cards, stagingBookAnchor(bookId))
+    queueHandToTargetFlight(fanCards, stagingBookAnchor(bookId))
     setSelectedIds([])
     setError(null)
     playSound('place')
@@ -654,7 +836,7 @@ export function GameView({
       )
       if (!matched) continue
       meldFlights.push({
-        cards: staged.cards,
+        cards: cardsForBookFan(staged.cards),
         from: stagingBookAnchor(staged.id),
         to: bookFlightAnchor(matched.id),
         kind: 'place',
@@ -922,7 +1104,7 @@ export function GameView({
                                 onClick={handleStage}
                                 disabled={
                                   selectedIds.length < 3 ||
-                                  footMeldUsesAllCards
+                                  footMeldBlocked
                                 }
                                 className="btn-secondary disabled:opacity-35"
                               >
@@ -933,7 +1115,7 @@ export function GameView({
                                 disabled={
                                   stagedBooks.length === 0 ||
                                   stagedPoints < requiredMeld ||
-                                  footMeldUsesAllCards
+                                  footMeldBlocked
                                 }
                                 className="btn-primary disabled:opacity-35"
                               >
@@ -946,7 +1128,7 @@ export function GameView({
                             <button
                               onClick={handleStartBook}
                               disabled={
-                                selectedIds.length < 3 || footMeldUsesAllCards
+                                selectedIds.length < 3 || footMeldBlocked
                               }
                               className="btn-secondary disabled:opacity-35"
                             >
@@ -986,7 +1168,7 @@ export function GameView({
                               disabled={
                                 selectedIds.length === 0 ||
                                 !matchedAddBook ||
-                                footMeldUsesAllCards
+                                footMeldBlocked
                               }
                               className="btn-secondary disabled:opacity-35"
                             >

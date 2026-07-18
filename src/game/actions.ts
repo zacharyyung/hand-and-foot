@@ -150,8 +150,6 @@ export function commitStagedMelds(
   const playerIndex = state.currentPlayerIndex
   const player = state.players[playerIndex]
   const allStagedIds = stagedGroups.flat()
-  const meldCheck = rejectFootMeld(player, allStagedIds)
-  if (!meldCheck.ok) return { state, error: meldCheck.error }
 
   const team = getTeam(state, player.profile.teamId)
 
@@ -183,6 +181,9 @@ export function commitStagedMelds(
       startedBySeatIndex: playerIndex,
     })
   }
+
+  const meldCheck = checkFootMeld(player, allStagedIds, virtualBooks, true)
+  if (!meldCheck.ok) return { state, error: meldCheck.error }
 
   if (totalPoints < required) {
     return {
@@ -271,17 +272,31 @@ export function startBook(
 
   const playerIndex = state.currentPlayerIndex
   const player = state.players[playerIndex]
-  const meldCheck = rejectFootMeld(player, cardIds)
-  if (!meldCheck.ok) return { state, error: meldCheck.error }
-
   const team = getTeam(state, player.profile.teamId)
   const selected = player.hand.filter((c) => cardIds.includes(c.id))
 
   const check = canStartBook(selected, team.books)
   if (!check.ok) return { state, error: check.reason }
 
+  const projectedBook: Book = {
+    id: `preview-${check.rank}`,
+    rank: check.rank,
+    cards: selected,
+    teamId: team.id,
+    startedBySeatIndex: playerIndex,
+  }
+  const newMeldPoints = state.meldPointsThisTurn + meldContributionFromCards(selected)
+  const thresholdNowMet =
+    team.meldThresholdMet || newMeldPoints >= meldThreshold(team.score)
+  const meldCheck = checkFootMeld(
+    player,
+    cardIds,
+    [...team.books, projectedBook],
+    thresholdNowMet,
+  )
+  if (!meldCheck.ok) return { state, error: meldCheck.error }
+
   if (!team.meldThresholdMet) {
-    const newMeldPoints = state.meldPointsThisTurn + meldContributionFromCards(selected)
     const required = meldThreshold(team.score)
     if (newMeldPoints < required) {
       return {
@@ -302,11 +317,7 @@ export function startBook(
   const newHand = removeCardsFromHand(player.hand, cardIds)
   let updatedPlayer: PlayerState = { ...player, hand: newHand }
 
-  const meldPointsThisTurn =
-    state.meldPointsThisTurn + meldContributionFromCards(selected)
-  const thresholdNowMet =
-    team.meldThresholdMet ||
-    meldPointsThisTurn >= meldThreshold(team.score)
+  const meldPointsThisTurn = newMeldPoints
 
   const teamsWithThreshold = state.teams.map((t) =>
     t.id === team.id
@@ -351,9 +362,6 @@ export function addToBook(
 
   const playerIndex = state.currentPlayerIndex
   const player = state.players[playerIndex]
-  const meldCheck = rejectFootMeld(player, cardIds)
-  if (!meldCheck.ok) return { state, error: meldCheck.error }
-
   const team = getTeam(state, player.profile.teamId)
 
   if (!team.meldThresholdMet) {
@@ -373,6 +381,13 @@ export function addToBook(
     ...book,
     cards: [...book.cards, ...selected],
   }
+  const meldCheck = checkFootMeld(
+    player,
+    cardIds,
+    team.books.map((b) => (b.id === bookId ? updatedBook : b)),
+    team.meldThresholdMet,
+  )
+  if (!meldCheck.ok) return { state, error: meldCheck.error }
 
   const newHand = removeCardsFromHand(player.hand, cardIds)
   let updatedPlayer: PlayerState = { ...player, hand: newHand }
@@ -520,6 +535,9 @@ const LAST_FOOT_CARD_MELD_ERROR =
 const FOOT_MELD_MUST_LEAVE_DISCARD_ERROR =
   'While playing your foot you must keep at least one card to discard — you cannot meld your whole hand.'
 
+export const FOOT_MELD_INELIGIBLE_GO_OUT_ERROR =
+  'You cannot leave one foot card unless your team can go out — need 1 clean and 1 dirty completed book (7+).'
+
 /** True when a foot meld still leaves at least one card to discard this turn. */
 export function footMeldLeavesDiscard(
   player: PlayerState,
@@ -530,17 +548,67 @@ export function footMeldLeavesDiscard(
   return player.hand.some((c) => !meldIds.has(c.id))
 }
 
-function rejectFootMeld(
+export function remainingHandAfterMeld(
   player: PlayerState,
   meldCardIds: string[],
-): { ok: false; error: string } | { ok: true } {
+): number {
+  const meldIds = new Set(meldCardIds)
+  return player.hand.filter((c) => !meldIds.has(c.id)).length
+}
+
+export function wouldLeaveIneligibleLastFootCard(
+  player: PlayerState,
+  meldCardIds: string[],
+  booksAfterMeld: Book[],
+  meldThresholdMetAfterMeld: boolean,
+): boolean {
+  if (!player.isPlayingFoot) return false
+  if (remainingHandAfterMeld(player, meldCardIds) !== 1) return false
+  return !canTeamGoOut(booksAfterMeld, meldThresholdMetAfterMeld)
+}
+
+export function checkFootMeld(
+  player: PlayerState,
+  meldCardIds: string[],
+  booksAfterMeld: Book[],
+  meldThresholdMetAfterMeld: boolean,
+): { ok: true } | { ok: false; error: string } {
+  if (!player.isPlayingFoot) return { ok: true }
   if (isLastFootCard(player)) {
     return { ok: false, error: LAST_FOOT_CARD_MELD_ERROR }
   }
   if (!footMeldLeavesDiscard(player, meldCardIds)) {
     return { ok: false, error: FOOT_MELD_MUST_LEAVE_DISCARD_ERROR }
   }
+  if (
+    wouldLeaveIneligibleLastFootCard(
+      player,
+      meldCardIds,
+      booksAfterMeld,
+      meldThresholdMetAfterMeld,
+    )
+  ) {
+    return { ok: false, error: FOOT_MELD_INELIGIBLE_GO_OUT_ERROR }
+  }
   return { ok: true }
+}
+
+/** Foot meld guard for AI helpers that only have a hand snapshot. */
+export function footMeldAllowedForHand(
+  hand: Card[],
+  meldCardIds: string[],
+  isPlayingFoot: boolean,
+  booksAfterMeld: Book[],
+  meldThresholdMetAfterMeld: boolean,
+): boolean {
+  if (!isPlayingFoot) return true
+  const player = {
+    hand,
+    isPlayingFoot: true,
+    foot: [],
+    footOnHold: false,
+  } as unknown as PlayerState
+  return checkFootMeld(player, meldCardIds, booksAfterMeld, meldThresholdMetAfterMeld).ok
 }
 
 /** Discarding the last hand card while the foot pile is still waiting. */

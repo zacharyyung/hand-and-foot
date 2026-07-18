@@ -104,6 +104,7 @@ export function runAiTurn(
         pub.myTeamBooks,
         pub.isPlayingFoot,
         current.booksWithWildAddedThisTurn,
+        team.meldThresholdMet,
       )
       const triedAdds = new Set<string>()
 
