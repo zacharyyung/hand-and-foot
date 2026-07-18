@@ -57,6 +57,62 @@ function flightTransform(x: number, y: number, rotationDeg: number): string {
   return `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%) rotate(${rotationDeg}deg)`
 }
 
+function isHandDrawTarget(to: ActiveCardFlight['to']): boolean {
+  return typeof to === 'string' && to.startsWith('hand-')
+}
+
+/** Match FLIGHT_EASING — fast out, clean stop. */
+function easeSnappy(t: number): number {
+  return 1 - (1 - t) ** 3
+}
+
+function runHandDrawFlight(
+  el: HTMLDivElement,
+  from: AnchorPoint,
+  toAnchor: ActiveCardFlight['to'],
+  duration: number,
+  delay: number,
+  startRot: number,
+  onComplete: () => void,
+): () => void {
+  let rafId = 0
+  const startAt = performance.now() + delay
+
+  const tick = (now: number) => {
+    const elapsed = now - startAt
+    if (elapsed < 0) {
+      rafId = requestAnimationFrame(tick)
+      return
+    }
+
+    const t = Math.min(1, elapsed / duration)
+    const eased = easeSnappy(t)
+    const to = getAnchorPoint(toAnchor)
+    const endRot = to?.rotation ?? 0
+
+    if (to) {
+      const x = from.x + (to.x - from.x) * eased
+      const y = from.y + (to.y - from.y) * eased
+      const rot = startRot + (endRot - startRot) * eased
+      el.style.transform = flightTransform(x, y, rot)
+
+      if (t >= 1) {
+        el.style.transform = flightTransform(to.x, to.y, endRot)
+        onComplete()
+        return
+      }
+    } else if (t >= 1) {
+      onComplete()
+      return
+    }
+
+    rafId = requestAnimationFrame(tick)
+  }
+
+  rafId = requestAnimationFrame(tick)
+  return () => cancelAnimationFrame(rafId)
+}
+
 function resolveFlightTarget(
   flight: ActiveCardFlight,
   anchor: AnchorPoint,
@@ -124,7 +180,10 @@ function FlyingCardStack({
     let cancelled = false
     let fallbackTimer: number | undefined
     let transformEndHandler: ((event: TransitionEvent) => void) | undefined
+    let cancelDrawFlight: (() => void) | undefined
     const rotLead = ROTATION_LEAD[flight.kind]
+    const trackHandDraw =
+      flight.kind === 'draw' && isHandDrawTarget(flight.to)
 
     const finishFlight = () => {
       if (cancelled || finished.current) return
@@ -146,6 +205,32 @@ function FlyingCardStack({
       const endRot =
         flight.kind === 'place' && flight.cards.length > 1 ? 0 : (resolvedTo.rotation ?? 0)
       const startRot = endRot + rotLead
+
+      if (trackHandDraw) {
+        el.style.transition = 'none'
+        el.style.opacity = '1'
+        el.style.transform = flightTransform(from.x, from.y, startRot)
+        setVisible(true)
+
+        cancelDrawFlight = runHandDrawFlight(
+          el,
+          from,
+          flight.to,
+          flight.duration,
+          flight.delay,
+          startRot,
+          () => {
+            if (fallbackTimer) window.clearTimeout(fallbackTimer)
+            finishFlight()
+          },
+        )
+
+        fallbackTimer = window.setTimeout(() => {
+          cancelDrawFlight?.()
+          finishFlight()
+        }, flight.delay + flight.duration + 48)
+        return
+      }
 
       transformEndHandler = (event: TransitionEvent) => {
         if (event.target !== el || event.propertyName !== 'transform') return
@@ -204,6 +289,7 @@ function FlyingCardStack({
 
     return () => {
       cancelled = true
+      cancelDrawFlight?.()
       if (fallbackTimer) window.clearTimeout(fallbackTimer)
       if (transformEndHandler && ref.current) {
         ref.current.removeEventListener('transitionend', transformEndHandler)

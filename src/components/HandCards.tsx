@@ -4,6 +4,7 @@ import type { CardMotionKind } from '../game/cardMotion'
 import { reorderHandOrder } from '../game/handOrder'
 import { HAND_LAYOUT_MS } from '../game/cardFlight'
 import { playSound } from '../game/audio'
+import { computeHandFanLayout } from './handFanLayout'
 import { Card } from './Card'
 import { AnimatedCardShell } from './AnimatedCardShell'
 
@@ -35,37 +36,6 @@ const Z = {
 
 type CardSlotPhase = 'in-flight' | 'visible'
 
-/** Left offsets with extra gaps around selected / hovered cards for easier hitting. */
-function fanOffsets(
-  count: number,
-  selected: boolean[],
-  hoverIndex: number | null,
-): { lefts: number[]; width: number } {
-  const base = Math.max(24, Math.min(42, 520 / Math.max(count, 1)))
-  const selectedGap = 16
-  const hoverGap = 12
-  const cardW = 46
-
-  const lefts: number[] = []
-  let x = 0
-  for (let i = 0; i < count; i++) {
-    lefts.push(x)
-    if (i < count - 1) {
-      let step = base
-      if (selected[i] || selected[i + 1]) step += selectedGap
-      if (
-        hoverIndex !== null &&
-        (hoverIndex === i || hoverIndex === i + 1)
-      ) {
-        step += hoverGap
-      }
-      x += step
-    }
-  }
-
-  return { lefts, width: Math.max(cardW, x + cardW) }
-}
-
 /** Stable hand list — order follows handOrder, orphans appended once. */
 function buildDisplayCards(hand: CardType[], handOrder: string[]): CardType[] {
   const byId = new Map(hand.map((c) => [c.id, c]))
@@ -93,7 +63,7 @@ export function HandCards({
   const [dragCardId, setDragCardId] = useState<string | null>(null)
   const [dropCardId, setDropCardId] = useState<string | null>(null)
   const [hoverCardId, setHoverCardId] = useState<string | null>(null)
-  /** Hold draw-spread timing until layout settles so width doesn't snap mid-reveal. */
+  /** Keep draw-spread timing until the fan finishes opening after the last in-flight card. */
   const [layoutSpreadHold, setLayoutSpreadHold] = useState(false)
 
   const displayCards = useMemo(
@@ -116,18 +86,19 @@ export function HandCards({
 
     if (!layoutSpreadHold) return
 
-    const holdMs = HAND_LAYOUT_MS + 16
+    const holdMs = HAND_LAYOUT_MS + 32
     const timer = window.setTimeout(() => setLayoutSpreadHold(false), holdMs)
     return () => window.clearTimeout(timer)
   }, [hasIncoming, layoutSpreadHold])
 
-  const handSpreadMs = hasIncoming || layoutSpreadHold ? HAND_LAYOUT_MS : CARD_MS
+  const layoutAnimating = hasIncoming || layoutSpreadHold
+  const handSpreadMs = layoutAnimating ? HAND_LAYOUT_MS : CARD_MS
 
   const hoverIndex = hoverCardId
     ? displayCards.findIndex((c) => c.id === hoverCardId)
     : null
   const selectedFlags = displayCards.map((c) => selectedIds.includes(c.id))
-  const { lefts, width: fanWidth } = fanOffsets(n, selectedFlags, hoverIndex)
+  const fanLayout = computeHandFanLayout(n, selectedFlags, hoverIndex)
 
   function slotPhase(cardId: string): CardSlotPhase {
     return isCardHidden?.(cardId) ? 'in-flight' : 'visible'
@@ -218,8 +189,6 @@ export function HandCards({
     )
   }
 
-  const maxRot = Math.min(22, 3 + n * 0.45)
-
   return (
     <div
       className="relative mx-auto flex w-full max-w-5xl justify-center px-2"
@@ -229,12 +198,13 @@ export function HandCards({
       <div
         className="relative transition-[width] ease-snappy will-change-[width]"
         style={{
-          width: fanWidth,
+          width: fanLayout.fanWidth,
           height: '5.75rem',
           transitionDuration: `${handSpreadMs}ms`,
         }}
       >
         {displayCards.map((card, index) => {
+          const slot = fanLayout.slots[index]
           const isSelected = selectedFlags[index]
           const isHovered = hoverCardId === card.id
           const isDragging = dragCardId === card.id
@@ -242,16 +212,21 @@ export function HandCards({
             dropCardId === card.id && dragCardId !== null && dragCardId !== card.id
           const phase = slotPhase(card.id)
           const inFlight = phase === 'in-flight'
-          const t = n <= 1 ? 0 : index / (n - 1)
-          const rot = -maxRot / 2 + t * maxRot
           const lift = isSelected ? 16 : isHovered ? 12 : 0
-          const arcY = Math.abs(t - 0.5) * 14
           const isActive = isDragging || isHovered || isSelected
 
           let z = Z.base + index
           if (isDragging) z = Z.drag
           else if (isHovered) z = Z.hover
           else if (isSelected) z = Z.selected
+
+          /*
+           * Incoming draw slots snap to their final fan position immediately so
+           * flight anchors stay stable. Visible neighbors animate to make space.
+           */
+          const slotTransition = inFlight
+            ? 'none'
+            : `transform ${handSpreadMs}ms cubic-bezier(0.2, 0.8, 0.2, 1), left ${handSpreadMs}ms cubic-bezier(0.2, 0.8, 0.2, 1), z-index 0ms`
 
           return (
             <div
@@ -263,7 +238,7 @@ export function HandCards({
               onDragEnd={handleDragEnd}
               onMouseEnter={() => setHoverCardId(card.id)}
               onFocus={() => setHoverCardId(card.id)}
-              className={`absolute bottom-0 origin-bottom will-change-transform transition-[transform,left,z-index] ease-snappy ${
+              className={`absolute bottom-0 origin-bottom will-change-transform ${
                 isDragging ? 'opacity-40' : ''
               } ${isDropTarget ? 'brightness-110' : ''} ${
                 canDrag && !inFlight
@@ -271,15 +246,15 @@ export function HandCards({
                   : 'cursor-default'
               } ${inFlight ? 'pointer-events-none' : ''}`}
               style={{
-                left: lefts[index],
+                left: slot.left,
                 zIndex: z,
-                transform: `translate3d(0, ${arcY - lift}px, 0) rotate(${rot}deg)`,
-                transitionDuration: `${handSpreadMs}ms`,
+                transform: `translate3d(0, ${slot.arcY - lift}px, 0) rotate(${slot.rotation}deg)`,
+                transition: slotTransition,
               }}
             >
               <span
                 data-flight-anchor={`hand-${card.id}`}
-                data-flight-rotation={rot}
+                data-flight-rotation={slot.rotation}
                 className="pointer-events-none absolute left-1/2 top-1/2 z-0 h-0 w-0 -translate-x-1/2 -translate-y-1/2"
                 aria-hidden
               />
