@@ -23,7 +23,7 @@ export type SoundId =
 
 let ctx: AudioContext | null = null
 let muted = false
-let volume = 0.35
+let volume = 0.525
 
 const MUTE_KEY = 'hf-sound-muted'
 
