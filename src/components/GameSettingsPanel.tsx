@@ -15,6 +15,8 @@ interface GameSettingsPanelProps {
   onRequestUndo: () => void
   autoSort: boolean
   onAutoSortChange: (enabled: boolean) => void
+  /** Render trigger inside the player dock instead of fixed corner. */
+  dockInline?: boolean
 }
 
 export function GameSettingsPanel({
@@ -30,6 +32,7 @@ export function GameSettingsPanel({
   onRequestUndo,
   autoSort,
   onAutoSortChange,
+  dockInline = false,
 }: GameSettingsPanelProps) {
   const humans = game.players.filter((p) => p.profile.isHuman)
   const humanCount = humans.length
@@ -41,7 +44,7 @@ export function GameSettingsPanel({
       <button
         type="button"
         onClick={onToggle}
-        className="corner-control corner-control-br"
+        className={dockInline ? 'dock-control dock-control-settings' : 'corner-control corner-control-br'}
         aria-expanded={open}
         aria-haspopup="dialog"
       >

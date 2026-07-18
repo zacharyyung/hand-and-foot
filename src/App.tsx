@@ -15,7 +15,6 @@ import {
 } from './game/votes'
 import { GameView } from './components/GameView'
 import { RoundSummary } from './components/RoundSummary'
-import { GameSettingsPanel } from './components/GameSettingsPanel'
 import {
   RestartNoticeOverlay,
   UndoRequestPicker,
@@ -41,7 +40,6 @@ function App() {
   const [game, setGame] = useState<GameState | null>(null)
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [showInstructions, setShowInstructions] = useState(false)
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const [gameHistory, setGameHistory] = useState<GameState[]>([])
   const [startOverVotes, setStartOverVotes] = useState<number[]>([])
   const [undoRequest, setUndoRequest] = useState<UndoVoteRequest | null>(null)
@@ -61,7 +59,6 @@ function App() {
     setUndoResult(null)
     setShowRestartNotice(false)
     setShowUndoPicker(false)
-    setSettingsOpen(false)
   }
 
   function handlePlayerCountChange(count: PlayerCount) {
@@ -122,7 +119,6 @@ function App() {
     const humans = humanSeats(game).length
     if (!startOverReached(nextVotes, humans)) return
 
-    setSettingsOpen(false)
     setShowRestartNotice(true)
     window.setTimeout(() => {
       playSound('button')
@@ -140,7 +136,6 @@ function App() {
   function handleRequestUndo(requesterSeat: number) {
     if (!game || gameHistory.length === 0 || undoRequest) return
     playSound('button')
-    setSettingsOpen(false)
     setShowUndoPicker(false)
 
     const eligible = undoEligibleVoters(game, requesterSeat)
@@ -290,6 +285,17 @@ function App() {
         onGameChange={handleGameChange}
         chatMessages={chatMessages}
         autoSort={autoSort}
+        onAutoSortChange={(enabled) => {
+          saveAutoSortPreference(enabled)
+          setAutoSort(enabled)
+          playSound('button')
+        }}
+        onShowInstructions={() => setShowInstructions(true)}
+        startOverVotes={startOverVotes}
+        onStartOverVote={handleStartOverVote}
+        canRequestUndo={gameHistory.length > 0}
+        undoPending={undoRequest !== null}
+        onRequestUndo={initiateUndoRequest}
         onChatSend={(message, validationState) => {
           const g = validationState ?? game
           if (!g || !isAllowedChatMessage(g, message, chatMessages)) return
@@ -310,27 +316,6 @@ function App() {
         open={showInstructions}
         onClose={() => setShowInstructions(false)}
       />
-
-      {game?.phase === 'playing' && (
-        <GameSettingsPanel
-          game={game}
-          open={settingsOpen}
-          onToggle={() => setSettingsOpen((open) => !open)}
-          onClose={() => setSettingsOpen(false)}
-          onShowInstructions={() => setShowInstructions(true)}
-          startOverVotes={startOverVotes}
-          onStartOverVote={handleStartOverVote}
-          canRequestUndo={gameHistory.length > 0}
-          undoPending={undoRequest !== null}
-          onRequestUndo={initiateUndoRequest}
-          autoSort={autoSort}
-          onAutoSortChange={(enabled) => {
-            saveAutoSortPreference(enabled)
-            setAutoSort(enabled)
-            playSound('button')
-          }}
-        />
-      )}
 
       {showRestartNotice && game && (
         <RestartNoticeOverlay humanCount={humanSeats(game).length} />

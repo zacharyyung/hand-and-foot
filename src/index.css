@@ -758,8 +758,8 @@
   }
 
   /* Lift chat/settings above the player action row while a hand is visible */
-  html[data-game-playing] .corner-control-bl,
-  html[data-game-playing] .corner-control-br {
+  html[data-game-playing]:not(:has(.south-dock-bottom-bar)) .corner-control-bl,
+  html[data-game-playing]:not(:has(.south-dock-bottom-bar)) .corner-control-br {
     bottom: calc(max(0.75rem, var(--safe-bottom)) + var(--game-corner-lift, 3.75rem));
   }
 
@@ -963,7 +963,7 @@
     transition: none;
   }
 
-  /* South dock: stable hand meta + action row heights */
+  /* South dock + responsive play shell */
   .game-play-shell {
     height: 100dvh;
     max-height: 100dvh;
@@ -973,86 +973,180 @@
     padding-bottom: var(--safe-bottom);
   }
 
+  .game-play-header {
+    padding-top: max(0.375rem, calc(var(--safe-top) * 0.15));
+    padding-bottom: 0.375rem;
+  }
+
+  .game-play-shell[data-layout='compact'] .game-play-header,
+  .game-play-shell[data-layout='tight'] .game-play-header {
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+  }
+
   .south-player-dock {
     --dock-max-h: min(
-      42dvh,
-      calc(100dvh - 9rem - var(--safe-top) - var(--safe-bottom))
+      46dvh,
+      calc(var(--game-shell-h, 100dvh) - 7.5rem - var(--safe-top) - var(--safe-bottom))
     );
     max-height: var(--dock-max-h);
     min-height: 0;
-    padding-bottom: max(0.375rem, calc(var(--safe-bottom) * 0.25));
   }
 
   .south-dock-hand-meta {
-    min-height: 2rem;
+    min-height: 1.75rem;
   }
 
   .south-dock-sort {
-    min-height: 2rem;
+    min-height: 1.75rem;
   }
 
   .south-dock-hand-scroll {
-    min-height: 3.5rem;
-    max-height: min(7.5rem, 28dvh);
+    min-height: 3rem;
+    max-height: min(7rem, 26dvh);
+  }
+
+  .south-dock-bottom-bar {
+    display: grid;
+    grid-template-columns: minmax(0, auto) minmax(0, 1fr) minmax(0, auto);
+    align-items: center;
+    gap: 0.375rem;
+    padding:
+      0.375rem max(0.5rem, var(--safe-left))
+      max(0.5rem, calc(var(--safe-bottom) * 0.5))
+      max(0.5rem, var(--safe-right));
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(0, 0, 0, 0.18);
+  }
+
+  .south-dock-bottom-side {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+  }
+
+  .south-dock-bottom-side-right {
+    justify-content: flex-end;
+  }
+
+  .dock-control {
+    position: relative;
+    z-index: 1;
+    border-radius: 9999px;
+    padding: 0.4375rem 0.75rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--ink-muted);
+    background: linear-gradient(180deg, rgba(72, 48, 30, 0.92) 0%, rgba(36, 24, 16, 0.96) 100%);
+    border: 1px solid rgba(139, 99, 64, 0.32);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+    transition: color 150ms var(--ease-press), background 150ms var(--ease-press);
+    white-space: nowrap;
+  }
+
+  .dock-control:hover {
+    color: var(--ink);
+    background: linear-gradient(180deg, rgba(88, 58, 36, 0.94) 0%, rgba(44, 30, 20, 0.98) 100%);
+  }
+
+  .dock-control-chat {
+    max-width: 7.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .game-action-slot {
-    min-height: 2.75rem;
-    padding-bottom: max(0.25rem, calc(var(--safe-bottom) * 0.35));
+    min-height: 2.5rem;
+    padding-bottom: 0;
+  }
+
+  .game-play-shell[data-layout='compact'] .south-player-dock {
+    --dock-max-h: min(
+      42dvh,
+      calc(var(--game-shell-h, 100dvh) - 6.75rem - var(--safe-top) - var(--safe-bottom))
+    );
+  }
+
+  .game-play-shell[data-layout='compact'] .south-dock-hand-scroll {
+    max-height: min(6rem, 22dvh);
+  }
+
+  .game-play-shell[data-layout='compact'] .round-table-board {
+    inset: 16% 11% !important;
+  }
+
+  .game-play-shell[data-layout='compact'] .btn-table,
+  .game-play-shell[data-layout='compact'] .btn-primary,
+  .game-play-shell[data-layout='compact'] .btn-secondary,
+  .game-play-shell[data-layout='compact'] .btn-danger,
+  .game-play-shell[data-layout='compact'] .btn-success,
+  .game-play-shell[data-layout='compact'] .btn-foot {
+    padding: 0.4375rem 0.6875rem;
+    font-size: 0.6875rem;
+  }
+
+  .game-play-shell[data-layout='tight'] .south-player-dock {
+    --dock-max-h: min(
+      48dvh,
+      calc(var(--game-shell-h, 100dvh) - 5.5rem - var(--safe-top) - var(--safe-bottom))
+    );
+  }
+
+  .game-play-shell[data-layout='tight'] .south-dock-hand-scroll {
+    min-height: 2.5rem;
+    max-height: min(5rem, 20dvh);
+  }
+
+  .game-play-shell[data-layout='tight'] .hand-cards-spread {
+    min-height: 4rem !important;
+  }
+
+  .game-play-shell[data-layout='tight'] .hand-cards-spread > div {
+    height: min(4.5rem, 18dvh) !important;
+  }
+
+  .game-play-shell[data-layout='tight'] .round-table-board {
+    inset: 18% 12% !important;
+  }
+
+  .game-play-shell[data-layout='tight'] .dock-control {
+    padding: 0.375rem 0.625rem;
+    font-size: 0.625rem;
+  }
+
+  .game-play-shell[data-layout='tight'] .dock-control-chat {
+    max-width: 4.25rem;
   }
 
   @media (max-height: 900px) {
     .south-player-dock {
       --dock-max-h: min(
-        38dvh,
-        calc(100dvh - 8rem - var(--safe-top) - var(--safe-bottom))
+        44dvh,
+        calc(var(--game-shell-h, 100dvh) - 7rem - var(--safe-top) - var(--safe-bottom))
       );
     }
 
     .south-dock-hand-scroll {
-      max-height: min(6.5rem, 24dvh);
-    }
-
-    html[data-game-playing] {
-      --game-corner-lift: 4.25rem;
+      max-height: min(6rem, 22dvh);
     }
   }
 
   @media (max-height: 750px) {
-    .hand-cards-spread {
-      min-height: 4.5rem !important;
-    }
-
-    .hand-cards-spread > div {
-      height: min(5rem, 19dvh) !important;
-    }
-
     .south-player-dock {
       --dock-max-h: min(
-        36dvh,
-        calc(100dvh - 7rem - var(--safe-top) - var(--safe-bottom))
+        46dvh,
+        calc(var(--game-shell-h, 100dvh) - 5.75rem - var(--safe-top) - var(--safe-bottom))
       );
     }
 
     .south-dock-hand-scroll {
-      min-height: 3rem;
-      max-height: min(5.5rem, 22dvh);
-    }
-
-    .south-dock-hand-meta {
-      min-height: 1.75rem;
-      padding-top: 0.25rem;
-      padding-bottom: 0.25rem;
+      min-height: 2.5rem;
+      max-height: min(4.75rem, 19dvh);
     }
 
     .game-action-slot {
-      min-height: 2.5rem;
-      padding-top: 0.375rem;
-      padding-bottom: max(0.375rem, var(--safe-bottom));
-    }
-
-    html[data-game-playing] {
-      --game-corner-lift: 4.5rem;
+      min-height: 2.25rem;
     }
   }
 }

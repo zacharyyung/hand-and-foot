@@ -65,7 +65,36 @@ function TeamDotsRow({
 }
 
 /** Round points on the table, with cumulative game total underneath. */
-export function CurrentRoundTracker({ teams }: { teams: TeamState[] }) {
+export function CurrentRoundTracker({
+  teams,
+  compact = false,
+}: {
+  teams: TeamState[]
+  compact?: boolean
+}) {
+  if (compact) {
+    return (
+      <div
+        className="flex flex-wrap items-center justify-center gap-x-2.5 gap-y-0.5"
+        title="Round table points and cumulative scores"
+      >
+        <div className="flex items-center gap-1.5">
+          <span className="text-[8px] font-semibold uppercase tracking-wider text-ink-faint">
+            Table
+          </span>
+          <TeamDotsRow teams={teams} value={(team) => teamBoardPoints(team.books)} size="sm" />
+        </div>
+        <span className="hidden h-3 w-px bg-white/10 sm:inline" aria-hidden />
+        <div className="flex items-center gap-1.5">
+          <span className="text-[8px] font-semibold uppercase tracking-wider text-ink-faint">
+            Cum
+          </span>
+          <TeamDotsRow teams={teams} value={(team) => team.score} size="sm" />
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col items-center gap-1" title="Round table points and cumulative scores">
       <div className="flex items-center gap-2.5 sm:gap-3">

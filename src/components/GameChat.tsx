@@ -18,6 +18,9 @@ interface GameChatProps {
   viewerSeat: number
   messages: ChatMessage[]
   onSend: (message: ChatMessage, validationState?: GameState) => void
+  /** Render trigger inside the player dock instead of fixed corner. */
+  dockInline?: boolean
+  compact?: boolean
 }
 
 export function GameChat({
@@ -25,6 +28,8 @@ export function GameChat({
   viewerSeat,
   messages,
   onSend,
+  dockInline = false,
+  compact = false,
 }: GameChatProps) {
   const [open, setOpen] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
@@ -94,13 +99,13 @@ export function GameChat({
           playSound('button')
           setOpen((v) => !v)
         }}
-        className={`corner-control corner-control-bl table-chat-chip ${
-          partnerRequest || waitingForPartnerReply ? 'table-chat-chip-alert' : ''
-        }`}
+        className={`${
+          dockInline ? 'dock-control dock-control-chat table-chat-chip' : 'corner-control corner-control-bl table-chat-chip'
+        } ${partnerRequest || waitingForPartnerReply ? 'table-chat-chip-alert' : ''}`}
         aria-expanded={open}
         aria-haspopup="dialog"
       >
-        <span className="table-chat-chip-label">Table chat</span>
+        <span className="table-chat-chip-label">{compact ? 'Chat' : 'Table chat'}</span>
         {partnerRequest && (
           <span className="table-chat-chip-badge table-chat-chip-badge-alert" aria-hidden>
             !

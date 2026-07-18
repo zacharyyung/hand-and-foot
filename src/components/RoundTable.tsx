@@ -38,7 +38,7 @@ export function RoundTable({
       <div className="relative h-full w-full overflow-visible px-0.5 pt-2 pb-1 sm:pt-3">
         {/* Soft-cornered rectangle — books live on the felt inside this area */}
         <div
-          className="table-rail table-surface felt-texture absolute rounded-[1.75rem] sm:rounded-[2rem] md:rounded-[2.25rem] inset-[11%_9%] sm:inset-[10%_8%] md:inset-[9%_7%] lg:inset-[8%_6%]"
+          className="round-table-board table-rail table-surface felt-texture absolute rounded-[1.75rem] sm:rounded-[2rem] md:rounded-[2.25rem] inset-[11%_9%] sm:inset-[10%_8%] md:inset-[9%_7%] lg:inset-[8%_6%]"
           aria-hidden
         />
 

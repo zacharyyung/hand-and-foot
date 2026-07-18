@@ -47,6 +47,8 @@ import { RoundTable } from './RoundTable'
 import { MeldTracker, CurrentRoundTracker } from './Scoreboard'
 import { GameChat } from './GameChat'
 import { GameMessageBar } from './GameMessageBar'
+import { GameSettingsPanel } from './GameSettingsPanel'
+import { useGameShellLayout } from './useGameShellLayout'
 import { TEAM_COLORS, partnerSeat, type PlayerCount } from '../game/teams'
 import type { ChatMessage } from '../game/chat'
 import { getPartnerGoOutHint, pendingPartnerGoOutRequest } from '../game/chat'
@@ -58,6 +60,13 @@ interface GameViewProps {
   chatMessages: ChatMessage[]
   onChatSend: (message: ChatMessage, validationState?: GameState) => void
   autoSort?: boolean
+  onAutoSortChange?: (enabled: boolean) => void
+  onShowInstructions?: () => void
+  startOverVotes?: number[]
+  onStartOverVote?: (seatIndex: number) => void
+  canRequestUndo?: boolean
+  undoPending?: boolean
+  onRequestUndo?: () => void
 }
 
 const AI_TURN_DELAY_MS = 900
@@ -90,7 +99,18 @@ export function GameView({
   chatMessages,
   onChatSend,
   autoSort = false,
+  onAutoSortChange,
+  onShowInstructions,
+  startOverVotes = [],
+  onStartOverVote,
+  canRequestUndo = false,
+  undoPending = false,
+  onRequestUndo,
 }: GameViewProps) {
+  const shellRef = useRef<HTMLDivElement>(null)
+  const shellLayout = useGameShellLayout(shellRef)
+  const compactHeader = shellLayout !== 'comfortable'
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [aiThinking, setAiThinking] = useState(false)
@@ -936,39 +956,53 @@ export function GameView({
   }, [])
 
   return (
-    <div className="game-play-shell flex min-h-0 flex-col overflow-hidden">
+    <div
+      ref={shellRef}
+      className="game-play-shell flex min-h-0 flex-col overflow-hidden"
+    >
       {/* Slim top rail — scores & status only */}
-      <header className="relative z-20 shrink-0 px-3 py-2 sm:px-5">
-        <div className="flex items-center justify-between gap-3">
+      <header className="game-play-header relative z-20 shrink-0 px-3 py-2 sm:px-5">
+        <div className="flex items-center justify-between gap-2 sm:gap-3">
           <div className="min-w-0">
             <div className="flex items-baseline gap-2">
-              <h1 className="font-display text-base font-semibold tracking-tight text-ink sm:text-lg">
+              <h1 className="font-display text-sm font-semibold tracking-tight text-ink sm:text-lg">
                 Hand &amp; Foot
               </h1>
               <span className="font-sans text-[10px] tabular-nums text-ink-faint">
                 R{game.roundNumber}
               </span>
             </div>
-            <p
-              className={`mt-0.5 truncate text-[11px] ${
-                isMyTurn && !aiThinking ? 'text-accent' : 'text-ink-muted'
-              }`}
-            >
-              {statusText}
-            </p>
+            {!compactHeader && (
+              <p
+                className={`mt-0.5 truncate text-[11px] ${
+                  isMyTurn && !aiThinking ? 'text-accent' : 'text-ink-muted'
+                }`}
+              >
+                {statusText}
+              </p>
+            )}
           </div>
 
-          <div className="absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 sm:block">
-            <CurrentRoundTracker teams={game.teams} />
+          <div className="absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 md:block">
+            <CurrentRoundTracker teams={game.teams} compact={compactHeader} />
           </div>
 
-          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
             <MeldTracker teams={game.teams} />
           </div>
         </div>
-        <div className="mt-1.5 flex justify-center sm:hidden">
-          <CurrentRoundTracker teams={game.teams} />
+        <div className={`mt-1 flex justify-center ${compactHeader ? 'md:hidden' : 'sm:hidden'}`}>
+          <CurrentRoundTracker teams={game.teams} compact={compactHeader} />
         </div>
+        {compactHeader && (
+          <p
+            className={`mt-0.5 truncate text-center text-[10px] ${
+              isMyTurn && !aiThinking ? 'text-accent' : 'text-ink-muted'
+            }`}
+          >
+            {statusText}
+          </p>
+        )}
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col">
@@ -1090,135 +1124,166 @@ export function GameView({
                 onConfirmDiscard={handleConfirmDiscard}
               />
 
-              <div
-                className="game-action-slot flex shrink-0 flex-wrap items-center justify-center gap-1.5 px-3 py-1.5 sm:gap-2 sm:px-4 sm:py-2"
-                aria-hidden={!isMyTurn}
-              >
-                {isMyTurn && (
-                  <>
-                    {game.turnPhase === 'draw' && (
-                      <button onClick={handleDraw} className="btn-primary animate-soft-pulse">
-                        Draw 2
-                      </button>
-                    )}
+              <div className="south-dock-bottom-bar shrink-0">
+                <div className="south-dock-bottom-side">
+                  <GameChat
+                    game={game}
+                    viewerSeat={viewerSeat}
+                    messages={chatMessages}
+                    onSend={onChatSend}
+                    dockInline
+                    compact={shellLayout === 'tight'}
+                  />
+                </div>
 
-                    {game.turnPhase === 'play' && (
-                      <>
-                        {needsStagedMeld ? (
-                          !mustDiscardLastFoot && (
-                            <>
+                <div
+                  className="game-action-slot flex min-w-0 flex-1 flex-wrap items-center justify-center gap-1.5 px-1 py-1 sm:gap-2 sm:py-1.5"
+                  aria-hidden={!isMyTurn}
+                >
+                  {isMyTurn && (
+                    <>
+                      {game.turnPhase === 'draw' && (
+                        <button onClick={handleDraw} className="btn-primary animate-soft-pulse">
+                          Draw 2
+                        </button>
+                      )}
+
+                      {game.turnPhase === 'play' && (
+                        <>
+                          {needsStagedMeld ? (
+                            !mustDiscardLastFoot && (
+                              <>
+                                <button
+                                  onClick={handleStage}
+                                  disabled={
+                                    selectedIds.length < 3 ||
+                                    footMeldBlocked
+                                  }
+                                  className="btn-secondary disabled:opacity-35"
+                                >
+                                  Stage
+                                </button>
+                                <button
+                                  onClick={handleMeld}
+                                  disabled={
+                                    stagedBooks.length === 0 ||
+                                    stagedPoints < requiredMeld ||
+                                    footMeldBlocked
+                                  }
+                                  className="btn-primary disabled:opacity-35"
+                                >
+                                  Meld {stagedPoints}/{requiredMeld}
+                                </button>
+                              </>
+                            )
+                          ) : (
+                            !mustDiscardLastFoot && (
                               <button
-                                onClick={handleStage}
+                                onClick={handleStartBook}
                                 disabled={
-                                  selectedIds.length < 3 ||
+                                  selectedIds.length < 3 || footMeldBlocked
+                                }
+                                className="btn-secondary disabled:opacity-35"
+                              >
+                                Start book
+                              </button>
+                            )
+                          )}
+
+                          {addBookOptions.length > 0 && (
+                            <>
+                              {showAddBookPicker && (
+                                <select
+                                  value={selectedAddBookId ?? ''}
+                                  onChange={(e) =>
+                                    setSelectedAddBookId(e.target.value || null)
+                                  }
+                                  className="field-control field-control--compact max-w-[9rem] sm:max-w-[11rem]"
+                                  aria-label="Choose book to add to"
+                                >
+                                  {addBookOptions.map((book) => {
+                                    const wilds = bookWildCount(book)
+                                    return (
+                                      <option
+                                        key={book.id}
+                                        value={book.id}
+                                        className="bg-felt-dark"
+                                      >
+                                        {book.rank}s · {book.cards.length}
+                                        {wilds === 0 ? ' · clean' : ` · ${wilds}w`}
+                                      </option>
+                                    )
+                                  })}
+                                </select>
+                              )}
+                              <button
+                                onClick={handleAddToBook}
+                                disabled={
+                                  selectedIds.length === 0 ||
+                                  !matchedAddBook ||
                                   footMeldBlocked
                                 }
                                 className="btn-secondary disabled:opacity-35"
                               >
-                                Stage
-                              </button>
-                              <button
-                                onClick={handleMeld}
-                                disabled={
-                                  stagedBooks.length === 0 ||
-                                  stagedPoints < requiredMeld ||
-                                  footMeldBlocked
-                                }
-                                className="btn-primary disabled:opacity-35"
-                              >
-                                Meld {stagedPoints}/{requiredMeld}
+                                {matchedAddBook
+                                  ? `Add to ${matchedAddBook.rank}s`
+                                  : 'Add to book'}
                               </button>
                             </>
-                          )
-                        ) : (
-                          !mustDiscardLastFoot && (
-                            <button
-                              onClick={handleStartBook}
-                              disabled={
-                                selectedIds.length < 3 || footMeldBlocked
-                              }
-                              className="btn-secondary disabled:opacity-35"
-                            >
-                              Start book
-                            </button>
-                          )
-                        )}
+                          )}
 
-                        {addBookOptions.length > 0 && (
-                          <>
-                            {showAddBookPicker && (
-                              <select
-                                value={selectedAddBookId ?? ''}
-                                onChange={(e) =>
-                                  setSelectedAddBookId(e.target.value || null)
-                                }
-                                className="field-control field-control--compact max-w-[11rem]"
-                                aria-label="Choose book to add to"
-                              >
-                                {addBookOptions.map((book) => {
-                                  const wilds = bookWildCount(book)
-                                  return (
-                                    <option
-                                      key={book.id}
-                                      value={book.id}
-                                      className="bg-felt-dark"
-                                    >
-                                      {book.rank}s · {book.cards.length} cards
-                                      {wilds === 0 ? ' · clean' : ` · ${wilds} wild`}
-                                    </option>
-                                  )
-                                })}
-                              </select>
-                            )}
+                          {skipAndRunActive ? (
                             <button
-                              onClick={handleAddToBook}
-                              disabled={
-                                selectedIds.length === 0 ||
-                                !matchedAddBook ||
-                                footMeldBlocked
-                              }
-                              className="btn-secondary disabled:opacity-35"
+                              onClick={handleSkipAndRun}
+                              disabled={skipAndRunDisabled}
+                              className="btn-foot disabled:opacity-35"
                             >
-                              {matchedAddBook
-                                ? `Add to ${matchedAddBook.rank}s`
-                                : 'Add to book'}
+                              Skip &amp; run
                             </button>
-                          </>
-                        )}
+                          ) : (
+                            <button
+                              onClick={handleDiscard}
+                              disabled={selectedIds.length !== 1}
+                              className={`disabled:opacity-35 ${
+                                goingOut
+                                  ? 'btn-success'
+                                  : goToFootDiscard
+                                    ? 'btn-foot'
+                                    : 'btn-danger'
+                              }`}
+                            >
+                              {goingOut
+                                ? 'Go out'
+                                : lastFootCard
+                                  ? 'Discard to go out'
+                                  : goToFootDiscard
+                                    ? 'Go to foot'
+                                    : 'Discard'}
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </>
+                  )}
+                </div>
 
-                        {skipAndRunActive ? (
-                          <button
-                            onClick={handleSkipAndRun}
-                            disabled={skipAndRunDisabled}
-                            className="btn-foot disabled:opacity-35"
-                          >
-                            Skip &amp; run
-                          </button>
-                        ) : (
-                          <button
-                            onClick={handleDiscard}
-                            disabled={selectedIds.length !== 1}
-                            className={`disabled:opacity-35 ${
-                              goingOut
-                                ? 'btn-success'
-                                : goToFootDiscard
-                                  ? 'btn-foot'
-                                  : 'btn-danger'
-                            }`}
-                          >
-                            {goingOut
-                              ? 'Go out'
-                              : lastFootCard
-                                ? 'Discard to go out'
-                                : goToFootDiscard
-                                  ? 'Go to foot'
-                                  : 'Discard'}
-                          </button>
-                        )}
-                      </>
-                    )}
-                  </>
-                )}
+                <div className="south-dock-bottom-side south-dock-bottom-side-right">
+                  <GameSettingsPanel
+                    game={game}
+                    open={settingsOpen}
+                    onToggle={() => setSettingsOpen((open) => !open)}
+                    onClose={() => setSettingsOpen(false)}
+                    onShowInstructions={onShowInstructions ?? (() => {})}
+                    startOverVotes={startOverVotes}
+                    onStartOverVote={onStartOverVote ?? (() => {})}
+                    canRequestUndo={canRequestUndo}
+                    undoPending={undoPending}
+                    onRequestUndo={onRequestUndo ?? (() => {})}
+                    autoSort={autoSort}
+                    onAutoSortChange={onAutoSortChange ?? (() => {})}
+                    dockInline
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -1228,15 +1293,6 @@ export function GameView({
           <p className="shrink-0 py-3 text-center text-xs text-ink-faint">Spectating</p>
         )}
       </div>
-
-      {game.phase === 'playing' && (
-        <GameChat
-          game={game}
-          viewerSeat={viewerSeat}
-          messages={chatMessages}
-          onSend={onChatSend}
-        />
-      )}
     </div>
   )
 }

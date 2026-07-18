@@ -54,6 +54,62 @@ export function InstructionsOverlay({ open, onClose }: InstructionsOverlayProps)
           </section>
 
           <section>
+            <h3 className="mb-1 font-semibold text-ink">Card values</h3>
+            <p className="mb-2">
+              Points count toward your initial meld and round score. Cards left in hand or foot at
+              round end count against you at the same values (red 3s are the exception — see
+              below).
+            </p>
+            <ul className="list-inside list-disc space-y-1">
+              <li>
+                <strong>Jokers</strong> — 50 pts
+              </li>
+              <li>
+                <strong>2s</strong> and <strong>Aces</strong> — 20 pts
+              </li>
+              <li>
+                <strong>10s</strong> and <strong>face cards</strong> (J, Q, K) — 10 pts
+              </li>
+              <li>
+                <strong>All other cards</strong> (4–9, black 3s) — 5 pts
+              </li>
+              <li>
+                <strong>Red 3s</strong> (♥3, ♦3) — not melded; discard when you can. Each one
+                still in hand or foot at round end costs <strong>300 pts</strong>.
+              </li>
+            </ul>
+          </section>
+
+          <section>
+            <h3 className="mb-1 font-semibold text-ink">Wild cards</h3>
+            <p className="mb-2">
+              <strong>2s</strong> (any suit) and <strong>Jokers</strong> are wild. They can stand
+              in for any rank when starting or adding to a book — for example, a 2 plus two 7s
+              starts a 7 book.
+            </p>
+            <ul className="list-inside list-disc space-y-1">
+              <li>
+                A book needs at least two natural cards; you cannot start a book from wilds alone.
+              </li>
+              <li>
+                When starting a book, use <strong>at most 1 wild</strong> in that play.
+              </li>
+              <li>
+                When adding to a book, play <strong>at most 1 wild at a time</strong>, and only{' '}
+                <strong>1 wild per book per turn</strong>.
+              </li>
+              <li>
+                A dirty book (one with any wild) may hold <strong>at most 2 wilds</strong> total.
+                Clean books have no wilds.
+              </li>
+              <li>
+                A lone wild can be added to any book that still has room for wilds, even if you
+                are not adding naturals of that rank.
+              </li>
+            </ul>
+          </section>
+
+          <section>
             <h3 className="mb-1 font-semibold text-ink">Initial meld</h3>
             <p className="mb-1">Before free melding, one player must lay enough points:</p>
             <ul className="list-inside list-disc space-y-1">
@@ -69,15 +125,11 @@ export function InstructionsOverlay({ open, onClose }: InstructionsOverlayProps)
           <section>
             <h3 className="mb-1 font-semibold text-ink">Books</h3>
             <ul className="list-inside list-disc space-y-1">
-              <li>Start with 3+ of a rank (max 1 wild when starting).</li>
+              <li>Start with 3+ of a rank (see Wild cards for wild limits).</li>
               <li>Only one book per rank per team. Red 3s cannot go in books.</li>
               <li>
                 Dirty = has wilds. Clean = no wilds. A dirty book may hold{' '}
                 <strong>at most 2 wilds</strong> total.
-              </li>
-              <li>
-                Only <strong>1 wild per play</strong> when starting, staging, or adding to a
-                book — and only <strong>1 wild per book per turn</strong>.
               </li>
               <li>Completed (7+): clean +300, dirty +100 at round end.</li>
             </ul>
