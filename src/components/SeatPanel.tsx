@@ -17,7 +17,7 @@ interface SeatPanelProps {
   abbreviated?: boolean
 }
 
-function seatAnchorClass(side: CompassSide): string {
+function seatAnchorClass(side: CompassSide, abbreviated = false): string {
   switch (side) {
     case 'south':
       return '-translate-x-1/2 translate-y-0'
@@ -25,15 +25,15 @@ function seatAnchorClass(side: CompassSide): string {
       return '-translate-x-1/2'
     case 'west':
     case 'east':
-      return '-translate-y-1/2'
+      return abbreviated ? '' : '-translate-y-1/2'
     case 'nw':
-      return ''
+      return abbreviated ? '' : ''
     case 'ne':
-      return ''
+      return abbreviated ? '' : ''
     case 'sw':
-      return '-translate-y-full'
+      return abbreviated ? '' : '-translate-y-full'
     case 'se':
-      return '-translate-y-full'
+      return abbreviated ? '' : '-translate-y-full'
     default:
       return '-translate-x-1/2'
   }
@@ -54,30 +54,31 @@ function seatPositionStyle(
       : { left: '50%', bottom: '0.25rem', top: 'auto' }
   }
 
+  if (abbreviated && side === 'west') {
+    return { left: '3%', top: 'calc(50% - 6rem)' }
+  }
+
+  if (abbreviated && side === 'east') {
+    return { right: '3%', left: 'auto', top: 'calc(50% - 6rem)' }
+  }
+
+  if (abbreviated && (side === 'nw' || side === 'ne')) {
+    return isEastSide(side)
+      ? { right: '3%', left: 'auto', top: '12%' }
+      : { left: '3%', top: '12%' }
+  }
+
+  if (abbreviated && side === 'sw') {
+    return { left: '3%', bottom: 'calc(26% + 0.25rem)', top: 'auto' }
+  }
+
+  if (abbreviated && side === 'se') {
+    return { right: '3%', left: 'auto', bottom: 'calc(26% + 0.25rem)', top: 'auto' }
+  }
+
   if (isEastSide(side)) {
-    return abbreviated
-      ? {
-          right: `${100 - coords.left + 1}%`,
-          top: `${coords.top}%`,
-          left: 'auto',
-        }
-      : {
-          right: `${100 - coords.left}%`,
-          top: `${coords.top}%`,
-          left: 'auto',
-        }
-  }
-
-  if (abbreviated && (side === 'nw' || side === 'sw')) {
     return {
-      left: `${coords.left + 1}%`,
-      top: `${coords.top}%`,
-    }
-  }
-
-  if (abbreviated && (side === 'ne' || side === 'se')) {
-    return {
-      right: `${100 - coords.left + 1}%`,
+      right: `${100 - coords.left}%`,
       top: `${coords.top}%`,
       left: 'auto',
     }
@@ -117,7 +118,7 @@ export function SeatPanel({
 
   if (abbreviated) {
     return (
-      <div className={`absolute z-20 ${seatAnchorClass(side)}`} style={positionStyle}>
+      <div className={`absolute z-20 ${seatAnchorClass(side, abbreviated)}`} style={positionStyle}>
         <span
           data-flight-anchor={`seat-${seatIndex}`}
           className="pointer-events-none absolute left-1/2 top-1/2 h-0 w-0"

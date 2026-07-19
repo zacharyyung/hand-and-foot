@@ -252,17 +252,17 @@ function tableBookZoneClass(side: CompassSide, mobile = false): string {
       case 'south':
         return 'bottom-[26%] left-1/2 w-[min(88%,18rem)] -translate-x-1/2'
       case 'west':
-        return 'left-[6%] top-1/2 w-[4.375rem] -translate-y-1/2'
+        return 'left-[3%] top-1/2 w-[4.375rem] -translate-y-1/2'
       case 'east':
-        return 'right-[6%] top-1/2 w-[4.375rem] -translate-y-1/2'
+        return 'right-[3%] top-1/2 w-[4.375rem] -translate-y-1/2'
       case 'nw':
-        return 'left-[22%] top-[20%] w-[min(40%,9.5rem)]'
+        return 'left-[3%] top-[19%] w-[4.375rem]'
       case 'ne':
-        return 'right-[22%] top-[20%] w-[min(40%,9.5rem)]'
+        return 'right-[3%] top-[19%] w-[4.375rem]'
       case 'sw':
-        return 'bottom-[24%] left-[22%] w-[min(40%,9.5rem)]'
+        return 'bottom-[26%] left-[3%] w-[4.375rem]'
       case 'se':
-        return 'bottom-[24%] right-[22%] w-[min(40%,9.5rem)]'
+        return 'bottom-[26%] right-[3%] w-[4.375rem]'
       default:
         return 'left-1/2 top-[20%] w-[min(88%,18rem)] -translate-x-1/2'
     }
@@ -293,10 +293,10 @@ function tableBookZoneClass(side: CompassSide, mobile = false): string {
 function tableBookFlexClass(side: CompassSide, mobile = false): string {
   const gap = mobile ? 'gap-x-[3px] gap-y-[3px]' : 'gap-x-2.5 gap-y-2'
 
-  if (mobile && side === 'west') {
+  if (mobile && (side === 'west' || side === 'nw' || side === 'sw')) {
     return `grid grid-cols-3 ${gap} items-center justify-items-start`
   }
-  if (mobile && side === 'east') {
+  if (mobile && (side === 'east' || side === 'ne' || side === 'se')) {
     return `grid grid-cols-3 ${gap} items-center justify-items-end`
   }
 
