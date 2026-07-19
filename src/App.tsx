@@ -315,9 +315,11 @@ function App() {
 
   return (
     <div
-      className={`room-bg min-h-screen ${
-        game && game.phase === 'playing' ? 'h-dvh overflow-hidden' : ''
-      }`}
+      className={
+        game?.phase === 'playing'
+          ? 'room-bg h-dvh max-h-dvh overflow-hidden'
+          : 'room-bg min-h-screen'
+      }
     >
       <InstructionsOverlay
         open={showInstructions}

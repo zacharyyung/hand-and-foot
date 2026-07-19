@@ -973,9 +973,13 @@ export function GameView({
     (needsStagedMeld || stagedBooks.length > 0)
 
   useEffect(() => {
-    document.documentElement.dataset.gamePlaying = 'true'
+    const html = document.documentElement
+    const body = document.body
+    html.dataset.gamePlaying = 'true'
+    body.dataset.gamePlaying = 'true'
     return () => {
-      delete document.documentElement.dataset.gamePlaying
+      delete html.dataset.gamePlaying
+      delete body.dataset.gamePlaying
     }
   }, [])
 

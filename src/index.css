@@ -110,6 +110,33 @@
 }
 
 @layer components {
+  /* Lock viewport while playing — no page scroll / rubber-band on mobile */
+  html[data-game-playing],
+  html[data-game-playing] body {
+    overflow: hidden;
+    height: 100dvh;
+    max-height: 100dvh;
+    overscroll-behavior: none;
+  }
+
+  html[data-game-playing] #root {
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
+  }
+
+  html[data-game-playing] .room-bg {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+    overscroll-behavior: none;
+    touch-action: manipulation;
+  }
+
   /* Room behind the table */
   .room-bg {
     min-height: 100dvh;
@@ -965,8 +992,11 @@
 
   /* South dock + responsive play shell */
   .game-play-shell {
+    box-sizing: border-box;
     height: 100dvh;
     max-height: 100dvh;
+    overflow: hidden;
+    overscroll-behavior: none;
     padding-top: var(--safe-top);
     padding-left: var(--safe-left);
     padding-right: var(--safe-right);
@@ -1135,15 +1165,17 @@
   }
 
   .game-play-shell[data-layout='mobile'] .south-dock-hand-scroll-mobile {
-    overflow: visible;
+    overflow: hidden;
     max-height: none;
     min-height: 3rem;
     flex: 0 0 auto;
+    overscroll-behavior: none;
   }
 
   .game-play-shell[data-layout='mobile'] .hand-cards-spread-mobile {
     min-height: 2.875rem !important;
-    overflow: visible;
+    overflow: hidden;
+    overscroll-behavior: none;
   }
 
   .game-play-shell[data-layout='mobile'] .hand-cards-spread-mobile > div {
@@ -1214,7 +1246,15 @@
     position: relative;
     flex-shrink: 0;
     width: 1.3125rem;
-    padding-bottom: 0.4375rem;
+  }
+
+  .book-mini-badges {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.125rem;
+    margin-top: 0.0625rem;
+    min-height: 0.6875rem;
   }
 
   .book-mini-stack {
@@ -1252,12 +1292,9 @@
   }
 
   .book-mini-count {
-    position: absolute;
-    bottom: 0;
-    left: 50%;
+    position: relative;
     z-index: 3;
     min-width: 0.875rem;
-    transform: translateX(-50%);
     padding: 0 0.1875rem;
     border-radius: 9999px;
     background: rgba(0, 0, 0, 0.82);
@@ -1277,10 +1314,9 @@
   }
 
   .book-mini-wild {
-    position: absolute;
-    top: -0.125rem;
-    left: -0.1875rem;
-    z-index: 4;
+    position: relative;
+    z-index: 3;
+    flex-shrink: 0;
     min-width: 0.6875rem;
     padding: 0 0.1875rem;
     border-radius: 9999px;
@@ -1289,7 +1325,7 @@
     font-size: 0.4375rem;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
-    line-height: 1.3;
+    line-height: 1.25;
     text-align: center;
     color: #fecdd3;
   }

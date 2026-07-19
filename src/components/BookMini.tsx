@@ -76,18 +76,19 @@ export function BookMini({
         </div>
       </div>
 
-      <span className="book-mini-count" aria-label={`${cards.length} cards`}>
-        {cards.length}
-      </span>
-
-      {wildCount > 0 && (
-        <span
-          className={`book-mini-wild ${wildCount >= 2 ? 'book-mini-wild-full' : ''}`}
-          aria-label={`${wildCount} wild card${wildCount === 1 ? '' : 's'}${wildCount >= 2 ? ' (maximum)' : ''}`}
-        >
-          {wildCount}
+      <div className="book-mini-badges">
+        {wildCount > 0 && (
+          <span
+            className={`book-mini-wild ${wildCount >= 2 ? 'book-mini-wild-full' : ''}`}
+            aria-label={`${wildCount} wild card${wildCount === 1 ? '' : 's'}${wildCount >= 2 ? ' (maximum)' : ''}`}
+          >
+            {wildCount}
+          </span>
+        )}
+        <span className="book-mini-count" aria-label={`${cards.length} cards`}>
+          {cards.length}
         </span>
-      )}
+      </div>
 
       {completed && (
         <span
