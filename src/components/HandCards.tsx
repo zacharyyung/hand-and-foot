@@ -166,6 +166,9 @@ export function HandCards({
     if (!canSelect) return
     const wasSelected = selectedIds.includes(cardId)
     onToggle(cardId)
+    if (wasSelected && hoverCardId === cardId) {
+      setHoverCardId(null)
+    }
     playSound(wasSelected ? 'deselect' : 'select')
   }
 
@@ -271,6 +274,9 @@ export function HandCards({
               onDrop={() => handleDrop(card.id)}
               onDragEnd={handleDragEnd}
               onMouseEnter={() => setHoverCardId(card.id)}
+              onMouseLeave={() => {
+                if (hoverCardId === card.id) setHoverCardId(null)
+              }}
               onFocus={() => setHoverCardId(card.id)}
               className={`absolute bottom-0 origin-bottom will-change-transform ${
                 isDragging ? 'opacity-40' : ''
@@ -296,6 +302,9 @@ export function HandCards({
                 type="button"
                 onClick={() => handleToggle(card.id)}
                 disabled={!canSelect || inFlight}
+                onBlur={() => {
+                  if (hoverCardId === card.id) setHoverCardId(null)
+                }}
                 className={`relative block rounded-lg outline-none transition-transform ease-snappy will-change-transform ${
                   isActive ? 'scale-105' : 'scale-100'
                 } ${
@@ -310,7 +319,7 @@ export function HandCards({
                 aria-pressed={isSelected}
                 aria-hidden={inFlight}
               >
-                {renderCardShell(card, phase, isSelected || isHovered)}
+                {renderCardShell(card, phase, false)}
               </button>
             </div>
           )
