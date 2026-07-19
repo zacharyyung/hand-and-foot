@@ -21,10 +21,15 @@ interface TeamBooksProps {
 }
 
 function WildCountBadge({ count }: { count: number }) {
+  const atMax = count >= 2
   return (
     <span
-      className={`flex h-4 min-w-4 items-center justify-center rounded-full bg-black/75 px-0.5 text-[8px] font-bold leading-none ${WILD_TEXT_CLASS} ring-1 ${WILD_RING_CLASS}`}
-      aria-label={`${count} wild cards`}
+      className={`flex h-4 min-w-4 items-center justify-center rounded-full px-0.5 text-[8px] font-bold leading-none ring-1 ${
+        atMax
+          ? 'wild-count-badge-full bg-red-950/90 text-red-200 ring-red-400/55'
+          : `bg-black/75 ${WILD_TEXT_CLASS} ${WILD_RING_CLASS}`
+      }`}
+      aria-label={`${count} wild card${count === 1 ? '' : 's'}${atMax ? ' (maximum)' : ''}`}
     >
       {count}
     </span>

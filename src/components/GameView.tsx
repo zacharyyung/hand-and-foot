@@ -1242,7 +1242,7 @@ export function GameView({
                                         className="bg-felt-dark"
                                       >
                                         {book.rank}s · {book.cards.length}
-                                        {wilds === 0 ? ' · clean' : ` · ${wilds}w`}
+                                        {wilds === 0 ? ' · clean' : ` · ${wilds} wild`}
                                       </option>
                                     )
                                   })}

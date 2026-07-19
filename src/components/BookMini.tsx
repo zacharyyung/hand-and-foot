@@ -81,8 +81,11 @@ export function BookMini({
       </span>
 
       {wildCount > 0 && (
-        <span className="book-mini-wild" aria-label={`${wildCount} wild cards`}>
-          {wildCount}w
+        <span
+          className={`book-mini-wild ${wildCount >= 2 ? 'book-mini-wild-full' : ''}`}
+          aria-label={`${wildCount} wild card${wildCount === 1 ? '' : 's'}${wildCount >= 2 ? ' (maximum)' : ''}`}
+        >
+          {wildCount}
         </span>
       )}
 
