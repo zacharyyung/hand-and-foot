@@ -74,16 +74,21 @@ export function BookMini({
             <Card card={face} micro />
           </AnimatedCardShell>
         </div>
+      </div>
 
+      <div
+        className="book-mini-meta"
+        aria-label={`${cards.length} cards${wildCount > 0 ? `, ${wildCount} wild` : ''}`}
+      >
         {wildCount > 0 && (
           <span
-            className={`book-mini-wild ${wildCount >= 2 ? 'book-mini-wild-full' : ''}`}
-            aria-label={`${wildCount} wild card${wildCount === 1 ? '' : 's'}${wildCount >= 2 ? ' (maximum)' : ''}`}
+            className={`book-mini-meta-wild ${wildCount >= 2 ? 'book-mini-meta-wild-full' : ''}`}
+            aria-hidden
           >
             {wildCount}
           </span>
         )}
-        <span className="book-mini-count" aria-label={`${cards.length} cards`}>
+        <span className="book-mini-meta-count" aria-hidden>
           {cards.length}
         </span>
       </div>
