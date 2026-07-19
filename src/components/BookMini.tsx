@@ -74,9 +74,7 @@ export function BookMini({
             <Card card={face} micro />
           </AnimatedCardShell>
         </div>
-      </div>
 
-      <div className="book-mini-badges">
         {wildCount > 0 && (
           <span
             className={`book-mini-wild ${wildCount >= 2 ? 'book-mini-wild-full' : ''}`}

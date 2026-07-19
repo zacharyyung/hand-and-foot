@@ -229,7 +229,7 @@ export function TableBookZone({
       className={`pointer-events-none absolute z-[15] ${zoneClass}`}
       data-flight-anchor={`books-${seatIndex}`}
     >
-      <div className={`flex ${tableBookFlexClass(side, mobile)}`}>
+      <div className={tableBookFlexClass(side, mobile)}>
         <TeamBooks
           books={playerBooks}
           teamId={teamId}
@@ -252,9 +252,9 @@ function tableBookZoneClass(side: CompassSide, mobile = false): string {
       case 'south':
         return 'bottom-[26%] left-1/2 w-[min(88%,18rem)] -translate-x-1/2'
       case 'west':
-        return 'left-[22%] top-1/2 w-[min(38%,9.5rem)] -translate-y-1/2'
+        return 'left-[6%] top-1/2 w-[4.375rem] -translate-y-1/2'
       case 'east':
-        return 'right-[22%] top-1/2 w-[min(38%,9.5rem)] -translate-y-1/2'
+        return 'right-[6%] top-1/2 w-[4.375rem] -translate-y-1/2'
       case 'nw':
         return 'left-[22%] top-[20%] w-[min(40%,9.5rem)]'
       case 'ne':
@@ -292,24 +292,32 @@ function tableBookZoneClass(side: CompassSide, mobile = false): string {
 
 function tableBookFlexClass(side: CompassSide, mobile = false): string {
   const gap = mobile ? 'gap-x-[3px] gap-y-[3px]' : 'gap-x-2.5 gap-y-2'
+
+  if (mobile && side === 'west') {
+    return `grid grid-cols-3 ${gap} items-center justify-items-start`
+  }
+  if (mobile && side === 'east') {
+    return `grid grid-cols-3 ${gap} items-center justify-items-end`
+  }
+
   switch (side) {
     case 'north':
-      return `flex-row flex-wrap items-end justify-center ${gap}`
+      return `flex flex-row flex-wrap items-end justify-center ${gap}`
     case 'south':
-      return `flex-row flex-wrap items-start justify-center ${gap}`
+      return `flex flex-row flex-wrap items-start justify-center ${gap}`
     case 'west':
-      return `flex-row flex-wrap items-center justify-start ${gap}`
+      return `flex flex-row flex-wrap items-center justify-start ${gap}`
     case 'east':
-      return `flex-row-reverse flex-wrap items-center justify-start ${gap}`
+      return `flex flex-row-reverse flex-wrap items-center justify-start ${gap}`
     case 'nw':
-      return `flex-row flex-wrap items-end justify-start ${gap}`
+      return `flex flex-row flex-wrap items-end justify-start ${gap}`
     case 'ne':
-      return `flex-row-reverse flex-wrap items-end justify-end ${gap}`
+      return `flex flex-row-reverse flex-wrap items-end justify-end ${gap}`
     case 'sw':
-      return `flex-row flex-wrap items-start justify-start ${gap}`
+      return `flex flex-row flex-wrap items-start justify-start ${gap}`
     case 'se':
-      return `flex-row-reverse flex-wrap items-start justify-end ${gap}`
+      return `flex flex-row-reverse flex-wrap items-start justify-end ${gap}`
     default:
-      return `flex-row flex-wrap justify-center ${gap}`
+      return `flex flex-row flex-wrap justify-center ${gap}`
   }
 }

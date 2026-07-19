@@ -961,6 +961,12 @@
       0 3px 8px rgba(0, 0, 0, 0.16);
   }
 
+  .card-flight-piece-mobile {
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.12),
+      0 2px 5px rgba(0, 0, 0, 0.14);
+  }
+
   .card-flight-piece .playing-card {
     transition: none !important;
   }
@@ -1281,15 +1287,6 @@
     width: 1.3125rem;
   }
 
-  .book-mini-badges {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.125rem;
-    margin-top: 0.0625rem;
-    min-height: 0.6875rem;
-  }
-
   .book-mini-stack {
     position: relative;
     width: 1.3125rem;
@@ -1325,20 +1322,23 @@
   }
 
   .book-mini-count {
-    position: relative;
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
     z-index: 3;
-    min-width: 0.875rem;
-    padding: 0 0.1875rem;
-    border-radius: 9999px;
+    width: 100%;
+    padding: 0.0625rem 0;
+    border-radius: 0 0 0.25rem 0.25rem;
     background: rgba(0, 0, 0, 0.82);
     font-family: var(--font-display);
     font-size: 0.5rem;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
-    line-height: 1.25;
+    line-height: 1.1;
     color: var(--ink);
     text-align: center;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.25);
   }
 
   .book-mini-complete .book-mini-count {
@@ -1347,20 +1347,25 @@
   }
 
   .book-mini-wild {
-    position: relative;
-    z-index: 3;
-    flex-shrink: 0;
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 4;
     min-width: 0.6875rem;
-    padding: 0 0.1875rem;
-    border-radius: 9999px;
+    max-width: calc(100% - 0.375rem);
+    padding: 0 0.125rem;
+    border-radius: 0.25rem 0 0.25rem 0;
     background: rgba(72, 24, 48, 0.92);
     border: 1px solid rgba(255, 180, 200, 0.35);
+    border-top: none;
+    border-left: none;
     font-size: 0.4375rem;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
-    line-height: 1.25;
+    line-height: 1.15;
     text-align: center;
     color: #fecdd3;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
   }
 
   .book-mini-wild-full {

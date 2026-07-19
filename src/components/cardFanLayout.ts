@@ -20,19 +20,24 @@ export interface CardFanLayout {
 
 export function cardFanLayout(
   cardCount: number,
-  options: { small?: boolean; tiny?: boolean; stacked?: boolean; peek?: number } = {},
+  options: { small?: boolean; tiny?: boolean; micro?: boolean; stacked?: boolean; peek?: number } = {},
 ): CardFanLayout {
-  const { small = true, tiny = false, stacked = false, peek } = options
-  const cardWidth = tiny ? 30 : small ? 44 : 64
-  const cardHeight = tiny ? 44 : small ? 64 : 96
+  const { small = true, tiny = false, micro = false, stacked = false, peek } = options
+  const cardWidth = micro ? 21 : tiny ? 30 : small ? 44 : 64
+  const cardHeight = micro ? 32 : tiny ? 44 : small ? 64 : 96
   const step = stacked
-    ? tiny
-      ? 2
-      : 2.5
+    ? micro
+      ? 1.5
+      : tiny
+        ? 2
+        : 2.5
     : peek ??
       Math.max(
-        tiny ? 4 : 7,
-        Math.min(tiny ? 8 : small ? 13 : 17, Math.floor((tiny ? 36 : 52) / Math.max(cardCount, 1))),
+        micro ? 3 : tiny ? 4 : 7,
+        Math.min(
+          micro ? 5 : tiny ? 8 : small ? 13 : 17,
+          Math.floor((micro ? 24 : tiny ? 36 : 52) / Math.max(cardCount, 1)),
+        ),
       )
   const fanWidth = cardWidth + Math.max(0, cardCount - 1) * step
 
@@ -44,7 +49,7 @@ export function cardFanLayout(
     rotation: (index: number, cardId?: string) =>
       stacked
         ? stackRotationDeg(cardId ?? `stack-${index}`, index)
-        : (index - (cardCount - 1) / 2) * (tiny ? 0.4 : 0.6),
+        : (index - (cardCount - 1) / 2) * (micro ? 0.35 : tiny ? 0.4 : 0.6),
     slotCenter: (index: number) => ({
       x: index * step + cardWidth / 2,
       y: cardHeight / 2,
@@ -56,7 +61,7 @@ export function cardFanLayout(
 export function bookFanFlightCenter(
   totalCardCount: number,
   incomingCardCount: number,
-  options: { small?: boolean; tiny?: boolean; stacked?: boolean } = {},
+  options: { small?: boolean; tiny?: boolean; micro?: boolean; stacked?: boolean } = {},
 ): { x: number; y: number; rotation: number } {
   const layout = cardFanLayout(totalCardCount, options)
   const incomingLayout = cardFanLayout(incomingCardCount, options)

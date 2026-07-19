@@ -8,6 +8,7 @@ interface CardFanProps {
   cards: CardType[]
   small?: boolean
   tiny?: boolean
+  micro?: boolean
   peek?: number
   stacked?: boolean
   animate?: boolean
@@ -20,6 +21,7 @@ export function CardFan({
   cards,
   small = true,
   tiny = false,
+  micro = false,
   peek,
   stacked = false,
   animate = false,
@@ -29,7 +31,7 @@ export function CardFan({
 }: CardFanProps) {
   if (cards.length === 0) return null
 
-  const layout = cardFanLayout(cards.length, { small, tiny, stacked, peek })
+  const layout = cardFanLayout(cards.length, { small, tiny, micro, stacked, peek })
 
   return (
     <div
@@ -57,7 +59,13 @@ export function CardFan({
               motion={hidden ? undefined : getCardMotion?.(card.id)}
               className={hidden ? 'opacity-0' : 'block book-card-at-rest'}
             >
-              <Card card={faceDown ? undefined : card} faceDown={faceDown} small={!tiny} tiny={tiny} />
+              <Card
+                card={faceDown ? undefined : card}
+                faceDown={faceDown}
+                small={!tiny && !micro}
+                tiny={tiny && !micro}
+                micro={micro}
+              />
             </AnimatedCardShell>
           </div>
         )

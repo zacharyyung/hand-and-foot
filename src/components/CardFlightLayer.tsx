@@ -10,6 +10,42 @@ import { CardFan } from './CardFan'
 interface CardFlightLayerProps {
   flights: ActiveCardFlight[]
   onSettle: (flightId: string) => void
+  mobile?: boolean
+}
+
+/** Mobile flight card tier — matches destination at-rest size (BookMini / hand / piles). */
+type FlightCardTier = 'small' | 'tiny' | 'micro'
+
+function flightCardTier(flight: ActiveCardFlight, mobile: boolean): FlightCardTier {
+  if (!mobile) return 'small'
+
+  const target =
+    typeof flight.to === 'string'
+      ? flight.to
+      : typeof flight.from === 'string'
+        ? flight.from
+        : ''
+
+  if (target.startsWith('book-') || target.startsWith('staging-')) return 'micro'
+  if (
+    target.startsWith('hand-') ||
+    target === 'stock' ||
+    target === 'discard' ||
+    target.startsWith('seat-')
+  ) {
+    return 'tiny'
+  }
+
+  return 'tiny'
+}
+
+function fanLayoutOptions(tier: FlightCardTier, stacked: boolean) {
+  return {
+    small: tier === 'small',
+    tiny: tier === 'tiny',
+    micro: tier === 'micro',
+    stacked,
+  }
 }
 
 /** Snappy deceleration — fast start, clean stop, no floaty glide. */
@@ -116,6 +152,7 @@ function runHandDrawFlight(
 function resolveFlightTarget(
   flight: ActiveCardFlight,
   anchor: AnchorPoint,
+  mobile: boolean,
 ): AnchorPoint {
   if (typeof flight.to !== 'string' || !flight.to.startsWith('book-')) {
     return anchor
@@ -132,7 +169,8 @@ function resolveFlightTarget(
   if (!container) return anchor
 
   const rect = container.getBoundingClientRect()
-  const target = bookFanFlightCenter(totalCards, incomingCards, { small: true, stacked })
+  const tier = flightCardTier(flight, mobile)
+  const target = bookFanFlightCenter(totalCards, incomingCards, fanLayoutOptions(tier, stacked))
   return {
     x: rect.left + target.x,
     y: rect.top + target.y,
@@ -140,27 +178,49 @@ function resolveFlightTarget(
   }
 }
 
-function FlyingCardContent({ flight }: { flight: ActiveCardFlight }) {
+function FlyingCardContent({
+  flight,
+  mobile,
+}: {
+  flight: ActiveCardFlight
+  mobile: boolean
+}) {
+  const tier = flightCardTier(flight, mobile)
+  const cardSize =
+    tier === 'micro'
+      ? { micro: true as const }
+      : tier === 'tiny'
+        ? { tiny: true as const }
+        : { small: true as const }
+  const fanSize =
+    tier === 'micro'
+      ? { micro: true as const }
+      : tier === 'tiny'
+        ? { tiny: true as const }
+        : { small: true as const }
+
   if (flight.faceDown) {
     if (flight.cards.length > 1) {
-      return <CardFan cards={flight.cards} small stacked faceDown />
+      return <CardFan cards={flight.cards} {...fanSize} stacked faceDown />
     }
-    return <Card faceDown small />
+    return <Card faceDown {...cardSize} />
   }
 
   if (flight.cards.length > 1) {
     const spread = flight.kind === 'place'
-    return <CardFan cards={flight.cards} small stacked={!spread} />
+    return <CardFan cards={flight.cards} {...fanSize} stacked={!spread} />
   }
 
-  return <Card card={flight.cards[0]} small />
+  return <Card card={flight.cards[0]} {...cardSize} />
 }
 
 function FlyingCardStack({
   flight,
+  mobile,
   onSettle,
 }: {
   flight: ActiveCardFlight
+  mobile: boolean
   onSettle: () => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -201,7 +261,7 @@ function FlyingCardStack({
       const el = ref.current
       if (!el || cancelled) return
 
-      const resolvedTo = resolveFlightTarget(flight, to)
+      const resolvedTo = resolveFlightTarget(flight, to, mobile)
       const endRot =
         flight.kind === 'place' && flight.cards.length > 1 ? 0 : (resolvedTo.rotation ?? 0)
       const startRot = endRot + rotLead
@@ -295,23 +355,23 @@ function FlyingCardStack({
         ref.current.removeEventListener('transitionend', transformEndHandler)
       }
     }
-  }, [flight.flightId, flight.from, flight.to, flight.kind, flight.duration, flight.delay])
+  }, [flight.flightId, flight.from, flight.to, flight.kind, flight.duration, flight.delay, mobile])
 
   if (prefersReducedCardMotion()) return null
 
   return (
     <div
       ref={ref}
-      className="card-flight-piece will-change-transform"
+      className={`card-flight-piece will-change-transform ${mobile ? 'card-flight-piece-mobile' : ''}`}
       style={{ opacity: visible ? 1 : 0 }}
       aria-hidden
     >
-      <FlyingCardContent flight={flight} />
+      <FlyingCardContent flight={flight} mobile={mobile} />
     </div>
   )
 }
 
-export function CardFlightLayer({ flights, onSettle }: CardFlightLayerProps) {
+export function CardFlightLayer({ flights, onSettle, mobile = false }: CardFlightLayerProps) {
   if (flights.length === 0) return null
 
   return createPortal(
@@ -320,6 +380,7 @@ export function CardFlightLayer({ flights, onSettle }: CardFlightLayerProps) {
         <FlyingCardStack
           key={flight.flightId}
           flight={flight}
+          mobile={mobile}
           onSettle={() => onSettle(flight.flightId)}
         />
       ))}

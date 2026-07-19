@@ -1040,11 +1040,10 @@ export function GameView({
             onDraw={handleDraw}
             canDraw={canDraw}
             mobile={mobileLayout}
-            hideViewerSeat={mobileLayout}
             getCardMotion={getCardMotion}
             isCardInFlight={isCardInFlight}
           />
-          <CardFlightLayer flights={flights} onSettle={handleSettleFlight} />
+          <CardFlightLayer flights={flights} onSettle={handleSettleFlight} mobile={mobileLayout} />
         </div>
 
         {isHumanViewer && (
