@@ -223,7 +223,7 @@ export function HandCards({
         mobile ? 'hand-cards-spread-mobile' : ''
       }`}
       style={{
-        minHeight: n > 0 ? (mobile ? '2.875rem' : 'min(6.25rem, 22dvh)') : undefined,
+        minHeight: n > 0 ? (mobile ? '3.375rem' : 'min(6.25rem, 22dvh)') : undefined,
       }}
       onMouseLeave={() => setHoverCardId(null)}
     >
@@ -231,7 +231,7 @@ export function HandCards({
         className="relative transition-[width,transform] ease-snappy will-change-[width,transform]"
         style={{
           width: fanLayout.fanWidth,
-          height: mobile ? '2.75rem' : 'min(5.75rem, 21dvh)',
+          height: mobile ? '3.25rem' : 'min(5.75rem, 21dvh)',
           transitionDuration: `${handSpreadMs}ms`,
           transform: fitScale < 1 ? `scale(${fitScale})` : undefined,
           transformOrigin: 'bottom center',

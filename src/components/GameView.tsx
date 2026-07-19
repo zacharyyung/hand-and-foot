@@ -1049,14 +1049,16 @@ export function GameView({
 
         {isHumanViewer && (
           <div
-            className="south-player-dock relative z-20 flex min-h-0 shrink-0 flex-col overflow-hidden"
+            className={`south-player-dock relative z-20 flex min-h-0 shrink-0 flex-col overflow-hidden ${
+              mobileLayout ? 'south-player-dock-mobile' : ''
+            }`}
             style={{
               background:
                 'linear-gradient(to top, rgba(6,20,14,0.92) 0%, rgba(8,28,18,0.78) 70%, rgba(8,28,18,0.45) 100%)',
               boxShadow: `inset 0 1px 0 ${teamColor}33`,
             }}
           >
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="south-dock-body flex min-h-0 flex-1 flex-col overflow-hidden">
               <div className="south-dock-hand-meta flex shrink-0 items-center gap-x-2 gap-y-1 px-3 py-1 sm:gap-x-3 sm:px-4 sm:py-1.5">
                 <span className="flex shrink-0 items-center gap-1.5 text-[10px] tabular-nums text-ink-faint">
                   {(!viewer.isPlayingFoot || playerHandCount(viewer) > 0) && (

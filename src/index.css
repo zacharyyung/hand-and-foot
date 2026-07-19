@@ -1153,33 +1153,66 @@
   /* Phone-width layout — compact cards, chip books, abbreviated seats */
   .game-play-shell[data-layout='mobile'] .south-player-dock {
     --dock-max-h: min(
-      54dvh,
-      calc(var(--game-shell-h, 100dvh) - 4.75rem - var(--safe-top) - var(--safe-bottom))
+      56dvh,
+      calc(var(--game-shell-h, 100dvh) - 4.25rem - var(--safe-top) - var(--safe-bottom))
     );
+    display: grid;
+    grid-template-rows: auto auto auto auto auto;
+    grid-template-areas:
+      'meta'
+      'hand'
+      'sort'
+      'message'
+      'bar';
+    overflow: hidden;
+  }
+
+  /* Flatten inner flex wrapper so grid rows align to hand + ribbon */
+  .game-play-shell[data-layout='mobile'] .south-player-dock-mobile > .south-dock-body {
+    display: contents;
   }
 
   .game-play-shell[data-layout='mobile'] .south-dock-hand-meta {
+    grid-area: meta;
     min-height: 1.5rem;
     padding-top: 0.125rem;
     padding-bottom: 0.125rem;
   }
 
   .game-play-shell[data-layout='mobile'] .south-dock-hand-scroll-mobile {
-    overflow: hidden;
+    grid-area: hand;
+    overflow: visible;
     max-height: none;
-    min-height: 3rem;
-    flex: 0 0 auto;
+    min-height: 3.625rem;
+    flex: none;
+    padding-top: 0.125rem;
+    padding-bottom: 0.375rem;
     overscroll-behavior: none;
   }
 
+  .game-play-shell[data-layout='mobile'] .south-dock-sort {
+    grid-area: sort;
+    min-height: 0;
+    padding-top: 0;
+    padding-bottom: 0.125rem;
+  }
+
+  .game-play-shell[data-layout='mobile'] .game-message-bar {
+    grid-area: message;
+  }
+
+  .game-play-shell[data-layout='mobile'] .south-dock-bottom-bar {
+    grid-area: bar;
+  }
+
   .game-play-shell[data-layout='mobile'] .hand-cards-spread-mobile {
-    min-height: 2.875rem !important;
-    overflow: hidden;
+    min-height: 3.375rem !important;
+    overflow: visible;
     overscroll-behavior: none;
   }
 
   .game-play-shell[data-layout='mobile'] .hand-cards-spread-mobile > div {
-    height: 2.75rem !important;
+    height: 3.25rem !important;
   }
 
   .game-play-shell[data-layout='mobile'] .round-table-board {
