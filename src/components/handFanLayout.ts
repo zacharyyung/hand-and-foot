@@ -18,15 +18,22 @@ export function handFanOffsets(
   count: number,
   selected: boolean[],
   hoverIndex: number | null,
-  options?: { mobile?: boolean },
+  options?: { mobile?: boolean; maxWidth?: number },
 ): { lefts: number[]; width: number } {
   const mobile = options?.mobile ?? false
   const cardW = mobile ? 30 : 46
-  const base = mobile
-    ? Math.max(12, Math.min(20, 280 / Math.max(count, 1)))
-    : Math.max(24, Math.min(42, 520 / Math.max(count, 1)))
-  const selectedGap = mobile ? 10 : 16
-  const hoverGap = mobile ? 8 : 12
+  const countForStep = Math.max(count, 1)
+  let base: number
+  if (mobile && options?.maxWidth && count > 1) {
+    const budget = Math.max(cardW, options.maxWidth - cardW)
+    base = Math.max(6, Math.min(18, budget / (count - 1)))
+  } else if (mobile) {
+    base = Math.max(8, Math.min(18, 280 / countForStep))
+  } else {
+    base = Math.max(24, Math.min(42, 520 / countForStep))
+  }
+  const selectedGap = mobile ? (options?.maxWidth && count > 8 ? 6 : 8) : 16
+  const hoverGap = mobile ? 6 : 12
 
   const lefts: number[] = []
   let x = 0
@@ -52,7 +59,7 @@ export function computeHandFanLayout(
   count: number,
   selected: boolean[],
   hoverIndex: number | null,
-  options?: { mobile?: boolean },
+  options?: { mobile?: boolean; maxWidth?: number },
 ): HandFanLayout {
   const mobile = options?.mobile ?? false
   const { lefts, width: fanWidth } = handFanOffsets(count, selected, hoverIndex, options)

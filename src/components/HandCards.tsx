@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Card as CardType } from '../game/cards'
 import type { CardMotionKind } from '../game/cardMotion'
 import { reorderHandOrder } from '../game/handOrder'
@@ -68,6 +68,8 @@ export function HandCards({
   const [hoverCardId, setHoverCardId] = useState<string | null>(null)
   /** Keep draw-spread timing until the fan finishes opening after the last in-flight card. */
   const [layoutSpreadHold, setLayoutSpreadHold] = useState(false)
+  const spreadOuterRef = useRef<HTMLDivElement>(null)
+  const [fitWidth, setFitWidth] = useState<number | null>(null)
 
   const displayCards = useMemo(
     () => buildDisplayCards(hand, handOrder),
@@ -101,7 +103,29 @@ export function HandCards({
     ? displayCards.findIndex((c) => c.id === hoverCardId)
     : null
   const selectedFlags = displayCards.map((c) => selectedIds.includes(c.id))
-  const fanLayout = computeHandFanLayout(n, selectedFlags, hoverIndex, { mobile })
+  const fanOptions = mobile && fitWidth ? { mobile: true, maxWidth: fitWidth } : mobile ? { mobile: true } : undefined
+  const fanLayout = computeHandFanLayout(n, selectedFlags, hoverIndex, fanOptions)
+  const fitScale =
+    mobile && fitWidth && fanLayout.fanWidth > fitWidth ? fitWidth / fanLayout.fanWidth : 1
+
+  useLayoutEffect(() => {
+    if (!mobile || !spread) {
+      setFitWidth(null)
+      return
+    }
+
+    const scrollEl = spreadOuterRef.current?.parentElement
+    if (!scrollEl) return
+
+    const measure = () => {
+      setFitWidth(Math.max(120, scrollEl.clientWidth - 12))
+    }
+
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(scrollEl)
+    return () => observer.disconnect()
+  }, [mobile, spread])
 
   function slotPhase(cardId: string): CardSlotPhase {
     return isCardHidden?.(cardId) ? 'in-flight' : 'visible'
@@ -194,18 +218,23 @@ export function HandCards({
 
   return (
     <div
-      className={`hand-cards-spread relative mx-auto flex w-full max-w-5xl justify-center px-1 sm:px-2`}
+      ref={spreadOuterRef}
+      className={`hand-cards-spread relative mx-auto flex w-full max-w-5xl justify-center px-1 sm:px-2 ${
+        mobile ? 'hand-cards-spread-mobile' : ''
+      }`}
       style={{
-        minHeight: n > 0 ? (mobile ? 'min(4.25rem, 18dvh)' : 'min(6.25rem, 22dvh)') : undefined,
+        minHeight: n > 0 ? (mobile ? '2.875rem' : 'min(6.25rem, 22dvh)') : undefined,
       }}
       onMouseLeave={() => setHoverCardId(null)}
     >
       <div
-        className="relative transition-[width] ease-snappy will-change-[width]"
+        className="relative transition-[width,transform] ease-snappy will-change-[width,transform]"
         style={{
           width: fanLayout.fanWidth,
-          height: mobile ? 'min(3.25rem, 16dvh)' : 'min(5.75rem, 21dvh)',
+          height: mobile ? '2.75rem' : 'min(5.75rem, 21dvh)',
           transitionDuration: `${handSpreadMs}ms`,
+          transform: fitScale < 1 ? `scale(${fitScale})` : undefined,
+          transformOrigin: 'bottom center',
         }}
       >
         {displayCards.map((card, index) => {

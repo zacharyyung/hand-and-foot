@@ -46,14 +46,38 @@ function isEastSide(side: CompassSide): boolean {
 function seatPositionStyle(
   side: CompassSide,
   coords: { left: number; top: number },
+  abbreviated = false,
 ): CSSProperties {
   if (side === 'south') {
-    return { left: '50%', bottom: '0.25rem', top: 'auto' }
+    return abbreviated
+      ? { left: '50%', bottom: '0.125rem', top: 'auto' }
+      : { left: '50%', bottom: '0.25rem', top: 'auto' }
   }
 
   if (isEastSide(side)) {
+    return abbreviated
+      ? {
+          right: `${100 - coords.left + 1}%`,
+          top: `${coords.top}%`,
+          left: 'auto',
+        }
+      : {
+          right: `${100 - coords.left}%`,
+          top: `${coords.top}%`,
+          left: 'auto',
+        }
+  }
+
+  if (abbreviated && (side === 'nw' || side === 'sw')) {
     return {
-      right: `${100 - coords.left}%`,
+      left: `${coords.left + 1}%`,
+      top: `${coords.top}%`,
+    }
+  }
+
+  if (abbreviated && (side === 'ne' || side === 'se')) {
+    return {
+      right: `${100 - coords.left + 1}%`,
       top: `${coords.top}%`,
       left: 'auto',
     }
@@ -85,7 +109,7 @@ export function SeatPanel({
   const handCount = playerHandCount(player)
   const footCount = playerFootCount(player)
 
-  const positionStyle = seatPositionStyle(side, coords)
+  const positionStyle = seatPositionStyle(side, coords, abbreviated)
 
   const chipStyle = {
     '--seat-team': teamColor,

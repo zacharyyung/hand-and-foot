@@ -243,23 +243,23 @@ function tableBookZoneClass(side: CompassSide, mobile = false): string {
   if (mobile) {
     switch (side) {
       case 'north':
-        return 'left-1/2 top-[11%] w-[min(96%,22rem)] -translate-x-1/2'
+        return 'left-1/2 top-[20%] w-[min(88%,18rem)] -translate-x-1/2'
       case 'south':
-        return 'bottom-[11%] left-1/2 w-[min(96%,22rem)] -translate-x-1/2'
+        return 'bottom-[26%] left-1/2 w-[min(88%,18rem)] -translate-x-1/2'
       case 'west':
-        return 'left-[12%] top-1/2 w-[min(44%,11rem)] -translate-y-1/2'
+        return 'left-[22%] top-1/2 w-[min(38%,9.5rem)] -translate-y-1/2'
       case 'east':
-        return 'right-[12%] top-1/2 w-[min(44%,11rem)] -translate-y-1/2'
+        return 'right-[22%] top-1/2 w-[min(38%,9.5rem)] -translate-y-1/2'
       case 'nw':
-        return 'left-[10%] top-[12%] w-[min(46%,11rem)]'
+        return 'left-[22%] top-[20%] w-[min(40%,9.5rem)]'
       case 'ne':
-        return 'right-[10%] top-[12%] w-[min(46%,11rem)]'
+        return 'right-[22%] top-[20%] w-[min(40%,9.5rem)]'
       case 'sw':
-        return 'bottom-[12%] left-[10%] w-[min(46%,11rem)]'
+        return 'bottom-[24%] left-[22%] w-[min(40%,9.5rem)]'
       case 'se':
-        return 'bottom-[12%] right-[10%] w-[min(46%,11rem)]'
+        return 'bottom-[24%] right-[22%] w-[min(40%,9.5rem)]'
       default:
-        return 'left-1/2 top-[11%] w-[min(96%,22rem)] -translate-x-1/2'
+        return 'left-1/2 top-[20%] w-[min(88%,18rem)] -translate-x-1/2'
     }
   }
 

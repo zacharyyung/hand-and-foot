@@ -1134,22 +1134,43 @@
     padding-bottom: 0.125rem;
   }
 
-  .game-play-shell[data-layout='mobile'] .south-dock-hand-scroll {
+  .game-play-shell[data-layout='mobile'] .south-dock-hand-scroll-mobile {
+    overflow: visible;
+    max-height: none;
+    min-height: 3rem;
+    flex: 0 0 auto;
+  }
+
+  .game-play-shell[data-layout='mobile'] .hand-cards-spread-mobile {
+    min-height: 2.875rem !important;
+    overflow: visible;
+  }
+
+  .game-play-shell[data-layout='mobile'] .hand-cards-spread-mobile > div {
+    height: 2.75rem !important;
+  }
+
+  .game-play-shell[data-layout='mobile'] .round-table-board {
+    inset: 21% 6% !important;
+    border-radius: 1.25rem !important;
+  }
+
+  .game-play-shell[data-layout='mobile'] .seat-chip-abbreviated {
+    z-index: 25;
+  }
+
+  /* Legacy mobile hand scroll caps — superseded by -mobile fit class */
+  .game-play-shell[data-layout='mobile'] .south-dock-hand-scroll:not(.south-dock-hand-scroll-mobile) {
     min-height: 2.25rem;
     max-height: min(5rem, 22dvh);
   }
 
-  .game-play-shell[data-layout='mobile'] .hand-cards-spread {
+  .game-play-shell[data-layout='mobile'] .hand-cards-spread:not(.hand-cards-spread-mobile) {
     min-height: 3.25rem !important;
   }
 
-  .game-play-shell[data-layout='mobile'] .hand-cards-spread > div {
+  .game-play-shell[data-layout='mobile'] .hand-cards-spread:not(.hand-cards-spread-mobile) > div {
     height: min(3.5rem, 17dvh) !important;
-  }
-
-  .game-play-shell[data-layout='mobile'] .round-table-board {
-    inset: 19% 5% !important;
-    border-radius: 1.25rem !important;
   }
 
   .game-play-shell[data-layout='mobile'] .south-dock-bottom-bar {

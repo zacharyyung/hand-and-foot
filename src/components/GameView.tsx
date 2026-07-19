@@ -1036,6 +1036,7 @@ export function GameView({
             onDraw={handleDraw}
             canDraw={canDraw}
             mobile={mobileLayout}
+            hideViewerSeat={mobileLayout}
             getCardMotion={getCardMotion}
             isCardInFlight={isCardInFlight}
           />
@@ -1111,7 +1112,11 @@ export function GameView({
               </div>
 
               <div
-                className="south-dock-hand-scroll theme-scroll relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-0.5 sm:px-4 sm:py-1"
+                className={`south-dock-hand-scroll theme-scroll relative min-h-0 px-2 py-0.5 sm:px-4 sm:py-1 ${
+                  mobileLayout
+                    ? 'south-dock-hand-scroll-mobile shrink-0 overflow-visible'
+                    : 'flex-1 overflow-y-auto overscroll-contain'
+                }`}
                 data-flight-anchor="hand"
               >
                 <HandCards

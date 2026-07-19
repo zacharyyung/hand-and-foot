@@ -2,9 +2,11 @@ const AUTO_SORT_KEY = 'hand-and-foot-auto-sort'
 
 export function loadAutoSortPreference(): boolean {
   try {
-    return localStorage.getItem(AUTO_SORT_KEY) === 'true'
+    const stored = localStorage.getItem(AUTO_SORT_KEY)
+    if (stored === null) return true
+    return stored === 'true'
   } catch {
-    return false
+    return true
   }
 }
 
