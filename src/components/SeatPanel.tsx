@@ -13,6 +13,8 @@ interface SeatPanelProps {
   myTeamId: number
   side: CompassSide
   coords: { left: number; top: number }
+  /** Avatar + H/F counts only — for phone-width table. */
+  abbreviated?: boolean
 }
 
 function seatAnchorClass(side: CompassSide): string {
@@ -72,12 +74,13 @@ export function SeatPanel({
   myTeamId,
   side,
   coords,
+  abbreviated = false,
 }: SeatPanelProps) {
   const teamColor = TEAM_COLORS[player.profile.teamId]
   const isMyTeam = player.profile.teamId === myTeamId
 
   const roleLabel =
-    role === 'you' ? 'You' : role === 'partner' ? 'Partner' : 'Opp.'
+    role === 'you' ? 'You' : role === 'partner' ? 'P' : 'O'
 
   const handCount = playerHandCount(player)
   const footCount = playerFootCount(player)
@@ -87,6 +90,55 @@ export function SeatPanel({
   const chipStyle = {
     '--seat-team': teamColor,
   } as CSSProperties
+
+  if (abbreviated) {
+    return (
+      <div className={`absolute z-20 ${seatAnchorClass(side)}`} style={positionStyle}>
+        <span
+          data-flight-anchor={`seat-${seatIndex}`}
+          className="pointer-events-none absolute left-1/2 top-1/2 h-0 w-0"
+          aria-hidden
+        />
+        <div
+          className={[
+            'seat-chip seat-chip-abbreviated',
+            isMyTeam ? 'seat-chip-ally' : '',
+            isActive ? 'seat-chip-active' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+          style={chipStyle}
+          title={`${player.profile.name} · ${role === 'you' ? 'You' : role === 'partner' ? 'Partner' : 'Opponent'}`}
+        >
+          <div className="seat-chip-avatar seat-chip-avatar-sm" aria-hidden>
+            {player.profile.avatar}
+          </div>
+          <div className="seat-chip-abbrev-counts">
+            {(!player.isPlayingFoot || handCount > 0) && (
+              <span className="seat-chip-abbrev-pile" title="Hand">
+                H{handCount}
+              </span>
+            )}
+            <span
+              className={[
+                'seat-chip-abbrev-pile',
+                player.isPlayingFoot ? 'seat-chip-pile-foot-active' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              title="Foot"
+            >
+              F{footCount}
+            </span>
+          </div>
+          {role === 'you' && <span className="seat-chip-you-tag">You</span>}
+          {isActive && (
+            <span className="seat-chip-turn-dot seat-chip-turn-dot-sm" aria-label="Current turn" />
+          )}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className={`absolute z-20 ${seatAnchorClass(side)}`} style={positionStyle}>

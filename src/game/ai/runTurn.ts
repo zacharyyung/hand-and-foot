@@ -11,7 +11,10 @@ import {
 } from '../actions'
 import type { GameState } from '../deal'
 import type { ChatMessage } from '../chat'
+import type { Card } from '../cards'
+import { cardLabel } from '../cards'
 import { findAddToBookActions } from './decisions'
+import { AiDebugCollector } from './debugTrace'
 import { buildAiPublicState } from './publicState'
 import { maybeAiChatSignal } from './chatSignals'
 import {
@@ -29,27 +32,50 @@ import {
 export interface AiTurnResult {
   state: GameState
   chatMessage?: ChatMessage
+  debugTrace?: AiDebugCollector['trace']
+}
+
+export interface AiTurnOptions {
+  debug?: AiDebugCollector
+}
+
+function labelCards(hand: Card[], ids: string[]): string {
+  return ids
+    .map((id) => {
+      const card = hand.find((c) => c.id === id)
+      return card ? cardLabel(card) : id
+    })
+    .join(' ')
 }
 
 export function runAiTurn(
   state: GameState,
   chatMessages: ChatMessage[] = [],
+  options?: AiTurnOptions,
 ): AiTurnResult {
   const player = getCurrentPlayer(state)
   if (player.profile.isHuman) return { state }
 
   const difficulty = player.profile.aiDifficulty ?? 'normal'
+  const debug = options?.debug
   let current = state
   let chatMessage: ChatMessage | undefined
   let messages = chatMessages
 
   if (current.turnPhase === 'draw') {
+    debug?.step('draw', 'Drawing 2 from stock.')
     current = drawCards(current)
   }
 
-  if (current.phase !== 'playing') return { state: current, chatMessage }
+  if (current.phase !== 'playing') {
+    return { state: current, chatMessage, debugTrace: debug?.trace }
+  }
 
   const maxPlays = difficulty === 'expert' ? 14 : 10
+  debug?.step(
+    'turn',
+    `${player.profile.name} (${difficulty}) · hand ${player.hand.length} · max ${maxPlays} meld plays`,
+  )
 
   for (let i = 0; i < maxPlays; i++) {
     if (current.turnPhase !== 'play') break
@@ -64,6 +90,7 @@ export function runAiTurn(
       pub.myHand.length === 1 &&
       canTeamGoOut(team.books, team.meldThresholdMet)
     ) {
+      debug?.step('meld', 'Foot has 1 card and team can go out — skipping meld to discard.')
       break
     }
 
@@ -72,6 +99,10 @@ export function runAiTurn(
     if (!pub.teamMeldThresholdMet) {
       const required = Math.max(0, pub.requiredMeld - pub.meldPointsThisTurn)
       const openUrgency = initialMeldUrgency(pub.requiredMeld, urgency)
+      debug?.step(
+        'initial',
+        `Need ${required} pts (urgency ${openUrgency}, meld pressure ${urgency}).`,
+      )
       let plan = planInitialMeld(
         pub.myHand,
         pub.myTeamBooks,
@@ -81,6 +112,7 @@ export function runAiTurn(
         pub.isPlayingFoot,
       )
       if (!plan && openUrgency !== 'high') {
+        debug?.step('initial', 'No plan at current urgency — retrying at high.')
         plan = planInitialMeld(
           pub.myHand,
           pub.myTeamBooks,
@@ -92,11 +124,19 @@ export function runAiTurn(
       }
 
       if (plan && plan.length > 0) {
+        debug?.step(
+          'initial',
+          `Committing ${plan.length} book(s): ${plan.map((book) => labelCards(pub.myHand, book)).join(' | ')}`,
+        )
         const result = commitStagedMelds(current, plan)
         if (!result.error) {
           current = result.state
           played = true
+        } else {
+          debug?.step('initial', `Commit failed: ${result.error}`)
         }
+      } else {
+        debug?.step('initial', 'No initial meld plan — stopping meld loop.')
       }
     } else {
       const addActions = findAddToBookActions(
@@ -106,6 +146,7 @@ export function runAiTurn(
         current.booksWithWildAddedThisTurn,
         team.meldThresholdMet,
       )
+      debug?.step('add', `${addActions.length} add action(s) available.`)
       const triedAdds = new Set<string>()
 
       for (let attempt = 0; attempt < addAttempts && !played; attempt++) {
@@ -120,15 +161,31 @@ export function runAiTurn(
           messages,
           current,
         )
-        if (!bestAdd) break
+        if (!bestAdd) {
+          debug?.step('add', 'No scored add action left.')
+          break
+        }
 
         triedAdds.add(`${bestAdd.bookId}:${bestAdd.cardIds.join(',')}`)
-        if (shouldRandomlySkipMeld(difficulty, urgency, 'add', pub.teamMeldThresholdMet)) continue
+        if (shouldRandomlySkipMeld(difficulty, urgency, 'add', pub.teamMeldThresholdMet)) {
+          debug?.step(
+            'add',
+            `Random skip (normal): ${labelCards(pub.myHand, bestAdd.cardIds)}`,
+          )
+          continue
+        }
 
+        const book = pub.myTeamBooks.find((b) => b.id === bestAdd.bookId)
+        debug?.step(
+          'add',
+          `Adding to ${book?.rank ?? '?'} book: ${labelCards(pub.myHand, bestAdd.cardIds)}`,
+        )
         const result = addToBook(current, bestAdd.bookId, bestAdd.cardIds)
         if (!result.error) {
           current = result.state
           played = true
+        } else {
+          debug?.step('add', `Add failed: ${result.error}`)
         }
       }
 
@@ -142,29 +199,42 @@ export function runAiTurn(
           refreshed.isPlayingFoot,
         )
         if (startIds) {
+          debug?.step('start', `Starting book: ${labelCards(refreshed.myHand, startIds)}`)
           const result = startBook(current, startIds)
           if (!result.error) {
             current = result.state
             played = true
+          } else {
+            debug?.step('start', `Start failed: ${result.error}`)
           }
+        } else {
+          debug?.step('start', 'No new book to start.')
         }
       }
     }
 
-    if (!played) break
+    if (!played) {
+      debug?.step('meld', 'Nothing played this iteration — ending meld loop.')
+      break
+    }
 
-    if (shouldRandomlySkipMeld(difficulty, urgency, 'endTurn', pub.teamMeldThresholdMet)) break
+    if (shouldRandomlySkipMeld(difficulty, urgency, 'endTurn', pub.teamMeldThresholdMet)) {
+      debug?.step('meld', 'Random end-turn skip (normal mode).')
+      break
+    }
   }
 
   if (current.turnPhase === 'play') {
     const goOutSignal = maybeAiChatSignal(current, current.currentPlayerIndex, messages)
     if (goOutSignal && !chatMessage) {
+      debug?.step('chat', 'Signaling ready to go out.')
       chatMessage = goOutSignal
       messages = [...messages, goOutSignal]
     }
 
     const pub = buildAiPublicState(current, current.currentPlayerIndex)
     const goingOut = canPlayerGoOut(current, messages)
+    if (goingOut) debug?.step('discard', 'Can go out this turn.')
 
     const loneWild = pickLoneWildAdd(
       pub.myHand,
@@ -172,6 +242,7 @@ export function runAiTurn(
       current.booksWithWildAddedThisTurn,
     )
     if (loneWild && !goingOut) {
+      debug?.step('wild', `Adding lone wild to book ${loneWild.bookId.slice(0, 8)}…`)
       const wildResult = addToBook(current, loneWild.bookId, [loneWild.cardId])
       if (!wildResult.error) {
         current = wildResult.state
@@ -185,6 +256,10 @@ export function runAiTurn(
           refreshed.isPlayingFoot,
         )
         if (wildStart) {
+          debug?.step('wild', `Starting book with wild: ${wildStart.map((id) => {
+            const card = refreshed.myHand.find((c) => c.id === id)
+            return card ? cardLabel(card) : id
+          }).join(' ')}`)
           const startResult = startBook(current, wildStart)
           if (!startResult.error) {
             current = startResult.state
@@ -200,13 +275,20 @@ export function runAiTurn(
       difficulty,
       goingOut,
     )
+    const cardToDiscard = discardPub.myHand.find((c) => c.id === discardId)
+    debug?.step(
+      'discard',
+      cardToDiscard ? `Discarding ${cardLabel(cardToDiscard)}` : `Discarding ${discardId}`,
+    )
     const result = discardCard(current, discardId, messages)
     if (!result.error) {
       current = result.state
+    } else {
+      debug?.step('discard', `Discard failed: ${result.error}`)
     }
   }
 
-  return { state: current, chatMessage }
+  return { state: current, chatMessage, debugTrace: debug?.trace }
 }
 
 export function isAiPlayer(state: GameState): boolean {

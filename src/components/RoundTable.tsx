@@ -17,6 +17,7 @@ interface RoundTableProps {
   hideViewerSeat?: boolean
   onDraw?: () => void
   canDraw?: boolean
+  mobile?: boolean
   getCardMotion?: (cardId: string) => CardMotionKind | undefined
   isCardInFlight?: (cardId: string) => boolean
 }
@@ -26,6 +27,7 @@ export function RoundTable({
   hideViewerSeat = false,
   onDraw,
   canDraw = false,
+  mobile = false,
   getCardMotion,
   isCardInFlight,
 }: RoundTableProps) {
@@ -60,6 +62,7 @@ export function RoundTable({
               seatIndex={seatIndex}
               side={side}
               myTeamId={myTeamId}
+              mobile={mobile}
               getCardMotion={getCardMotion}
               isCardHidden={isCardInFlight}
             />
@@ -76,12 +79,13 @@ export function RoundTable({
           aria-hidden
         />
 
-        <div className="absolute left-1/2 top-1/2 z-40 flex -translate-x-1/2 -translate-y-1/2 items-end gap-4 sm:gap-7 md:gap-10 lg:gap-14">
+        <div className={`absolute left-1/2 top-1/2 z-40 flex -translate-x-1/2 -translate-y-1/2 items-end ${mobile ? 'gap-2.5' : 'gap-4 sm:gap-7 md:gap-10 lg:gap-14'}`}>
           <CardPile
             cards={game.stock}
-            label="Stock"
+            label={mobile ? undefined : 'Stock'}
             faceDown
-            small
+            small={!mobile}
+            tiny={mobile}
             flightAnchor="stock"
             interactive={canDraw}
             highlight={canDraw}
@@ -89,9 +93,10 @@ export function RoundTable({
           />
           <CardPile
             cards={game.discard}
-            label="Discard"
+            label={mobile ? undefined : 'Discard'}
             showTopCard={game.discard.length > 0}
-            small
+            small={!mobile}
+            tiny={mobile}
             flightAnchor="discard"
             getCardMotion={getCardMotion}
             isCardHidden={isCardInFlight}
@@ -117,6 +122,7 @@ export function RoundTable({
               myTeamId={myTeamId}
               side={side}
               coords={{ left, top }}
+              abbreviated={mobile}
             />
           )
         })}

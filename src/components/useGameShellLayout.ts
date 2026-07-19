@@ -1,8 +1,9 @@
 import { useLayoutEffect, useState, type RefObject } from 'react'
 
-export type GameShellLayout = 'comfortable' | 'compact' | 'tight'
+export type GameShellLayout = 'comfortable' | 'compact' | 'tight' | 'mobile'
 
 function layoutTier(width: number, height: number): GameShellLayout {
+  if (width < 540) return 'mobile'
   if (height < 680 || (height < 760 && width < 1050)) return 'tight'
   if (height < 880 || width < 820) return 'compact'
   return 'comfortable'

@@ -22,19 +22,41 @@ interface StagingAreaProps {
   ribbon?: boolean
   /** Sit inside the H/F toolbar row without extra vertical padding. */
   embedded?: boolean
+  /** Rank/count chips instead of fanned cards. */
+  mobile?: boolean
   getCardMotion?: (cardId: string) => CardMotionKind | undefined
   isCardHidden?: (cardId: string) => boolean
 }
 
+function StagedBookChip({ book }: { book: StagedBook }) {
+  return (
+    <div className="staged-book-chip relative" title={`Staged ${book.rank}s`}>
+      <span
+        data-flight-anchor={`staging-${book.id}`}
+        className="pointer-events-none absolute left-1/2 top-1/2 z-0 h-0 w-0 -translate-x-1/2 -translate-y-1/2"
+        aria-hidden
+      />
+      <span className="staged-book-chip-rank">{book.rank}</span>
+      <span className="staged-book-chip-count">{book.cards.length}</span>
+    </div>
+  )
+}
+
 function StagedBookFan({
   book,
+  mobile = false,
   getCardMotion,
   isCardHidden,
 }: {
   book: StagedBook
+  mobile?: boolean
   getCardMotion?: (cardId: string) => CardMotionKind | undefined
   isCardHidden?: (cardId: string) => boolean
 }) {
+  if (mobile) {
+    return <StagedBookChip book={book} />
+  }
+
   const fanCards = cardsForBookFan(book.cards)
   const layout = cardFanLayout(fanCards.length, { small: true })
   const landingIndex = Math.max(0, Math.floor((fanCards.length - 1) / 2))
@@ -67,6 +89,7 @@ export function StagingArea({
   compact = false,
   ribbon = false,
   embedded = false,
+  mobile = false,
   getCardMotion,
   isCardHidden,
 }: StagingAreaProps) {
@@ -121,6 +144,7 @@ export function StagingArea({
             >
               <StagedBookFan
                 book={book}
+                mobile={mobile}
                 getCardMotion={getCardMotion}
                 isCardHidden={isCardHidden}
               />
@@ -171,6 +195,7 @@ export function StagingArea({
           >
             <StagedBookFan
               book={book}
+              mobile={mobile}
               getCardMotion={getCardMotion}
               isCardHidden={isCardHidden}
             />

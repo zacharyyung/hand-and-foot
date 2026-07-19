@@ -12,6 +12,8 @@ interface TeamBooksProps {
   teamId: number
   highlightTeamId?: number
   compact?: boolean
+  /** Rank/count chips instead of fanned cards (phone layouts). */
+  mobile?: boolean
   label?: string
   getCardMotion?: (cardId: string) => CardMotionKind | undefined
   isCardHidden?: (cardId: string) => boolean
@@ -54,15 +56,48 @@ function BookCountBadge({ count, completed }: { count: number; completed: boolea
   )
 }
 
+function BookChip({
+  book,
+}: {
+  book: Book
+}) {
+  const completed = book.cards.length >= 7
+  const clean = isCleanBook(book)
+  const wilds = bookWildCount(book)
+
+  return (
+    <div
+      className={`book-chip relative ${completed ? 'book-chip-complete' : ''} ${clean ? 'book-chip-clean' : wilds > 0 ? 'book-chip-dirty' : ''}`}
+      title={`${book.rank}s · ${book.cards.length} cards${clean ? ' · clean' : wilds > 0 ? ' · dirty' : ''}`}
+    >
+      <span
+        data-flight-anchor={`book-${book.id}`}
+        className="pointer-events-none absolute left-1/2 top-1/2 z-0 h-0 w-0 -translate-x-1/2 -translate-y-1/2"
+        aria-hidden
+      />
+      <span className="book-chip-rank">{book.rank}</span>
+      <span className="book-chip-count">{book.cards.length}</span>
+      {completed && <BookStatusMark clean={clean} />}
+      {!clean && wilds > 0 && <WildCountBadge count={wilds} />}
+    </div>
+  )
+}
+
 function BookDisplay({
   book,
   getCardMotion,
   isCardHidden,
+  mobile = false,
 }: {
   book: Book
   getCardMotion?: (cardId: string) => CardMotionKind | undefined
   isCardHidden?: (cardId: string) => boolean
+  mobile?: boolean
 }) {
+  if (mobile) {
+    return <BookChip book={book} />
+  }
+
   const completed = book.cards.length >= 7
   const clean = isCleanBook(book)
   const wilds = bookWildCount(book)
@@ -116,6 +151,7 @@ export function TeamBooks({
   teamId,
   highlightTeamId,
   compact = false,
+  mobile = false,
   label,
   getCardMotion,
   isCardHidden,
@@ -140,6 +176,7 @@ export function TeamBooks({
           <BookDisplay
             key={book.id}
             book={book}
+            mobile={mobile}
             getCardMotion={getCardMotion}
             isCardHidden={isCardHidden}
           />
@@ -161,6 +198,7 @@ export function TeamBooks({
           <BookDisplay
             key={book.id}
             book={book}
+            mobile={mobile}
             getCardMotion={getCardMotion}
             isCardHidden={isCardHidden}
           />
@@ -178,6 +216,7 @@ export function TableBookZone({
   seatIndex,
   side,
   myTeamId,
+  mobile = false,
   getCardMotion,
   isCardHidden,
 }: {
@@ -186,6 +225,7 @@ export function TableBookZone({
   seatIndex: number
   side: CompassSide
   myTeamId: number
+  mobile?: boolean
   getCardMotion?: (cardId: string) => CardMotionKind | undefined
   isCardHidden?: (cardId: string) => boolean
 }) {
@@ -199,12 +239,13 @@ export function TableBookZone({
       className={`pointer-events-none absolute z-[15] ${zoneClass}`}
       data-flight-anchor={`books-${seatIndex}`}
     >
-      <div className={`flex ${tableBookFlexClass(side)}`}>
+      <div className={`flex ${tableBookFlexClass(side, mobile)}`}>
         <TeamBooks
           books={playerBooks}
           teamId={teamId}
           highlightTeamId={myTeamId}
           compact
+          mobile={mobile}
           getCardMotion={getCardMotion}
           isCardHidden={isCardHidden}
         />
@@ -236,8 +277,8 @@ function tableBookZoneClass(side: CompassSide): string {
   }
 }
 
-function tableBookFlexClass(side: CompassSide): string {
-  const gap = 'gap-x-2.5 gap-y-2'
+function tableBookFlexClass(side: CompassSide, mobile = false): string {
+  const gap = mobile ? 'gap-x-1 gap-y-1' : 'gap-x-2.5 gap-y-2'
   switch (side) {
     case 'north':
       return `flex-row flex-wrap items-end justify-center ${gap}`

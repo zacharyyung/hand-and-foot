@@ -11,6 +11,7 @@ interface CardPileProps {
   faceDown?: boolean
   showTopCard?: boolean
   small?: boolean
+  tiny?: boolean
   interactive?: boolean
   onClick?: () => void
   highlight?: boolean
@@ -25,6 +26,7 @@ export function CardPile({
   faceDown = false,
   showTopCard = false,
   small = false,
+  tiny = false,
   interactive = false,
   onClick,
   highlight = false,
@@ -42,9 +44,11 @@ export function CardPile({
     }
   }
 
-  const depth = Math.min(displayCount, 4)
-  const sizeH = small ? 'h-16' : 'h-24'
-  const sizeW = small ? 'w-11' : 'w-16'
+  const depth = Math.min(displayCount, tiny ? 3 : 4)
+  const sizeH = tiny ? 'h-11' : small ? 'h-16' : 'h-24'
+  const sizeW = tiny ? 'w-[1.85rem]' : small ? 'w-11' : 'w-16'
+  const cardSmall = !tiny && small
+  const cardTiny = tiny
 
   const pile = (
     <div
@@ -71,7 +75,7 @@ export function CardPile({
             }}
             aria-hidden
           >
-            <Card faceDown small={small} />
+            <Card faceDown small={cardSmall} tiny={cardTiny} />
           </div>
         )})}
 
@@ -91,7 +95,8 @@ export function CardPile({
             <Card
               card={showTopCard && !faceDown ? displayTopCard : undefined}
               faceDown={faceDown || !showTopCard}
-              small={small}
+              small={cardSmall}
+              tiny={cardTiny}
             />
           </AnimatedCardShell>
         </div>
@@ -109,7 +114,7 @@ export function CardPile({
       )}
 
       {cards.length > 0 && (
-        <span className="absolute -bottom-1.5 left-1/2 z-20 -translate-x-1/2 rounded-full bg-black/55 px-1.5 py-px font-sans text-[9px] font-semibold tabular-nums text-ink-soft backdrop-blur-sm">
+        <span className="absolute -bottom-1 left-1/2 z-20 -translate-x-1/2 rounded-full bg-black/55 px-1 py-px font-sans text-[8px] font-semibold tabular-nums text-ink-soft backdrop-blur-sm">
           {cards.length}
         </span>
       )}
@@ -117,11 +122,11 @@ export function CardPile({
   )
 
   return (
-    <div className={`flex flex-col items-center ${small ? 'gap-1' : 'gap-2'}`}>
+    <div className={`flex flex-col items-center ${tiny ? 'gap-0.5' : small ? 'gap-1' : 'gap-2'}`}>
       {label && (
         <span
           className={`font-sans font-medium uppercase tracking-[0.14em] text-ink-muted ${
-            small ? 'text-[8px]' : 'text-[10px]'
+            tiny ? 'text-[7px]' : small ? 'text-[8px]' : 'text-[10px]'
           }`}
         >
           {label}

@@ -15,6 +15,8 @@ interface GameSettingsPanelProps {
   onRequestUndo: () => void
   autoSort: boolean
   onAutoSortChange: (enabled: boolean) => void
+  aiDebugEnabled: boolean
+  onAiDebugChange: (enabled: boolean) => void
   /** Render trigger inside the player dock instead of fixed corner. */
   dockInline?: boolean
 }
@@ -32,6 +34,8 @@ export function GameSettingsPanel({
   onRequestUndo,
   autoSort,
   onAutoSortChange,
+  aiDebugEnabled,
+  onAiDebugChange,
   dockInline = false,
 }: GameSettingsPanelProps) {
   const humans = game.players.filter((p) => p.profile.isHuman)
@@ -94,6 +98,25 @@ export function GameSettingsPanel({
                 </button>
                 <p className="mt-1.5 text-[10px] leading-relaxed text-ink-faint">
                   When on, your hand is sorted automatically after you draw.
+                </p>
+              </section>
+
+              <section className="rounded-xl bg-black/20 px-3 py-2.5">
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
+                  AI debugging features
+                </p>
+                <button
+                  type="button"
+                  onClick={() => onAiDebugChange(!aiDebugEnabled)}
+                  className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-xs font-medium text-ink-soft hover:bg-white/8 hover:text-ink"
+                  aria-pressed={aiDebugEnabled}
+                >
+                  <span>Show AI debug panel</span>
+                  <span>{aiDebugEnabled ? 'On' : 'Off'}</span>
+                </button>
+                <p className="mt-1.5 text-[10px] leading-relaxed text-ink-faint">
+                  Dev overlay: see AI reasoning and peek at bot hands. Turn off when done
+                  debugging.
                 </p>
               </section>
 

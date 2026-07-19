@@ -19,6 +19,7 @@ import {
   willSkipAndRun,
 } from '../game/actions'
 import { runAiTurn } from '../game/ai/runTurn'
+import { AiDebugCollector, type AiDebugTurnTrace } from '../game/ai/debugTrace'
 import { getViewerSeat } from '../game/tableLayout'
 import { mergeHandOrder, sortCardIdsByHand } from '../game/handOrder'
 import {
@@ -48,6 +49,7 @@ import { MeldTracker, CurrentRoundTracker } from './Scoreboard'
 import { GameChat } from './GameChat'
 import { GameMessageBar } from './GameMessageBar'
 import { GameSettingsPanel } from './GameSettingsPanel'
+import { AiDebugPanel } from './AiDebugPanel'
 import { useGameShellLayout } from './useGameShellLayout'
 import { TEAM_COLORS, partnerSeat, type PlayerCount } from '../game/teams'
 import type { ChatMessage } from '../game/chat'
@@ -67,6 +69,8 @@ interface GameViewProps {
   canRequestUndo?: boolean
   undoPending?: boolean
   onRequestUndo?: () => void
+  aiDebugEnabled?: boolean
+  onAiDebugChange?: (enabled: boolean) => void
 }
 
 const AI_TURN_DELAY_MS = 900
@@ -106,11 +110,15 @@ export function GameView({
   canRequestUndo = false,
   undoPending = false,
   onRequestUndo,
+  aiDebugEnabled = false,
+  onAiDebugChange,
 }: GameViewProps) {
   const shellRef = useRef<HTMLDivElement>(null)
   const shellLayout = useGameShellLayout(shellRef)
+  const mobileLayout = shellLayout === 'mobile'
   const compactHeader = shellLayout !== 'comfortable'
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [aiDebugTraces, setAiDebugTraces] = useState<Record<number, AiDebugTurnTrace>>({})
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [aiThinking, setAiThinking] = useState(false)
@@ -610,7 +618,23 @@ export function GameView({
     const resumeDelay = canPlayerGoOut(game, chatMessages) ? 0 : AI_TURN_DELAY_MS
     setAiThinking(true)
     const timer = setTimeout(() => {
-      const result = runAiTurn(game, chatRef.current)
+      const debugCollector = aiDebugEnabled
+        ? new AiDebugCollector(
+            current.profile.seatIndex,
+            current.profile.name,
+            current.profile.aiDifficulty ?? 'normal',
+            game.roundNumber,
+            current.hand,
+            current.foot,
+          )
+        : undefined
+      const result = runAiTurn(game, chatRef.current, { debug: debugCollector })
+      if (result.debugTrace) {
+        setAiDebugTraces((prev) => ({
+          ...prev,
+          [result.debugTrace!.seatIndex]: result.debugTrace!,
+        }))
+      }
       if (result.chatMessage) {
         onChatSend(result.chatMessage, result.state)
       }
@@ -619,7 +643,7 @@ export function GameView({
     }, resumeDelay)
 
     return () => clearTimeout(timer)
-  }, [game, chatMessages, current.profile.isHuman, onGameChange, onChatSend])
+  }, [game, chatMessages, current.profile.isHuman, onGameChange, onChatSend, aiDebugEnabled])
 
   function toggleCard(cardId: string) {
     if (!isMyTurn || game.turnPhase === 'draw') return
@@ -966,7 +990,7 @@ export function GameView({
           <div className="min-w-0">
             <div className="flex items-baseline gap-2">
               <h1 className="font-display text-sm font-semibold tracking-tight text-ink sm:text-lg">
-                Hand &amp; Foot
+                {mobileLayout ? 'H&F' : 'Hand & Foot'}
               </h1>
               <span className="font-sans text-[10px] tabular-nums text-ink-faint">
                 R{game.roundNumber}
@@ -988,7 +1012,7 @@ export function GameView({
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
-            <MeldTracker teams={game.teams} />
+            <MeldTracker teams={game.teams} compact={mobileLayout} />
           </div>
         </div>
         <div className={`mt-1 flex justify-center ${compactHeader ? 'md:hidden' : 'sm:hidden'}`}>
@@ -1011,6 +1035,7 @@ export function GameView({
             game={game}
             onDraw={handleDraw}
             canDraw={canDraw}
+            mobile={mobileLayout}
             getCardMotion={getCardMotion}
             isCardInFlight={isCardInFlight}
           />
@@ -1077,6 +1102,7 @@ export function GameView({
                       compact
                       ribbon
                       embedded
+                      mobile={mobileLayout}
                       getCardMotion={getCardMotion}
                       isCardHidden={isCardInFlight}
                     />
@@ -1097,6 +1123,7 @@ export function GameView({
                   canSelect={isMyTurn && game.turnPhase === 'play'}
                   canDrag
                   spread
+                  mobile={mobileLayout}
                   getCardMotion={getCardMotion}
                   onPlaceMotion={(cardId) => markMotion([cardId], 'place')}
                   isCardHidden={isCardInFlight}
@@ -1132,7 +1159,7 @@ export function GameView({
                     messages={chatMessages}
                     onSend={onChatSend}
                     dockInline
-                    compact={shellLayout === 'tight'}
+                    compact={shellLayout === 'tight' || mobileLayout}
                   />
                 </div>
 
@@ -1281,6 +1308,8 @@ export function GameView({
                     onRequestUndo={onRequestUndo ?? (() => {})}
                     autoSort={autoSort}
                     onAutoSortChange={onAutoSortChange ?? (() => {})}
+                    aiDebugEnabled={aiDebugEnabled}
+                    onAiDebugChange={onAiDebugChange ?? (() => {})}
                     dockInline
                   />
                 </div>
@@ -1288,6 +1317,15 @@ export function GameView({
             </div>
           </div>
         )}
+
+        <AiDebugPanel
+          game={game}
+          chatMessages={chatMessages}
+          enabled={aiDebugEnabled}
+          aiThinking={aiThinking}
+          currentSeat={game.currentPlayerIndex}
+          lastTraces={aiDebugTraces}
+        />
 
         {!isHumanViewer && (
           <p className="shrink-0 py-3 text-center text-xs text-ink-faint">Spectating</p>

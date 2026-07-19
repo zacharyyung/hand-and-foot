@@ -117,12 +117,12 @@ export function CurrentRoundTracker({
   )
 }
 
-function MeldTeamRow({ team }: { team: TeamState }) {
+function MeldTeamRow({ team, compact = false }: { team: TeamState; compact?: boolean }) {
   const needed = meldThreshold(team.score)
   const met = team.meldThresholdMet
 
   return (
-    <div className="flex items-center gap-1.5 rounded-lg bg-black/20 px-2 py-1">
+    <div className={`flex items-center gap-1 rounded-lg bg-black/20 ${compact ? 'px-1.5 py-0.5' : 'px-2 py-1'}`}>
       <span
         className="h-1.5 w-1.5 shrink-0 rounded-full"
         style={{ backgroundColor: TEAM_COLORS[team.id] }}
@@ -130,18 +130,20 @@ function MeldTeamRow({ team }: { team: TeamState }) {
       />
       {met ? (
         <span
-          className="text-[11px] font-semibold tabular-nums text-accent"
+          className={`font-semibold tabular-nums text-accent ${compact ? 'text-[9px]' : 'text-[11px]'}`}
           title="Initial meld requirement met"
         >
-          Met
+          ✓
         </span>
       ) : (
         <span
-          className="text-[11px] font-semibold tabular-nums text-ink-soft"
+          className={`font-semibold tabular-nums text-ink-soft ${compact ? 'text-[9px]' : 'text-[11px]'}`}
           title={`Need ${needed} points to meld this round`}
         >
           {needed}
-          <span className="ml-0.5 text-[9px] font-medium text-ink-faint">pts</span>
+          {!compact && (
+            <span className="ml-0.5 text-[9px] font-medium text-ink-faint">pts</span>
+          )}
         </span>
       )}
     </div>
@@ -149,19 +151,21 @@ function MeldTeamRow({ team }: { team: TeamState }) {
 }
 
 /** Initial meld points each team still needs before laying cards down. */
-export function MeldTracker({ teams }: { teams: TeamState[] }) {
+export function MeldTracker({ teams, compact = false }: { teams: TeamState[]; compact?: boolean }) {
   return (
     <div
-      className="flex flex-wrap items-center justify-end gap-1.5"
+      className="flex flex-wrap items-center justify-end gap-1 sm:gap-1.5"
       title="Initial meld requirement per team"
     >
-      <span className="shrink-0 text-[8px] font-semibold uppercase tracking-wider text-ink-faint">
-        To meld
-      </span>
+      {!compact && (
+        <span className="shrink-0 text-[8px] font-semibold uppercase tracking-wider text-ink-faint">
+          To meld
+        </span>
+      )}
       {teams.map((team) => (
-        <MeldTeamRow key={team.id} team={team} />
+        <MeldTeamRow key={team.id} team={team} compact={compact} />
       ))}
-      <MeldRulesHint />
+      {!compact && <MeldRulesHint />}
     </div>
   )
 }

@@ -18,11 +18,15 @@ export function handFanOffsets(
   count: number,
   selected: boolean[],
   hoverIndex: number | null,
+  options?: { mobile?: boolean },
 ): { lefts: number[]; width: number } {
-  const base = Math.max(24, Math.min(42, 520 / Math.max(count, 1)))
-  const selectedGap = 16
-  const hoverGap = 12
-  const cardW = 46
+  const mobile = options?.mobile ?? false
+  const cardW = mobile ? 30 : 46
+  const base = mobile
+    ? Math.max(12, Math.min(20, 280 / Math.max(count, 1)))
+    : Math.max(24, Math.min(42, 520 / Math.max(count, 1)))
+  const selectedGap = mobile ? 10 : 16
+  const hoverGap = mobile ? 8 : 12
 
   const lefts: number[] = []
   let x = 0
@@ -48,14 +52,16 @@ export function computeHandFanLayout(
   count: number,
   selected: boolean[],
   hoverIndex: number | null,
+  options?: { mobile?: boolean },
 ): HandFanLayout {
-  const { lefts, width: fanWidth } = handFanOffsets(count, selected, hoverIndex)
-  const maxRot = Math.min(22, 3 + count * 0.45)
+  const mobile = options?.mobile ?? false
+  const { lefts, width: fanWidth } = handFanOffsets(count, selected, hoverIndex, options)
+  const maxRot = mobile ? Math.min(14, 2 + count * 0.35) : Math.min(22, 3 + count * 0.45)
 
   const slots = lefts.map((left, index) => {
     const t = count <= 1 ? 0 : index / (count - 1)
     const rotation = -maxRot / 2 + t * maxRot
-    const arcY = Math.abs(t - 0.5) * 14
+    const arcY = mobile ? Math.abs(t - 0.5) * 8 : Math.abs(t - 0.5) * 14
     return { left, rotation, arcY }
   })
 

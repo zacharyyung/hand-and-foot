@@ -18,6 +18,8 @@ interface HandCardsProps {
   canDrag?: boolean
   /** Spread cards with gaps, centered — for the player hand dock. */
   spread?: boolean
+  /** Tighter tiny cards and fan for phone-width layouts. */
+  mobile?: boolean
   getCardMotion?: (cardId: string) => CardMotionKind | undefined
   onPlaceMotion?: (cardId: string) => void
   isCardHidden?: (cardId: string) => boolean
@@ -56,6 +58,7 @@ export function HandCards({
   canSelect = true,
   canDrag = true,
   spread = false,
+  mobile = false,
   getCardMotion,
   onPlaceMotion,
   isCardHidden,
@@ -98,7 +101,7 @@ export function HandCards({
     ? displayCards.findIndex((c) => c.id === hoverCardId)
     : null
   const selectedFlags = displayCards.map((c) => selectedIds.includes(c.id))
-  const fanLayout = computeHandFanLayout(n, selectedFlags, hoverIndex)
+  const fanLayout = computeHandFanLayout(n, selectedFlags, hoverIndex, { mobile })
 
   function slotPhase(cardId: string): CardSlotPhase {
     return isCardHidden?.(cardId) ? 'in-flight' : 'visible'
@@ -156,7 +159,7 @@ export function HandCards({
           inFlight ? 'hand-card-slot--in-flight' : 'hand-card-slot--visible',
         ].join(' ')}
       >
-        <Card card={card} small lifted={lifted} />
+        <Card card={card} small={!mobile} tiny={mobile} lifted={lifted} />
       </AnimatedCardShell>
     )
   }
@@ -191,15 +194,17 @@ export function HandCards({
 
   return (
     <div
-      className="hand-cards-spread relative mx-auto flex w-full max-w-5xl justify-center px-2"
-      style={{ minHeight: n > 0 ? 'min(6.25rem, 22dvh)' : undefined }}
+      className={`hand-cards-spread relative mx-auto flex w-full max-w-5xl justify-center px-1 sm:px-2`}
+      style={{
+        minHeight: n > 0 ? (mobile ? 'min(4.25rem, 18dvh)' : 'min(6.25rem, 22dvh)') : undefined,
+      }}
       onMouseLeave={() => setHoverCardId(null)}
     >
       <div
         className="relative transition-[width] ease-snappy will-change-[width]"
         style={{
           width: fanLayout.fanWidth,
-          height: 'min(5.75rem, 21dvh)',
+          height: mobile ? 'min(3.25rem, 16dvh)' : 'min(5.75rem, 21dvh)',
           transitionDuration: `${handSpreadMs}ms`,
         }}
       >
@@ -212,7 +217,7 @@ export function HandCards({
             dropCardId === card.id && dragCardId !== null && dragCardId !== card.id
           const phase = slotPhase(card.id)
           const inFlight = phase === 'in-flight'
-          const lift = isSelected ? 16 : isHovered ? 12 : 0
+          const lift = isSelected ? (mobile ? 10 : 16) : isHovered ? (mobile ? 8 : 12) : 0
           const isActive = isDragging || isHovered || isSelected
 
           let z = Z.base + index

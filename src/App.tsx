@@ -5,7 +5,7 @@ import { applyRoundScores, startNextRound } from './game/roundScoring'
 import type { ChatMessage } from './game/chat'
 import { isAllowedChatMessage } from './game/chat'
 import { loadMutePreference, playSound, unlockAudio } from './game/audio'
-import { loadAutoSortPreference, saveAutoSortPreference } from './game/preferences'
+import { loadAutoSortPreference, loadAiDebugPreference, saveAutoSortPreference, saveAiDebugPreference } from './game/preferences'
 import type { UndoVoteRequest } from './game/votes'
 import {
   humanSeats,
@@ -47,6 +47,7 @@ function App() {
   const [showRestartNotice, setShowRestartNotice] = useState(false)
   const [showUndoPicker, setShowUndoPicker] = useState(false)
   const [autoSort, setAutoSort] = useState(() => loadAutoSortPreference())
+  const [aiDebugEnabled, setAiDebugEnabled] = useState(() => loadAiDebugPreference())
 
   useEffect(() => {
     loadMutePreference()
@@ -288,6 +289,12 @@ function App() {
         onAutoSortChange={(enabled) => {
           saveAutoSortPreference(enabled)
           setAutoSort(enabled)
+          playSound('button')
+        }}
+        aiDebugEnabled={aiDebugEnabled}
+        onAiDebugChange={(enabled) => {
+          saveAiDebugPreference(enabled)
+          setAiDebugEnabled(enabled)
           playSound('button')
         }}
         onShowInstructions={() => setShowInstructions(true)}
