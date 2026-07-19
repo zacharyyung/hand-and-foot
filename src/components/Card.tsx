@@ -11,6 +11,7 @@ interface CardProps {
   faceDown?: boolean
   small?: boolean
   tiny?: boolean
+  micro?: boolean
   lifted?: boolean
   className?: string
 }
@@ -23,11 +24,19 @@ function suitGlyph(suit: CardType['suit']): string {
   return '★'
 }
 
-function BicycleCardBack({ tiny, small }: { tiny?: boolean; small?: boolean }) {
+function BicycleCardBack({
+  micro,
+  tiny,
+  small,
+}: {
+  micro?: boolean
+  tiny?: boolean
+  small?: boolean
+}) {
   const uid = useId().replace(/:/g, '')
   const diamondPatternId = `bicycle-diamonds-${uid}`
   const centerGlowId = `bicycle-center-glow-${uid}`
-  const brandSize = tiny ? 4.5 : small ? 5.5 : 7
+  const brandSize = micro ? 3.5 : tiny ? 4.5 : small ? 5.5 : 7
 
   return (
     <div className="bicycle-card-back-inner">
@@ -159,14 +168,17 @@ export function Card({
   faceDown = false,
   small = false,
   tiny = false,
+  micro = false,
   lifted = false,
   className = '',
 }: CardProps) {
-  const sizeClass = tiny
-    ? 'h-11 w-[1.85rem] text-[7px]'
-    : small
-      ? 'h-[4.1rem] w-[2.85rem] text-[11px] sm:h-16 sm:w-11 sm:text-xs'
-      : 'h-24 w-16 text-sm'
+  const sizeClass = micro
+    ? 'h-8 w-[1.3125rem] text-[5px]'
+    : tiny
+      ? 'h-11 w-[1.85rem] text-[7px]'
+      : small
+        ? 'h-[4.1rem] w-[2.85rem] text-[11px] sm:h-16 sm:w-11 sm:text-xs'
+        : 'h-24 w-16 text-sm'
 
   const liftClass = lifted ? '-translate-y-2 shadow-card-lift' : ''
 
@@ -176,7 +188,7 @@ export function Card({
         className={`playing-card playing-card-back playing-card-bicycle ${sizeClass} ${liftClass} ${className}`}
         aria-label="Face-down card"
       >
-        <BicycleCardBack tiny={tiny} small={small} />
+        <BicycleCardBack micro={micro} tiny={tiny && !micro} small={small && !tiny && !micro} />
       </div>
     )
   }
@@ -187,15 +199,19 @@ export function Card({
         className={`playing-card playing-card-wild ${sizeClass} ${liftClass} ${className}`}
         aria-label={cardLabel(card)}
       >
-        <div className="flex h-full flex-col items-center justify-center gap-0.5 p-1">
+        <div className="flex h-full flex-col items-center justify-center gap-0.5 p-0.5">
           <span
             className={`font-display font-semibold leading-none tracking-wide ${
-              tiny ? 'text-[6px]' : small ? 'text-[8px]' : 'text-[10px]'
+              micro ? 'text-[4px]' : tiny ? 'text-[6px]' : small ? 'text-[8px]' : 'text-[10px]'
             }`}
           >
-            JOKER
+            {micro ? 'J' : 'JOKER'}
           </span>
-          <span className={`leading-none opacity-90 ${tiny ? 'text-base' : small ? 'text-xl' : 'text-3xl'}`}>
+          <span
+            className={`leading-none opacity-90 ${
+              micro ? 'text-[10px]' : tiny ? 'text-base' : small ? 'text-xl' : 'text-3xl'
+            }`}
+          >
             ★
           </span>
         </div>
@@ -209,7 +225,11 @@ export function Card({
         className={`playing-card playing-card-wild ${sizeClass} ${liftClass} ${className}`}
         aria-label={cardLabel(card)}
       >
-        <div className="flex h-full flex-col justify-between p-1 font-semibold sm:p-1.5">
+        <div
+          className={`flex h-full flex-col justify-between font-semibold ${
+            micro ? 'p-0.5' : 'p-1 sm:p-1.5'
+          }`}
+        >
           <span className="leading-none">2</span>
           <span className="text-center text-[0.95em] leading-none opacity-90">
             {suitGlyph(card.suit)}
@@ -228,15 +248,21 @@ export function Card({
       className={`playing-card playing-card-face ${sizeClass} ${liftClass} ${textColor} ${className}`}
       aria-label={cardLabel(card)}
     >
-      <div className="flex h-full flex-col justify-between p-1 font-semibold sm:p-1.5">
+      <div
+        className={`flex h-full flex-col justify-between font-semibold ${
+          micro ? 'p-0.5' : 'p-1 sm:p-1.5'
+        }`}
+      >
         <span className="leading-none tracking-tight">{card.rank}</span>
         <span
           className="text-center leading-none"
-          style={{ fontSize: tiny ? '0.65rem' : undefined }}
+          style={{ fontSize: micro ? '0.5rem' : tiny ? '0.65rem' : undefined }}
         >
           {suitGlyph(card.suit)}
         </span>
-        <span className="rotate-180 self-end leading-none tracking-tight">{card.rank}</span>
+        {!micro && (
+          <span className="rotate-180 self-end leading-none tracking-tight">{card.rank}</span>
+        )}
       </div>
     </div>
   )

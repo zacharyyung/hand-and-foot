@@ -1,9 +1,11 @@
 import type { Card, Rank } from '../game/cards'
+import { isWildCard } from '../game/cards'
 import type { CardMotionKind } from '../game/cardMotion'
 import { cardsForBookFan } from '../game/books'
 import { meldContributionFromCards } from '../game/scoring'
 import { cardFanLayout } from './cardFanLayout'
 import { CardFan } from './CardFan'
+import { BookMini } from './BookMini'
 
 export interface StagedBook {
   id: string
@@ -28,17 +30,27 @@ interface StagingAreaProps {
   isCardHidden?: (cardId: string) => boolean
 }
 
-function StagedBookChip({ book }: { book: StagedBook }) {
+function StagedBookMini({
+  book,
+  getCardMotion,
+  isCardHidden,
+}: {
+  book: StagedBook
+  getCardMotion?: (cardId: string) => CardMotionKind | undefined
+  isCardHidden?: (cardId: string) => boolean
+}) {
+  const wildCount = book.cards.filter(isWildCard).length
+
   return (
-    <div className="staged-book-chip relative" title={`Staged ${book.rank}s`}>
-      <span
-        data-flight-anchor={`staging-${book.id}`}
-        className="pointer-events-none absolute left-1/2 top-1/2 z-0 h-0 w-0 -translate-x-1/2 -translate-y-1/2"
-        aria-hidden
-      />
-      <span className="staged-book-chip-rank">{book.rank}</span>
-      <span className="staged-book-chip-count">{book.cards.length}</span>
-    </div>
+    <BookMini
+      cards={book.cards}
+      bookId={book.id}
+      flightAnchorPrefix="staging"
+      wildCount={wildCount}
+      getCardMotion={getCardMotion}
+      isCardHidden={isCardHidden}
+      className="staged-book-mini"
+    />
   )
 }
 
@@ -54,7 +66,7 @@ function StagedBookFan({
   isCardHidden?: (cardId: string) => boolean
 }) {
   if (mobile) {
-    return <StagedBookChip book={book} />
+    return <StagedBookMini book={book} getCardMotion={getCardMotion} isCardHidden={isCardHidden} />
   }
 
   const fanCards = cardsForBookFan(book.cards)

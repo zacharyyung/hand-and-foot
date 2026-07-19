@@ -3,6 +3,7 @@ import type { CardMotionKind } from '../game/cardMotion'
 import { bookWildCount, cardsForBookFan, isCleanBook, sortBooks } from '../game/books'
 import { WILD_TEXT_CLASS, WILD_RING_CLASS } from './Card'
 import { CardFan } from './CardFan'
+import { BookMini } from './BookMini'
 import { cardFanLayout } from './cardFanLayout'
 import type { CompassSide } from '../game/tableLayout'
 import { TEAM_COLORS } from '../game/teams'
@@ -12,7 +13,7 @@ interface TeamBooksProps {
   teamId: number
   highlightTeamId?: number
   compact?: boolean
-  /** Rank/count chips instead of fanned cards (phone layouts). */
+  /** Compact mini-card books instead of full fans (phone layouts). */
   mobile?: boolean
   label?: string
   getCardMotion?: (cardId: string) => CardMotionKind | undefined
@@ -56,33 +57,6 @@ function BookCountBadge({ count, completed }: { count: number; completed: boolea
   )
 }
 
-function BookChip({
-  book,
-}: {
-  book: Book
-}) {
-  const completed = book.cards.length >= 7
-  const clean = isCleanBook(book)
-  const wilds = bookWildCount(book)
-
-  return (
-    <div
-      className={`book-chip relative ${completed ? 'book-chip-complete' : ''} ${clean ? 'book-chip-clean' : wilds > 0 ? 'book-chip-dirty' : ''}`}
-      title={`${book.rank}s · ${book.cards.length} cards${clean ? ' · clean' : wilds > 0 ? ' · dirty' : ''}`}
-    >
-      <span
-        data-flight-anchor={`book-${book.id}`}
-        className="pointer-events-none absolute left-1/2 top-1/2 z-0 h-0 w-0 -translate-x-1/2 -translate-y-1/2"
-        aria-hidden
-      />
-      <span className="book-chip-rank">{book.rank}</span>
-      <span className="book-chip-count">{book.cards.length}</span>
-      {completed && <BookStatusMark clean={clean} />}
-      {!clean && wilds > 0 && <WildCountBadge count={wilds} />}
-    </div>
-  )
-}
-
 function BookDisplay({
   book,
   getCardMotion,
@@ -94,13 +68,24 @@ function BookDisplay({
   isCardHidden?: (cardId: string) => boolean
   mobile?: boolean
 }) {
-  if (mobile) {
-    return <BookChip book={book} />
-  }
-
   const completed = book.cards.length >= 7
   const clean = isCleanBook(book)
   const wilds = bookWildCount(book)
+
+  if (mobile) {
+    return (
+      <BookMini
+        cards={book.cards}
+        bookId={book.id}
+        completed={completed}
+        clean={clean}
+        wildCount={wilds}
+        getCardMotion={getCardMotion}
+        isCardHidden={isCardHidden}
+      />
+    )
+  }
+
   const fanCards = cardsForBookFan(book.cards)
   const layout = cardFanLayout(fanCards.length, { small: true, stacked: completed })
   const landingIndex = Math.max(0, Math.floor((fanCards.length - 1) / 2))
@@ -232,7 +217,7 @@ export function TableBookZone({
   const playerBooks = books.filter((b) => b.teamId === teamId)
   if (playerBooks.length === 0) return null
 
-  const zoneClass = tableBookZoneClass(side)
+  const zoneClass = tableBookZoneClass(side, mobile)
 
   return (
     <div
@@ -254,7 +239,30 @@ export function TableBookZone({
   )
 }
 
-function tableBookZoneClass(side: CompassSide): string {
+function tableBookZoneClass(side: CompassSide, mobile = false): string {
+  if (mobile) {
+    switch (side) {
+      case 'north':
+        return 'left-1/2 top-[11%] w-[min(96%,22rem)] -translate-x-1/2'
+      case 'south':
+        return 'bottom-[11%] left-1/2 w-[min(96%,22rem)] -translate-x-1/2'
+      case 'west':
+        return 'left-[12%] top-1/2 w-[min(44%,11rem)] -translate-y-1/2'
+      case 'east':
+        return 'right-[12%] top-1/2 w-[min(44%,11rem)] -translate-y-1/2'
+      case 'nw':
+        return 'left-[10%] top-[12%] w-[min(46%,11rem)]'
+      case 'ne':
+        return 'right-[10%] top-[12%] w-[min(46%,11rem)]'
+      case 'sw':
+        return 'bottom-[12%] left-[10%] w-[min(46%,11rem)]'
+      case 'se':
+        return 'bottom-[12%] right-[10%] w-[min(46%,11rem)]'
+      default:
+        return 'left-1/2 top-[11%] w-[min(96%,22rem)] -translate-x-1/2'
+    }
+  }
+
   switch (side) {
     case 'north':
       return 'left-1/2 top-[12%] w-[min(82%,44rem)] -translate-x-1/2'
@@ -278,7 +286,7 @@ function tableBookZoneClass(side: CompassSide): string {
 }
 
 function tableBookFlexClass(side: CompassSide, mobile = false): string {
-  const gap = mobile ? 'gap-x-1 gap-y-1' : 'gap-x-2.5 gap-y-2'
+  const gap = mobile ? 'gap-x-[3px] gap-y-[3px]' : 'gap-x-2.5 gap-y-2'
   switch (side) {
     case 'north':
       return `flex-row flex-wrap items-end justify-center ${gap}`
