@@ -124,8 +124,12 @@ export function HandCards({
         ? { mobile: true }
         : undefined
   const fanLayout = computeHandFanLayout(n, selectedFlags, hoverIndex, fanOptions)
-  const fitScale =
-    fitWidth != null && fanLayout.fanWidth > fitWidth ? fitWidth / fanLayout.fanWidth : 1
+  /* Scale only as a last resort after spacing already tightened to the dock. */
+  const rawScale =
+    fitWidth != null && fanLayout.fanWidth > fitWidth
+      ? fitWidth / fanLayout.fanWidth
+      : 1
+  const fitScale = Math.min(1, Math.max(0.82, rawScale))
 
   useLayoutEffect(() => {
     if (!spread) {
@@ -137,14 +141,19 @@ export function HandCards({
     if (!scrollEl) return
 
     const measure = () => {
-      setFitWidth(Math.max(120, scrollEl.clientWidth - 12))
+      /*
+       * Leave a little room for fan rotation overhang on the outer cards
+       * so scaled/tight hands don't visually clip past the dock.
+       */
+      const rotPad = mobile ? 14 : 20
+      setFitWidth(Math.max(120, scrollEl.clientWidth - rotPad * 2))
     }
 
     measure()
     const observer = new ResizeObserver(measure)
     observer.observe(scrollEl)
     return () => observer.disconnect()
-  }, [spread])
+  }, [spread, mobile])
 
   function clearLongPressTimer() {
     if (longPressTimerRef.current != null) {
@@ -344,7 +353,7 @@ export function HandCards({
   return (
     <div
       ref={spreadOuterRef}
-      className={`hand-cards-spread relative mx-auto flex w-full max-w-5xl justify-center px-1 sm:px-2 ${
+      className={`hand-cards-spread relative mx-auto flex w-full max-w-5xl justify-center overflow-x-clip px-1 sm:px-2 ${
         mobile ? 'hand-cards-spread-mobile' : ''
       }`}
       style={{
@@ -353,15 +362,21 @@ export function HandCards({
       onMouseLeave={() => setHoverCardId(null)}
     >
       <div
-        className="relative transition-[width,transform] ease-snappy will-change-[width,transform]"
+        className="relative flex max-w-full justify-center overflow-x-clip"
         style={{
-          width: fanLayout.fanWidth,
-          height: mobile ? '3.25rem' : 'min(5.75rem, 21dvh)',
-          transitionDuration: `${handSpreadMs}ms`,
-          transform: fitScale < 1 ? `scale(${fitScale})` : undefined,
-          transformOrigin: 'bottom center',
+          width: fitWidth != null ? fitWidth : '100%',
         }}
       >
+        <div
+          className="relative transition-[width,transform] ease-snappy will-change-[width,transform]"
+          style={{
+            width: fanLayout.fanWidth,
+            height: mobile ? '3.25rem' : 'min(5.75rem, 21dvh)',
+            transitionDuration: `${handSpreadMs}ms`,
+            transform: fitScale < 1 ? `scale(${fitScale})` : undefined,
+            transformOrigin: 'bottom center',
+          }}
+        >
         {displayCards.map((card, index) => {
           const slot = fanLayout.slots[index]
           const isSelected = selectedFlags[index]
@@ -460,6 +475,7 @@ export function HandCards({
             </div>
           )
         })}
+        </div>
       </div>
     </div>
   )

@@ -1235,7 +1235,7 @@
   .south-dock-hand-scroll {
     min-height: 3rem;
     max-height: min(7rem, 26dvh);
-    overflow-x: hidden;
+    overflow-x: clip;
     overflow-y: hidden;
   }
 
@@ -1383,7 +1383,8 @@
 
   .game-play-shell[data-layout='mobile'] .south-dock-hand-scroll-mobile {
     grid-area: hand;
-    overflow: visible;
+    overflow-x: clip;
+    overflow-y: visible;
     max-height: none;
     min-height: 3.625rem;
     flex: none;
@@ -1424,7 +1425,8 @@
 
   .game-play-shell[data-layout='mobile'] .hand-cards-spread-mobile {
     min-height: 3.375rem !important;
-    overflow: visible;
+    overflow-x: clip;
+    overflow-y: visible;
     overscroll-behavior: none;
   }
 
