@@ -29,8 +29,10 @@ interface HandCardsProps {
 
 /** Snappy card motion — keep in sync with cardFlight / cardMotion. */
 const CARD_MS = 220
+/** Hold this long to select every natural card of the same rank. */
 const LONG_PRESS_MS = 1500
-const LONG_PRESS_MOVE_PX = 8
+/** Finger/mouse jitter allowance before the hold is cancelled. */
+const LONG_PRESS_MOVE_PX = 20
 
 /** Active cards pop above board chrome and neighbor cards. */
 const Z = {
@@ -77,7 +79,10 @@ export function HandCards({
   const [fitWidth, setFitWidth] = useState<number | null>(null)
   const longPressTimerRef = useRef<number | null>(null)
   const longPressFiredRef = useRef(false)
+  const pressStartedAtRef = useRef(0)
   const pointerStartRef = useRef<{ x: number; y: number; cardId: string } | null>(null)
+  /** Native HTML5 drag fights long-press on phones — only drag-reorder on desktop. */
+  const allowDrag = canDrag && !mobile
 
   const displayCards = useMemo(
     () => buildDisplayCards(hand, handOrder),
@@ -153,19 +158,20 @@ export function HandCards({
 
   function handleDragStart(cardId: string) {
     clearLongPressTimer()
-    if (!canDrag) return
+    longPressFiredRef.current = false
+    if (!allowDrag) return
     setDragCardId(cardId)
     playSound('select')
   }
 
   function handleDragOver(e: React.DragEvent, cardId: string) {
     e.preventDefault()
-    if (!canDrag || dragCardId === null) return
+    if (!allowDrag || dragCardId === null) return
     setDropCardId(cardId)
   }
 
   function handleDrop(targetCardId: string) {
-    if (!canDrag || dragCardId === null) return
+    if (!allowDrag || dragCardId === null) return
     const dragIndex = displayCards.findIndex((c) => c.id === dragCardId)
     const dropIndex = displayCards.findIndex((c) => c.id === targetCardId)
     if (dragIndex < 0 || dropIndex < 0) return
@@ -193,17 +199,31 @@ export function HandCards({
     playSound(wasSelected ? 'deselect' : 'select')
   }
 
+  function fireLongPress(cardId: string) {
+    if (!onSelectRank || !canSelect) return
+    longPressFiredRef.current = true
+    longPressTimerRef.current = null
+    pointerStartRef.current = null
+    onSelectRank(cardId)
+    playSound('select')
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      navigator.vibrate(12)
+    }
+  }
+
   function handlePointerDown(e: React.PointerEvent, cardId: string) {
     if (!canSelect || !onSelectRank || e.button !== 0) return
     longPressFiredRef.current = false
+    pressStartedAtRef.current = performance.now()
     pointerStartRef.current = { x: e.clientX, y: e.clientY, cardId }
     clearLongPressTimer()
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId)
+    } catch {
+      /* some browsers reject capture on buttons mid-gesture */
+    }
     longPressTimerRef.current = window.setTimeout(() => {
-      longPressTimerRef.current = null
-      longPressFiredRef.current = true
-      pointerStartRef.current = null
-      onSelectRank(cardId)
-      playSound('select')
+      fireLongPress(cardId)
     }, LONG_PRESS_MS)
   }
 
@@ -214,19 +234,39 @@ export function HandCards({
     const dy = e.clientY - start.y
     if (dx * dx + dy * dy > LONG_PRESS_MOVE_PX * LONG_PRESS_MOVE_PX) {
       clearLongPressTimer()
+      pointerStartRef.current = null
     }
   }
 
-  function handlePointerEnd() {
+  function handlePointerEnd(e: React.PointerEvent) {
     clearLongPressTimer()
     pointerStartRef.current = null
+    try {
+      if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId)
+      }
+    } catch {
+      /* ignore */
+    }
   }
 
   function handleCardClick(cardId: string) {
+    /* Suppress the synthetic click that follows a completed long-press. */
     if (longPressFiredRef.current) {
       longPressFiredRef.current = false
       return
     }
+    /* Fallback if the timer was cleared but the hold still reached the threshold. */
+    if (
+      onSelectRank &&
+      pressStartedAtRef.current > 0 &&
+      performance.now() - pressStartedAtRef.current >= LONG_PRESS_MS - 50
+    ) {
+      pressStartedAtRef.current = 0
+      fireLongPress(cardId)
+      return
+    }
+    pressStartedAtRef.current = 0
     handleToggle(cardId)
   }
 
@@ -338,7 +378,7 @@ export function HandCards({
           return (
             <div
               key={card.id}
-              draggable={canDrag && !inFlight}
+              draggable={allowDrag && !inFlight}
               onDragStart={() => handleDragStart(card.id)}
               onDragOver={(e) => handleDragOver(e, card.id)}
               onDrop={() => handleDrop(card.id)}
@@ -351,7 +391,7 @@ export function HandCards({
               className={`absolute bottom-0 origin-bottom will-change-transform ${
                 isDragging ? 'opacity-40' : ''
               } ${isDropTarget ? 'brightness-110' : ''} ${
-                canDrag && !inFlight
+                allowDrag && !inFlight
                   ? 'cursor-grab active:cursor-grabbing'
                   : 'cursor-default'
               } ${inFlight ? 'pointer-events-none' : ''}`}
@@ -360,6 +400,9 @@ export function HandCards({
                 zIndex: z,
                 transform: `translate3d(0, ${slot.arcY - lift}px, 0) rotate(${slot.rotation}deg)`,
                 transition: slotTransition,
+                touchAction: onSelectRank ? 'manipulation' : undefined,
+                WebkitUserSelect: 'none',
+                userSelect: 'none',
               }}
             >
               <span
