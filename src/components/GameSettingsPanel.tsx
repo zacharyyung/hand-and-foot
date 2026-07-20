@@ -19,6 +19,8 @@ interface GameSettingsPanelProps {
   onAiDebugChange: (enabled: boolean) => void
   /** Render trigger inside the player dock instead of fixed corner. */
   dockInline?: boolean
+  /** Icon-only trigger for narrow layouts. */
+  compact?: boolean
 }
 
 export function GameSettingsPanel({
@@ -37,6 +39,7 @@ export function GameSettingsPanel({
   aiDebugEnabled,
   onAiDebugChange,
   dockInline = false,
+  compact = false,
 }: GameSettingsPanelProps) {
   const humans = game.players.filter((p) => p.profile.isHuman)
   const humanCount = humans.length
@@ -48,11 +51,14 @@ export function GameSettingsPanel({
       <button
         type="button"
         onClick={onToggle}
-        className={dockInline ? 'dock-control dock-control-settings' : 'corner-control corner-control-br'}
+        className={`${
+          dockInline ? 'dock-control dock-control-settings' : 'corner-control corner-control-br'
+        } ${compact ? 'dock-control-icon' : ''}`}
         aria-expanded={open}
         aria-haspopup="dialog"
+        aria-label="Settings"
       >
-        Settings
+        {compact ? 'More' : 'Settings'}
       </button>
 
       {open && (

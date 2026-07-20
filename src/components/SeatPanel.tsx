@@ -133,8 +133,9 @@ export function SeatPanel({
             .filter(Boolean)
             .join(' ')}
           style={chipStyle}
-          title={`${player.profile.name} · ${role === 'you' ? 'You' : role === 'partner' ? 'Partner' : 'Opponent'}`}
+          title={`${player.profile.name} · ${role === 'you' ? 'You' : role === 'partner' ? 'Partner' : 'Opponent'} · Team ${player.profile.teamId + 1}`}
         >
+          <span className="seat-chip-team-pip" aria-hidden />
           <div className="seat-chip-avatar seat-chip-avatar-sm" aria-hidden>
             {player.profile.avatar}
           </div>
@@ -181,7 +182,9 @@ export function SeatPanel({
           .filter(Boolean)
           .join(' ')}
         style={chipStyle}
+        title={`Team ${player.profile.teamId + 1}`}
       >
+        <span className="seat-chip-team-pip" aria-hidden />
         <div className="seat-chip-avatar" aria-hidden>
           {player.profile.avatar}
         </div>

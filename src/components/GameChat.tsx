@@ -101,9 +101,10 @@ export function GameChat({
         }}
         className={`${
           dockInline ? 'dock-control dock-control-chat table-chat-chip' : 'corner-control corner-control-bl table-chat-chip'
-        } ${partnerRequest || waitingForPartnerReply ? 'table-chat-chip-alert' : ''}`}
+        } ${compact ? 'dock-control-icon' : ''} ${partnerRequest || waitingForPartnerReply ? 'table-chat-chip-alert' : ''}`}
         aria-expanded={open}
         aria-haspopup="dialog"
+        aria-label="Table chat"
       >
         <span className="table-chat-chip-label">{compact ? 'Chat' : 'Table chat'}</span>
         {partnerRequest && (

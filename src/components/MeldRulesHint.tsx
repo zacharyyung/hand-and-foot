@@ -59,7 +59,8 @@ export function MeldRulesHint() {
             </li>
           </ul>
           <p className="mt-2 border-t border-white/10 pt-2 text-[10px] leading-relaxed text-ink-muted">
-            Use <strong className="text-ink-soft">Stage</strong>, then{' '}
+            Use <strong className="text-ink-soft">Stage</strong> (and add more cards
+            to staged books as you go), then{' '}
             <strong className="text-ink-soft">Meld</strong>. Completed book bonuses
             (+300 clean / +100 dirty) count toward the total.
           </p>

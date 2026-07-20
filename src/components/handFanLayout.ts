@@ -23,17 +23,26 @@ export function handFanOffsets(
   const mobile = options?.mobile ?? false
   const cardW = mobile ? 30 : 46
   const countForStep = Math.max(count, 1)
+  const maxWidth = options?.maxWidth
   let base: number
-  if (mobile && options?.maxWidth && count > 1) {
-    const budget = Math.max(cardW, options.maxWidth - cardW)
-    base = Math.max(6, Math.min(18, budget / (count - 1)))
+  if (maxWidth && count > 1) {
+    const budget = Math.max(cardW, maxWidth - cardW)
+    const minStep = mobile ? 6 : 10
+    const maxStep = mobile ? 18 : 42
+    base = Math.max(minStep, Math.min(maxStep, budget / (count - 1)))
   } else if (mobile) {
     base = Math.max(8, Math.min(18, 280 / countForStep))
   } else {
     base = Math.max(24, Math.min(42, 520 / countForStep))
   }
-  const selectedGap = mobile ? (options?.maxWidth && count > 8 ? 6 : 8) : 16
-  const hoverGap = mobile ? 6 : 12
+  const selectedGap = mobile
+    ? maxWidth && count > 8
+      ? 6
+      : 8
+    : maxWidth && count > 12
+      ? 8
+      : 16
+  const hoverGap = mobile ? 6 : maxWidth && count > 12 ? 6 : 12
 
   const lefts: number[] = []
   let x = 0

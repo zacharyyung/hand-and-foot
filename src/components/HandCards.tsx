@@ -103,13 +103,18 @@ export function HandCards({
     ? displayCards.findIndex((c) => c.id === hoverCardId)
     : null
   const selectedFlags = displayCards.map((c) => selectedIds.includes(c.id))
-  const fanOptions = mobile && fitWidth ? { mobile: true, maxWidth: fitWidth } : mobile ? { mobile: true } : undefined
+  const fanOptions =
+    fitWidth != null
+      ? { mobile, maxWidth: fitWidth }
+      : mobile
+        ? { mobile: true }
+        : undefined
   const fanLayout = computeHandFanLayout(n, selectedFlags, hoverIndex, fanOptions)
   const fitScale =
-    mobile && fitWidth && fanLayout.fanWidth > fitWidth ? fitWidth / fanLayout.fanWidth : 1
+    fitWidth != null && fanLayout.fanWidth > fitWidth ? fitWidth / fanLayout.fanWidth : 1
 
   useLayoutEffect(() => {
-    if (!mobile || !spread) {
+    if (!spread) {
       setFitWidth(null)
       return
     }
@@ -125,7 +130,7 @@ export function HandCards({
     const observer = new ResizeObserver(measure)
     observer.observe(scrollEl)
     return () => observer.disconnect()
-  }, [mobile, spread])
+  }, [spread])
 
   function slotPhase(cardId: string): CardSlotPhase {
     return isCardHidden?.(cardId) ? 'in-flight' : 'visible'

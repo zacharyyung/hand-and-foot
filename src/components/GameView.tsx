@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { Card } from '../game/cards'
+import { isWildCard, type Card } from '../game/cards'
 import type { GameState } from '../game/deal'
 import { playerFootCount, playerHandCount } from '../game/deal'
 import {
@@ -243,6 +243,26 @@ export function GameView({
     [stagedBooks],
   )
 
+  const matchingStagedBook = useMemo(() => {
+    if (selectedIds.length === 0 || stagedBooks.length === 0) return null
+    const cards = viewer.hand.filter((c) => selectedIds.includes(c.id))
+    if (cards.length === 0) return null
+    const naturals = cards.filter((c) => !isWildCard(c))
+    const staged =
+      naturals.length > 0
+        ? stagedBooks.find((b) => b.rank === naturals[0].rank)
+        : null
+    if (!staged) return null
+    const stagedAsBook: Book = {
+      id: staged.id,
+      rank: staged.rank,
+      cards: staged.cards,
+      teamId: team.id,
+      startedBySeatIndex: viewerSeat,
+    }
+    return canAddToBook(stagedAsBook, cards).ok ? staged : null
+  }, [selectedIds, stagedBooks, viewer.hand, team.id, viewerSeat])
+
   const selectedCards = handForDisplay.filter((c) => selectedIds.includes(c.id))
   const selectedPoints = needsStagedMeld
     ? meldContributionFromCards(selectedCards)
@@ -379,7 +399,28 @@ export function GameView({
       if (stagedReason) return stagedReason
     }
 
-    if (needsStagedMeld && selectedIds.length >= 3) {
+    if (needsStagedMeld && matchingStagedBook && selectedIds.length > 0) {
+      const cards = viewer.hand.filter((c) => selectedIds.includes(c.id))
+      let virtualBooks: Book[] = [...team.books]
+      for (const staged of stagedBooks) {
+        const nextCards =
+          staged.id === matchingStagedBook.id
+            ? [...staged.cards, ...cards]
+            : staged.cards
+        virtualBooks = [
+          ...virtualBooks,
+          {
+            id: staged.id,
+            rank: staged.rank,
+            cards: nextCards,
+            teamId: team.id,
+            startedBySeatIndex: viewerSeat,
+          },
+        ]
+      }
+      const addStageReason = tryCheck(stagedAndSelected, virtualBooks, true)
+      if (addStageReason) return addStageReason
+    } else if (needsStagedMeld && selectedIds.length >= 3) {
       const cards = viewer.hand.filter((c) => selectedIds.includes(c.id))
       const stageCheck = validateStageBook(
         viewer.hand,
@@ -470,6 +511,7 @@ export function GameView({
     viewerSeat,
     needsStagedMeld,
     matchedAddBook,
+    matchingStagedBook,
   ])
   const footMeldBlocked = footMeldBlockReason !== null
   const footMeldHint = useMemo(() => {
@@ -648,9 +690,32 @@ export function GameView({
   function toggleCard(cardId: string) {
     if (!isMyTurn || game.turnPhase === 'draw') return
     setError(null)
-    setSelectedIds((prev) =>
-      prev.includes(cardId) ? prev.filter((id) => id !== cardId) : [...prev, cardId],
-    )
+    const card = handForDisplay.find((c) => c.id === cardId)
+    if (!card) return
+
+    /* Wilds toggle alone; naturals select/deselect every card of that rank. */
+    if (isWildCard(card)) {
+      setSelectedIds((prev) =>
+        prev.includes(cardId) ? prev.filter((id) => id !== cardId) : [...prev, cardId],
+      )
+      return
+    }
+
+    const sameRankIds = handForDisplay
+      .filter((c) => !isWildCard(c) && c.rank === card.rank)
+      .map((c) => c.id)
+
+    setSelectedIds((prev) => {
+      const allSelected = sameRankIds.every((id) => prev.includes(id))
+      if (allSelected) {
+        return prev.filter((id) => !sameRankIds.includes(id))
+      }
+      const keptWilds = prev.filter((id) => {
+        const c = handForDisplay.find((card) => card.id === id)
+        return c != null && isWildCard(c)
+      })
+      return [...new Set([...keptWilds, ...sameRankIds])]
+    })
   }
 
   function applyHandSort(cards: typeof viewer.hand, playSoundEffect = true) {
@@ -794,6 +859,81 @@ export function GameView({
 
   function handleStage() {
     unlockAudio()
+    const cards = viewer.hand.filter((c) => selectedIds.includes(c.id))
+    if (cards.length === 0) {
+      setError('Select cards to stage.')
+      playSound('invalid')
+      return
+    }
+
+    const naturals = cards.filter((c) => !isWildCard(c))
+    const matchingStaged =
+      naturals.length > 0
+        ? stagedBooks.find((b) => b.rank === naturals[0].rank)
+        : stagedBooks.find((b) =>
+            cards.every((c) => isWildCard(c) || c.rank === b.rank),
+          )
+
+    /* Add onto an existing staged book — same rules as adding to table books. */
+    if (matchingStaged) {
+      const stagedAsBook: Book = {
+        id: matchingStaged.id,
+        rank: matchingStaged.rank,
+        cards: matchingStaged.cards,
+        teamId: team.id,
+        startedBySeatIndex: viewerSeat,
+      }
+      const addCheck = canAddToBook(stagedAsBook, cards)
+      if (!addCheck.ok) {
+        setError(addCheck.reason)
+        playSound('invalid')
+        return
+      }
+
+      let virtualBooks: Book[] = [...team.books]
+      for (const staged of stagedBooks) {
+        const nextCards =
+          staged.id === matchingStaged.id ? [...staged.cards, ...cards] : staged.cards
+        virtualBooks = [
+          ...virtualBooks,
+          {
+            id: staged.id,
+            rank: staged.rank,
+            cards: nextCards,
+            teamId: team.id,
+            startedBySeatIndex: viewerSeat,
+          },
+        ]
+      }
+      const stagedAndSelected = [
+        ...new Set([...stagedBooks.flatMap((b) => b.cardIds), ...selectedIds]),
+      ]
+      const footCheck = checkFootMeld(viewer, stagedAndSelected, virtualBooks, true)
+      if (!footCheck.ok) {
+        setError(footCheck.error)
+        playSound('invalid')
+        return
+      }
+
+      const fanCards = cardsForBookFan(cards)
+      setStagedBooks((prev) =>
+        prev.map((book) =>
+          book.id === matchingStaged.id
+            ? {
+                ...book,
+                cardIds: [...book.cardIds, ...selectedIds],
+                cards: [...book.cards, ...cards],
+              }
+            : book,
+        ),
+      )
+      queueHandToTargetFlight(fanCards, stagingBookAnchor(matchingStaged.id))
+      setSelectedIds([])
+      setError(null)
+      playSound('place')
+      return
+    }
+
     const check = validateStageBook(
       viewer.hand,
       selectedIds,
@@ -805,7 +945,6 @@ export function GameView({
       playSound('invalid')
       return
     }
-    const cards = viewer.hand.filter((c) => selectedIds.includes(c.id))
     let virtualBooks: Book[] = [...team.books]
     for (const staged of stagedBooks) {
       virtualBooks = [
@@ -1120,7 +1259,7 @@ export function GameView({
                 className={`south-dock-hand-scroll theme-scroll relative min-h-0 px-2 py-0.5 sm:px-4 sm:py-1 ${
                   mobileLayout
                     ? 'south-dock-hand-scroll-mobile shrink-0 overflow-visible'
-                    : 'flex-1 overflow-y-auto overscroll-contain'
+                    : 'flex-1 overflow-hidden'
                 }`}
                 data-flight-anchor="hand"
               >
@@ -1162,19 +1301,21 @@ export function GameView({
               />
 
               <div className="south-dock-bottom-bar shrink-0">
-                <div className="south-dock-bottom-side">
-                  <GameChat
-                    game={game}
-                    viewerSeat={viewerSeat}
-                    messages={chatMessages}
-                    onSend={onChatSend}
-                    dockInline
-                    compact={shellLayout === 'tight' || mobileLayout}
-                  />
-                </div>
+                {!mobileLayout && (
+                  <div className="south-dock-bottom-side">
+                    <GameChat
+                      game={game}
+                      viewerSeat={viewerSeat}
+                      messages={chatMessages}
+                      onSend={onChatSend}
+                      dockInline
+                      compact={shellLayout === 'tight'}
+                    />
+                  </div>
+                )}
 
                 <div
-                  className="game-action-slot flex min-w-0 flex-1 flex-wrap items-center justify-center gap-1.5 px-1 py-1 sm:gap-2 sm:py-1.5"
+                  className="game-action-slot flex min-w-0 flex-1 flex-nowrap items-center justify-center gap-1 overflow-x-auto px-1 py-1 sm:gap-2 sm:py-1.5"
                   aria-hidden={!isMyTurn}
                 >
                   {isMyTurn && (
@@ -1193,12 +1334,16 @@ export function GameView({
                                 <button
                                   onClick={handleStage}
                                   disabled={
-                                    selectedIds.length < 3 ||
-                                    footMeldBlocked
+                                    footMeldBlocked ||
+                                    (matchingStagedBook
+                                      ? selectedIds.length === 0
+                                      : selectedIds.length < 3)
                                   }
                                   className="btn-secondary disabled:opacity-35"
                                 >
-                                  Stage
+                                  {matchingStagedBook
+                                    ? `+${matchingStagedBook.rank}`
+                                    : 'Stage'}
                                 </button>
                                 <button
                                   onClick={handleMeld}
@@ -1209,7 +1354,9 @@ export function GameView({
                                   }
                                   className="btn-primary disabled:opacity-35"
                                 >
-                                  Meld {stagedPoints}/{requiredMeld}
+                                  {mobileLayout
+                                    ? `${stagedPoints}/${requiredMeld}`
+                                    : `Meld ${stagedPoints}/${requiredMeld}`}
                                 </button>
                               </>
                             )
@@ -1222,7 +1369,7 @@ export function GameView({
                                 }
                                 className="btn-secondary disabled:opacity-35"
                               >
-                                Start book
+                                {mobileLayout ? 'Start' : 'Start book'}
                               </button>
                             )
                           )}
@@ -1263,8 +1410,12 @@ export function GameView({
                                 className="btn-secondary disabled:opacity-35"
                               >
                                 {matchedAddBook
-                                  ? `Add to ${matchedAddBook.rank}s`
-                                  : 'Add to book'}
+                                  ? mobileLayout
+                                    ? `+${matchedAddBook.rank}`
+                                    : `Add to ${matchedAddBook.rank}s`
+                                  : mobileLayout
+                                    ? 'Add'
+                                    : 'Add to book'}
                               </button>
                             </>
                           )}
@@ -1275,7 +1426,7 @@ export function GameView({
                               disabled={skipAndRunDisabled}
                               className="btn-foot disabled:opacity-35"
                             >
-                              Skip &amp; run
+                              {mobileLayout ? 'Skip' : 'Skip & run'}
                             </button>
                           ) : (
                             <button
@@ -1290,11 +1441,17 @@ export function GameView({
                               }`}
                             >
                               {goingOut
-                                ? 'Go out'
+                                ? mobileLayout
+                                  ? 'Out'
+                                  : 'Go out'
                                 : lastFootCard
-                                  ? 'Discard to go out'
+                                  ? mobileLayout
+                                    ? 'Out'
+                                    : 'Discard to go out'
                                   : goToFootDiscard
-                                    ? 'Go to foot'
+                                    ? mobileLayout
+                                      ? 'Foot'
+                                      : 'Go to foot'
                                     : 'Discard'}
                             </button>
                           )}
@@ -1304,28 +1461,60 @@ export function GameView({
                   )}
                 </div>
 
-                <div className="south-dock-bottom-side south-dock-bottom-side-right">
-                  <GameSettingsPanel
-                    game={game}
-                    open={settingsOpen}
-                    onToggle={() => setSettingsOpen((open) => !open)}
-                    onClose={() => setSettingsOpen(false)}
-                    onShowInstructions={onShowInstructions ?? (() => {})}
-                    startOverVotes={startOverVotes}
-                    onStartOverVote={onStartOverVote ?? (() => {})}
-                    canRequestUndo={canRequestUndo}
-                    undoPending={undoPending}
-                    onRequestUndo={onRequestUndo ?? (() => {})}
-                    autoSort={autoSort}
-                    onAutoSortChange={onAutoSortChange ?? (() => {})}
-                    aiDebugEnabled={aiDebugEnabled}
-                    onAiDebugChange={onAiDebugChange ?? (() => {})}
-                    dockInline
-                  />
-                </div>
+                {!mobileLayout && (
+                  <div className="south-dock-bottom-side south-dock-bottom-side-right">
+                    <GameSettingsPanel
+                      game={game}
+                      open={settingsOpen}
+                      onToggle={() => setSettingsOpen((open) => !open)}
+                      onClose={() => setSettingsOpen(false)}
+                      onShowInstructions={onShowInstructions ?? (() => {})}
+                      startOverVotes={startOverVotes}
+                      onStartOverVote={onStartOverVote ?? (() => {})}
+                      canRequestUndo={canRequestUndo}
+                      undoPending={undoPending}
+                      onRequestUndo={onRequestUndo ?? (() => {})}
+                      autoSort={autoSort}
+                      onAutoSortChange={onAutoSortChange ?? (() => {})}
+                      aiDebugEnabled={aiDebugEnabled}
+                      onAiDebugChange={onAiDebugChange ?? (() => {})}
+                      dockInline
+                      compact={shellLayout === 'tight'}
+                    />
+                  </div>
+                )}
               </div>
             </div>
           </div>
+        )}
+
+        {mobileLayout && isHumanViewer && (
+          <>
+            <GameChat
+              game={game}
+              viewerSeat={viewerSeat}
+              messages={chatMessages}
+              onSend={onChatSend}
+              compact
+            />
+            <GameSettingsPanel
+              game={game}
+              open={settingsOpen}
+              onToggle={() => setSettingsOpen((open) => !open)}
+              onClose={() => setSettingsOpen(false)}
+              onShowInstructions={onShowInstructions ?? (() => {})}
+              startOverVotes={startOverVotes}
+              onStartOverVote={onStartOverVote ?? (() => {})}
+              canRequestUndo={canRequestUndo}
+              undoPending={undoPending}
+              onRequestUndo={onRequestUndo ?? (() => {})}
+              autoSort={autoSort}
+              onAutoSortChange={onAutoSortChange ?? (() => {})}
+              aiDebugEnabled={aiDebugEnabled}
+              onAiDebugChange={onAiDebugChange ?? (() => {})}
+              compact
+            />
+          </>
         )}
 
         <AiDebugPanel
