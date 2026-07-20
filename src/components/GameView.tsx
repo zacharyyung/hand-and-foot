@@ -530,10 +530,13 @@ export function GameView({
     isMyTurn && willSkipAndRun(viewer, stagedBooks.flatMap((b) => b.cardIds))
   const skipAndRunActive = skipAndRunMeld || skipAndRunSelected
   const skipAndRunDisabled = skipAndRunMeld
-    ? stagedBooks.length === 0 || stagedPoints < requiredMeld
+    ? stagedBooks.length === 0 ||
+      (needsStagedMeld && stagedPoints < requiredMeld) ||
+      footMeldBlocked
     : addBookOptions.length > 0 && skipAndRunSelected
       ? selectedIds.length === 0 || !matchedAddBook
       : selectedIds.length < 3
+  const hasLeftoverStaging = !needsStagedMeld && stagedBooks.length > 0
   const teamColor = TEAM_COLORS[viewer.profile.teamId]
 
   useLayoutEffect(() => {
@@ -548,12 +551,33 @@ export function GameView({
     })
   }, [handKey, viewer.hand, autoSort, isHumanViewer, stagedCardIds])
 
+  /* Staging persists across turns; only reset on a new round / leaving play. */
   useEffect(() => {
     setStagedBooks([])
     stagingFlightIdsRef.current.clear()
     stagingBookIdByCardRef.current.clear()
     meldFlightPendingRef.current = false
-  }, [game.currentPlayerIndex])
+  }, [game.roundNumber, game.phase])
+
+  /* Drop staged groups whose cards are no longer in hand (e.g. after undo). */
+  useEffect(() => {
+    if (meldFlightPendingRef.current) return
+    const handIds = new Set(viewer.hand.map((c) => c.id))
+    setStagedBooks((prev) => {
+      let changed = false
+      const next = prev
+        .map((book) => {
+          const cardIds = book.cardIds.filter((id) => handIds.has(id))
+          const cards = book.cards.filter((c) => handIds.has(c.id))
+          if (cardIds.length === book.cardIds.length) return book
+          changed = true
+          if (cardIds.length < 3) return null
+          return { ...book, cardIds, cards }
+        })
+        .filter((book): book is StagedBook => book != null)
+      return changed ? next : prev
+    })
+  }, [viewer.hand])
 
   useEffect(() => {
     setSelectedIds([])
@@ -1047,10 +1071,89 @@ export function GameView({
     onGameChange(result.state, { recordHistory: true })
   }
 
+  /**
+   * After the team has already met the meld threshold (e.g. partner melded),
+   * leftover staged groups are laid as normal books — not via commitStagedMelds.
+   */
+  function putDownStagedGroups(groups: StagedBook[]) {
+    if (groups.length === 0) return
+    unlockAudio()
+
+    let current = game
+    const flights: CardFlightRequest[] = []
+    const laidIds = new Set<string>()
+
+    for (const staged of groups) {
+      const prevBookIds = new Set(getTeam(current, team.id).books.map((b) => b.id))
+      const result = startBook(current, staged.cardIds)
+      if (result.error) {
+        setError(result.error)
+        playSound('invalid')
+        if (flights.length > 0) {
+          meldFlightPendingRef.current = true
+          stagingFlightIdsRef.current = new Set(
+            [...laidIds].flatMap((id) => {
+              const book = groups.find((g) => g.id === id)
+              return book?.cardIds ?? []
+            }),
+          )
+          for (const id of laidIds) {
+            const book = groups.find((g) => g.id === id)
+            if (!book) continue
+            for (const cardId of book.cardIds) {
+              stagingBookIdByCardRef.current.set(cardId, book.id)
+            }
+          }
+          queueLocalFlights(flights)
+          setStagedBooks((prev) => prev.filter((b) => !laidIds.has(b.id)))
+          onGameChange(current, { recordHistory: true })
+        }
+        return
+      }
+
+      const newBook = getTeam(result.state, team.id).books.find((b) => !prevBookIds.has(b.id))
+      if (newBook) {
+        flights.push({
+          cards: cardsForBookFan(staged.cards),
+          from: stagingBookAnchor(staged.id),
+          to: bookFlightAnchor(newBook.id),
+          kind: 'place',
+        })
+      }
+      laidIds.add(staged.id)
+      current = result.state
+    }
+
+    if (flights.length > 0) {
+      meldFlightPendingRef.current = true
+      stagingFlightIdsRef.current = new Set(groups.flatMap((book) => book.cardIds))
+      for (const staged of groups) {
+        for (const cardId of staged.cardIds) {
+          stagingBookIdByCardRef.current.set(cardId, staged.id)
+        }
+      }
+      queueLocalFlights(flights)
+    }
+
+    setStagedBooks((prev) => prev.filter((b) => !laidIds.has(b.id)))
+    setSelectedIds([])
+    setError(null)
+    playSound('place')
+    onGameChange(current, { recordHistory: true })
+  }
+
+  function handlePutDownStaged(id?: string) {
+    const groups = id
+      ? stagedBooks.filter((b) => b.id === id)
+      : [...stagedBooks]
+    putDownStagedGroups(groups)
+  }
+
   function handleSkipAndRun() {
     unlockAudio()
     if (skipAndRunMeld) {
-      handleMeld()
+      if (needsStagedMeld) handleMeld()
+      else handlePutDownStaged()
     } else if (addBookOptions.length > 0 && matchedAddBook) {
       handleAddToBook()
     } else {
@@ -1108,10 +1211,12 @@ export function GameView({
   })
 
   const canDraw = isMyTurn && game.turnPhase === 'draw'
-  const showStagingRibbon =
+  const showStageHint =
     isMyTurn &&
     game.turnPhase === 'play' &&
-    (needsStagedMeld || stagedBooks.length > 0)
+    needsStagedMeld &&
+    stagedBooks.length === 0
+  const showStagedBooks = stagedBooks.length > 0
 
   useEffect(() => {
     const html = document.documentElement
@@ -1232,7 +1337,7 @@ export function GameView({
                 </span>
 
                 <div className="flex min-h-[1.125rem] min-w-0 flex-1 items-center justify-center px-0.5">
-                  {showStagingRibbon && stagedBooks.length === 0 && (
+                  {showStageHint && (
                     <p className="truncate text-center text-[10px] leading-snug text-accent/85 sm:text-[11px]">
                       Stage private melds · need{' '}
                       <span className="font-semibold tabular-nums text-accent">
@@ -1240,12 +1345,17 @@ export function GameView({
                       </span>
                     </p>
                   )}
-                  {showStagingRibbon && stagedBooks.length > 0 && (
+                  {showStagedBooks && (
                     <StagingArea
                       stagedBooks={stagedBooks}
                       requiredPoints={requiredMeld}
                       onRemove={handleRemoveStaged}
                       onClear={handleClearStaged}
+                      onPutDown={
+                        hasLeftoverStaging ? (id) => handlePutDownStaged(id) : undefined
+                      }
+                      resolveMode={hasLeftoverStaging}
+                      canInteract={isMyTurn && game.turnPhase === 'play'}
                       compact
                       ribbon
                       embedded
@@ -1365,15 +1475,26 @@ export function GameView({
                             )
                           ) : (
                             !mustDiscardLastFoot && (
-                              <button
-                                onClick={handleStartBook}
-                                disabled={
-                                  selectedIds.length < 3 || footMeldBlocked
-                                }
-                                className="btn-secondary disabled:opacity-35"
-                              >
-                                Start book
-                              </button>
+                              <>
+                                {hasLeftoverStaging && (
+                                  <button
+                                    onClick={() => handlePutDownStaged()}
+                                    disabled={footMeldBlocked}
+                                    className="btn-primary disabled:opacity-35"
+                                  >
+                                    {mobileLayout ? 'Put down' : 'Put down staged'}
+                                  </button>
+                                )}
+                                <button
+                                  onClick={handleStartBook}
+                                  disabled={
+                                    selectedIds.length < 3 || footMeldBlocked
+                                  }
+                                  className="btn-secondary disabled:opacity-35"
+                                >
+                                  Start book
+                                </button>
+                              </>
                             )
                           )}
 

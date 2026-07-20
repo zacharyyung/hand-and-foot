@@ -19,6 +19,12 @@ interface StagingAreaProps {
   requiredPoints: number
   onRemove: (id: string) => void
   onClear: () => void
+  /** Lay a staged group as a normal table book (after threshold is already met). */
+  onPutDown?: (id: string) => void
+  /** Threshold already met — resolve leftovers instead of accumulating meld points. */
+  resolveMode?: boolean
+  /** When false, show staged books but disable unstage / put-down controls. */
+  canInteract?: boolean
   compact?: boolean
   /** Slim inline strip in the south dock hand meta row. */
   ribbon?: boolean
@@ -98,6 +104,9 @@ export function StagingArea({
   requiredPoints,
   onRemove,
   onClear,
+  onPutDown,
+  resolveMode = false,
+  canInteract = true,
   compact = false,
   ribbon = false,
   embedded = false,
@@ -142,11 +151,22 @@ export function StagingArea({
       <div className={rowClass} data-flight-anchor="staging">
         <p
           className={`font-display text-xs font-semibold tabular-nums sm:text-sm ${
-            met ? 'text-accent' : 'text-ink-soft'
+            resolveMode || met ? 'text-accent' : 'text-ink-soft'
           }`}
         >
-          {stagedPoints}
-          <span className="text-ink-faint">/{requiredPoints}</span>
+          {resolveMode ? (
+            <>
+              Staged
+              <span className="ml-1 text-[10px] font-sans font-medium text-ink-faint">
+                put down or ×
+              </span>
+            </>
+          ) : (
+            <>
+              {stagedPoints}
+              <span className="text-ink-faint">/{requiredPoints}</span>
+            </>
+          )}
         </p>
         <div className="flex flex-wrap items-center justify-center gap-1">
           {stagedBooks.map((book) => (
@@ -160,24 +180,40 @@ export function StagingArea({
                 getCardMotion={getCardMotion}
                 isCardHidden={isCardHidden}
               />
-              <button
-                type="button"
-                onClick={() => onRemove(book.id)}
-                className="ml-0.5 text-[11px] leading-none text-ink-muted hover:text-red-300"
-                aria-label={`Remove staged ${book.rank}s book`}
-              >
-                ×
-              </button>
+              {canInteract && onPutDown && (
+                <button
+                  type="button"
+                  onClick={() => onPutDown(book.id)}
+                  className="rounded px-1 text-[10px] font-semibold leading-none text-accent hover:bg-accent/15"
+                  aria-label={`Put down staged ${book.rank}s`}
+                  title={`Put down ${book.rank}s`}
+                >
+                  ↓
+                </button>
+              )}
+              {canInteract && (
+                <button
+                  type="button"
+                  onClick={() => onRemove(book.id)}
+                  className="ml-0.5 text-[11px] leading-none text-ink-muted hover:text-red-300"
+                  aria-label={`Unstage ${book.rank}s book`}
+                  title="Return to hand"
+                >
+                  ×
+                </button>
+              )}
             </div>
           ))}
         </div>
-        <button
-          type="button"
-          onClick={onClear}
-          className="text-[10px] text-ink-faint hover:text-ink-soft"
-        >
-          Clear
-        </button>
+        {canInteract && (
+          <button
+            type="button"
+            onClick={onClear}
+            className="text-[10px] text-ink-faint hover:text-ink-soft"
+          >
+            {resolveMode ? 'Unstage all' : 'Clear'}
+          </button>
+        )}
       </div>
     )
   }
@@ -186,15 +222,19 @@ export function StagingArea({
     <div className={`${compact ? 'px-2 py-1.5' : 'mb-4 px-4 py-3'}`}>
       <div className={`flex flex-wrap items-center justify-between gap-2 ${compact ? '' : 'mb-2'}`}>
         <p className={`font-semibold text-accent ${compact ? 'text-[10px]' : 'text-xs'}`}>
-          Staged {stagedPoints}/{requiredPoints}
+          {resolveMode
+            ? `Staged · ${stagedBooks.length} book${stagedBooks.length === 1 ? '' : 's'}`
+            : `Staged ${stagedPoints}/${requiredPoints}`}
         </p>
-        <button
-          type="button"
-          onClick={onClear}
-          className="text-[10px] text-ink-faint hover:text-ink-soft"
-        >
-          Clear
-        </button>
+        {canInteract && (
+          <button
+            type="button"
+            onClick={onClear}
+            className="text-[10px] text-ink-faint hover:text-ink-soft"
+          >
+            {resolveMode ? 'Unstage all' : 'Clear'}
+          </button>
+        )}
       </div>
 
       <div className={compact ? 'flex flex-wrap gap-1' : 'space-y-2'}>
@@ -211,13 +251,24 @@ export function StagingArea({
               getCardMotion={getCardMotion}
               isCardHidden={isCardHidden}
             />
-            <button
-              type="button"
-              onClick={() => onRemove(book.id)}
-              className="ml-auto text-[10px] text-ink-muted hover:text-red-300"
-            >
-              ×
-            </button>
+            {canInteract && onPutDown && (
+              <button
+                type="button"
+                onClick={() => onPutDown(book.id)}
+                className="rounded px-1.5 py-0.5 text-[10px] font-semibold text-accent hover:bg-accent/15"
+              >
+                Put down
+              </button>
+            )}
+            {canInteract && (
+              <button
+                type="button"
+                onClick={() => onRemove(book.id)}
+                className="ml-auto text-[10px] text-ink-muted hover:text-red-300"
+              >
+                ×
+              </button>
+            )}
           </div>
         ))}
       </div>
