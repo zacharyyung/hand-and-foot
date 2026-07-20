@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { Card as CardType } from '../game/cards'
 import type { CardMotionKind } from '../game/cardMotion'
 import { reorderHandOrder } from '../game/handOrder'
@@ -29,8 +29,8 @@ interface HandCardsProps {
 
 /** Snappy card motion — keep in sync with cardFlight / cardMotion. */
 const CARD_MS = 220
-/** Hold this long to select every natural card of the same rank. */
-const LONG_PRESS_MS = 1125
+/** Hold this long (while pressed) to select every natural card of the same rank. */
+const LONG_PRESS_MS = 1000
 /** Finger/mouse jitter allowance before the hold is cancelled. */
 const LONG_PRESS_MOVE_PX = 20
 
@@ -79,8 +79,9 @@ export function HandCards({
   const [fitWidth, setFitWidth] = useState<number | null>(null)
   const longPressTimerRef = useRef<number | null>(null)
   const longPressFiredRef = useRef(false)
-  const pressStartedAtRef = useRef(0)
   const pointerStartRef = useRef<{ x: number; y: number; cardId: string } | null>(null)
+  /** Card currently being held for select-all (visual charge feedback). */
+  const [holdingCardId, setHoldingCardId] = useState<string | null>(null)
   /** Native HTML5 drag fights long-press on phones — only drag-reorder on desktop. */
   const allowDrag = canDrag && !mobile
 
@@ -152,12 +153,18 @@ export function HandCards({
     }
   }
 
+  function cancelHold() {
+    clearLongPressTimer()
+    pointerStartRef.current = null
+    setHoldingCardId(null)
+  }
+
   function slotPhase(cardId: string): CardSlotPhase {
     return isCardHidden?.(cardId) ? 'in-flight' : 'visible'
   }
 
   function handleDragStart(cardId: string) {
-    clearLongPressTimer()
+    cancelHold()
     longPressFiredRef.current = false
     if (!allowDrag) return
     setDragCardId(cardId)
@@ -199,31 +206,36 @@ export function HandCards({
     playSound(wasSelected ? 'deselect' : 'select')
   }
 
-  function fireLongPress(cardId: string) {
+  /** Fires while the finger/mouse is still down — a hold, not a click-on-release. */
+  function fireHoldSelectAll(cardId: string) {
     if (!onSelectRank || !canSelect) return
     longPressFiredRef.current = true
     longPressTimerRef.current = null
     pointerStartRef.current = null
+    setHoldingCardId(null)
     onSelectRank(cardId)
     playSound('select')
     if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
-      navigator.vibrate(12)
+      navigator.vibrate(14)
     }
   }
 
   function handlePointerDown(e: React.PointerEvent, cardId: string) {
     if (!canSelect || !onSelectRank || e.button !== 0) return
     longPressFiredRef.current = false
-    pressStartedAtRef.current = performance.now()
     pointerStartRef.current = { x: e.clientX, y: e.clientY, cardId }
     clearLongPressTimer()
+    setHoldingCardId(cardId)
     try {
       e.currentTarget.setPointerCapture(e.pointerId)
     } catch {
       /* some browsers reject capture on buttons mid-gesture */
     }
     longPressTimerRef.current = window.setTimeout(() => {
-      fireLongPress(cardId)
+      /* Only complete if this card is still the active hold. */
+      if (pointerStartRef.current?.cardId === cardId) {
+        fireHoldSelectAll(cardId)
+      }
     }, LONG_PRESS_MS)
   }
 
@@ -233,14 +245,18 @@ export function HandCards({
     const dx = e.clientX - start.x
     const dy = e.clientY - start.y
     if (dx * dx + dy * dy > LONG_PRESS_MOVE_PX * LONG_PRESS_MOVE_PX) {
-      clearLongPressTimer()
-      pointerStartRef.current = null
+      cancelHold()
     }
   }
 
   function handlePointerEnd(e: React.PointerEvent) {
-    clearLongPressTimer()
-    pointerStartRef.current = null
+    /* Releasing early cancels select-all; a completed hold already cleared the timer. */
+    if (longPressTimerRef.current != null) {
+      cancelHold()
+    } else {
+      pointerStartRef.current = null
+      setHoldingCardId(null)
+    }
     try {
       if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
         e.currentTarget.releasePointerCapture(e.pointerId)
@@ -251,22 +267,11 @@ export function HandCards({
   }
 
   function handleCardClick(cardId: string) {
-    /* Suppress the synthetic click that follows a completed long-press. */
+    /* Suppress the synthetic click that follows a completed hold. */
     if (longPressFiredRef.current) {
       longPressFiredRef.current = false
       return
     }
-    /* Fallback if the timer was cleared but the hold still reached the threshold. */
-    if (
-      onSelectRank &&
-      pressStartedAtRef.current > 0 &&
-      performance.now() - pressStartedAtRef.current >= LONG_PRESS_MS - 50
-    ) {
-      pressStartedAtRef.current = 0
-      fireLongPress(cardId)
-      return
-    }
-    pressStartedAtRef.current = 0
     handleToggle(cardId)
   }
 
@@ -317,8 +322,15 @@ export function HandCards({
                 isSelected
                   ? 'z-[60] -translate-y-3 scale-105'
                   : 'z-[1] hover:z-[60] hover:-translate-y-3 hover:scale-105'
-              } ${inFlight ? 'pointer-events-none' : ''}`}
-              style={{ transitionDuration: `${CARD_MS}ms` }}
+              } ${holdingCardId === card.id ? 'hand-card-holding' : ''} ${
+                inFlight ? 'pointer-events-none' : ''
+              }`}
+              style={
+                {
+                  transitionDuration: `${CARD_MS}ms`,
+                  '--hand-hold-ms': `${LONG_PRESS_MS}ms`,
+                } as CSSProperties
+              }
               {...pressHandlers(card.id)}
             >
               {renderCardShell(card, phase, isSelected)}
@@ -419,21 +431,26 @@ export function HandCards({
                   if (hoverCardId === card.id) setHoverCardId(null)
                 }}
                 className={`relative block rounded-lg outline-none transition-transform ease-snappy will-change-transform touch-manipulation ${
-                  isActive ? 'scale-105' : 'scale-100'
+                  isActive || holdingCardId === card.id ? 'scale-105' : 'scale-100'
                 } ${
                   isSelected
                     ? 'ring-2 ring-accent ring-offset-2 ring-offset-felt-dark'
                     : canSelect
                       ? 'hover:brightness-[1.03]'
                       : ''
-                }`}
-                style={{ transitionDuration: `${CARD_MS}ms` }}
+                } ${holdingCardId === card.id ? 'hand-card-holding' : ''}`}
+                style={
+                  {
+                    transitionDuration: `${CARD_MS}ms`,
+                    '--hand-hold-ms': `${LONG_PRESS_MS}ms`,
+                  } as CSSProperties
+                }
                 draggable={false}
                 aria-pressed={isSelected}
                 aria-hidden={inFlight}
                 title={
                   onSelectRank && canSelect
-                    ? 'Tap to select · hold to select all of this rank'
+                    ? 'Tap to select · hold 1s to select all of this rank'
                     : undefined
                 }
                 {...pressHandlers(card.id)}

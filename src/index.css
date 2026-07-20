@@ -1127,6 +1127,48 @@
     transition: none;
   }
 
+  /* Charge feedback while holding a card to select-all of that rank */
+  .hand-card-holding {
+    position: relative;
+    z-index: 70;
+    animation: hand-hold-pulse var(--hand-hold-ms, 1000ms) linear forwards;
+  }
+
+  .hand-card-holding::after {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border-radius: 0.65rem;
+    pointer-events: none;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
+    opacity: 0.35;
+    animation: hand-hold-ring var(--hand-hold-ms, 1000ms) linear forwards;
+  }
+
+  @keyframes hand-hold-pulse {
+    0% {
+      transform: scale(1.05);
+      filter: brightness(1);
+    }
+    100% {
+      transform: scale(1.1);
+      filter: brightness(1.08);
+    }
+  }
+
+  @keyframes hand-hold-ring {
+    0% {
+      opacity: 0.25;
+      box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+    }
+    100% {
+      opacity: 1;
+      box-shadow:
+        0 0 0 3px color-mix(in srgb, var(--accent) 80%, transparent),
+        0 0 14px color-mix(in srgb, var(--accent) 35%, transparent);
+    }
+  }
+
   .hand-card-slot {
     will-change: transform, opacity;
     backface-visibility: hidden;
