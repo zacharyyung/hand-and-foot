@@ -1372,7 +1372,7 @@ export function GameView({
                                 }
                                 className="btn-secondary disabled:opacity-35"
                               >
-                                {mobileLayout ? 'Start' : 'Start book'}
+                                Start book
                               </button>
                             )
                           )}
@@ -1413,12 +1413,8 @@ export function GameView({
                                 className="btn-secondary disabled:opacity-35"
                               >
                                 {matchedAddBook
-                                  ? mobileLayout
-                                    ? `+${matchedAddBook.rank}`
-                                    : `Add to ${matchedAddBook.rank}s`
-                                  : mobileLayout
-                                    ? 'Add'
-                                    : 'Add to book'}
+                                  ? `Add to ${matchedAddBook.rank}s`
+                                  : 'Add to book'}
                               </button>
                             </>
                           )}
