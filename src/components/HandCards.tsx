@@ -30,7 +30,7 @@ interface HandCardsProps {
 /** Snappy card motion — keep in sync with cardFlight / cardMotion. */
 const CARD_MS = 220
 /** Hold this long to select every natural card of the same rank. */
-const LONG_PRESS_MS = 1500
+const LONG_PRESS_MS = 1125
 /** Finger/mouse jitter allowance before the hold is cancelled. */
 const LONG_PRESS_MOVE_PX = 20
 
