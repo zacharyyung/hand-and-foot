@@ -1345,7 +1345,7 @@ export function GameView({
                                   className="btn-secondary disabled:opacity-35"
                                 >
                                   {matchingStagedBook
-                                    ? `+${matchingStagedBook.rank}`
+                                    ? `Add to staged ${matchingStagedBook.rank}s`
                                     : 'Stage'}
                                 </button>
                                 <button
