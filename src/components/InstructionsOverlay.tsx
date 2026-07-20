@@ -116,7 +116,8 @@ export function InstructionsOverlay({ open, onClose }: InstructionsOverlayProps)
               <li>0–999 → 50 · 1,000–1,499 → 100 · 1,500–1,999 → 150 · 2,000+ → 200</li>
             </ul>
             <p className="mt-1">
-              Use <strong>Stage</strong> privately, then <strong>Meld</strong> when you meet
+              Use <strong>Stage</strong> privately (you can keep adding cards to staged
+              books), then <strong>Meld</strong> when you meet
               the requirement. Completed book bonuses (+300 clean, +100 dirty) count toward
               the meld total.
             </p>
