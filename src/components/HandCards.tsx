@@ -450,7 +450,7 @@ export function HandCards({
                 aria-hidden={inFlight}
                 title={
                   onSelectRank && canSelect
-                    ? 'Tap to select · hold 1s to select all of this rank'
+                    ? 'Tap to select · hold to select all of this rank'
                     : undefined
                 }
                 {...pressHandlers(card.id)}
