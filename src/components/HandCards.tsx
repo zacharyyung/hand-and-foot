@@ -14,6 +14,8 @@ interface HandCardsProps {
   onReorder: (order: string[]) => void
   selectedIds: string[]
   onToggle: (cardId: string) => void
+  /** Long-press: select all cards of the same rank (caller decides wilds). */
+  onSelectRank?: (cardId: string) => void
   canSelect?: boolean
   canDrag?: boolean
   /** Spread cards with gaps, centered — for the player hand dock. */
@@ -27,6 +29,8 @@ interface HandCardsProps {
 
 /** Snappy card motion — keep in sync with cardFlight / cardMotion. */
 const CARD_MS = 220
+const LONG_PRESS_MS = 450
+const LONG_PRESS_MOVE_PX = 8
 
 /** Active cards pop above board chrome and neighbor cards. */
 const Z = {
@@ -55,6 +59,7 @@ export function HandCards({
   onReorder,
   selectedIds,
   onToggle,
+  onSelectRank,
   canSelect = true,
   canDrag = true,
   spread = false,
@@ -70,6 +75,9 @@ export function HandCards({
   const [layoutSpreadHold, setLayoutSpreadHold] = useState(false)
   const spreadOuterRef = useRef<HTMLDivElement>(null)
   const [fitWidth, setFitWidth] = useState<number | null>(null)
+  const longPressTimerRef = useRef<number | null>(null)
+  const longPressFiredRef = useRef(false)
+  const pointerStartRef = useRef<{ x: number; y: number; cardId: string } | null>(null)
 
   const displayCards = useMemo(
     () => buildDisplayCards(hand, handOrder),
@@ -132,11 +140,19 @@ export function HandCards({
     return () => observer.disconnect()
   }, [spread])
 
+  function clearLongPressTimer() {
+    if (longPressTimerRef.current != null) {
+      window.clearTimeout(longPressTimerRef.current)
+      longPressTimerRef.current = null
+    }
+  }
+
   function slotPhase(cardId: string): CardSlotPhase {
     return isCardHidden?.(cardId) ? 'in-flight' : 'visible'
   }
 
   function handleDragStart(cardId: string) {
+    clearLongPressTimer()
     if (!canDrag) return
     setDragCardId(cardId)
     playSound('select')
@@ -177,6 +193,43 @@ export function HandCards({
     playSound(wasSelected ? 'deselect' : 'select')
   }
 
+  function handlePointerDown(e: React.PointerEvent, cardId: string) {
+    if (!canSelect || !onSelectRank || e.button !== 0) return
+    longPressFiredRef.current = false
+    pointerStartRef.current = { x: e.clientX, y: e.clientY, cardId }
+    clearLongPressTimer()
+    longPressTimerRef.current = window.setTimeout(() => {
+      longPressTimerRef.current = null
+      longPressFiredRef.current = true
+      pointerStartRef.current = null
+      onSelectRank(cardId)
+      playSound('select')
+    }, LONG_PRESS_MS)
+  }
+
+  function handlePointerMove(e: React.PointerEvent) {
+    const start = pointerStartRef.current
+    if (!start || longPressTimerRef.current == null) return
+    const dx = e.clientX - start.x
+    const dy = e.clientY - start.y
+    if (dx * dx + dy * dy > LONG_PRESS_MOVE_PX * LONG_PRESS_MOVE_PX) {
+      clearLongPressTimer()
+    }
+  }
+
+  function handlePointerEnd() {
+    clearLongPressTimer()
+    pointerStartRef.current = null
+  }
+
+  function handleCardClick(cardId: string) {
+    if (longPressFiredRef.current) {
+      longPressFiredRef.current = false
+      return
+    }
+    handleToggle(cardId)
+  }
+
   function renderCardShell(
     card: CardType,
     phase: CardSlotPhase,
@@ -196,6 +249,17 @@ export function HandCards({
     )
   }
 
+  const pressHandlers = (cardId: string) =>
+    onSelectRank
+      ? {
+          onPointerDown: (e: React.PointerEvent) => handlePointerDown(e, cardId),
+          onPointerMove: handlePointerMove,
+          onPointerUp: handlePointerEnd,
+          onPointerCancel: handlePointerEnd,
+          onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
+        }
+      : {}
+
   if (!spread) {
     return (
       <div className="flex flex-wrap justify-center gap-1.5 p-1 sm:justify-start">
@@ -207,14 +271,15 @@ export function HandCards({
             <button
               key={card.id}
               type="button"
-              onClick={() => handleToggle(card.id)}
+              onClick={() => handleCardClick(card.id)}
               disabled={!canSelect || inFlight}
-              className={`will-change-transform shrink-0 transition-transform ease-snappy ${
+              className={`will-change-transform shrink-0 transition-transform ease-snappy touch-manipulation ${
                 isSelected
                   ? 'z-[60] -translate-y-3 scale-105'
                   : 'z-[1] hover:z-[60] hover:-translate-y-3 hover:scale-105'
               } ${inFlight ? 'pointer-events-none' : ''}`}
               style={{ transitionDuration: `${CARD_MS}ms` }}
+              {...pressHandlers(card.id)}
             >
               {renderCardShell(card, phase, isSelected)}
             </button>
@@ -305,12 +370,12 @@ export function HandCards({
               />
               <button
                 type="button"
-                onClick={() => handleToggle(card.id)}
+                onClick={() => handleCardClick(card.id)}
                 disabled={!canSelect || inFlight}
                 onBlur={() => {
                   if (hoverCardId === card.id) setHoverCardId(null)
                 }}
-                className={`relative block rounded-lg outline-none transition-transform ease-snappy will-change-transform ${
+                className={`relative block rounded-lg outline-none transition-transform ease-snappy will-change-transform touch-manipulation ${
                   isActive ? 'scale-105' : 'scale-100'
                 } ${
                   isSelected
@@ -323,6 +388,12 @@ export function HandCards({
                 draggable={false}
                 aria-pressed={isSelected}
                 aria-hidden={inFlight}
+                title={
+                  onSelectRank && canSelect
+                    ? 'Tap to select · hold to select all of this rank'
+                    : undefined
+                }
+                {...pressHandlers(card.id)}
               >
                 {renderCardShell(card, phase, false)}
               </button>

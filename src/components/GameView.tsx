@@ -690,14 +690,20 @@ export function GameView({
   function toggleCard(cardId: string) {
     if (!isMyTurn || game.turnPhase === 'draw') return
     setError(null)
+    setSelectedIds((prev) =>
+      prev.includes(cardId) ? prev.filter((id) => id !== cardId) : [...prev, cardId],
+    )
+  }
+
+  /** Long-press: select every natural card of that rank (wilds stay individual). */
+  function selectAllOfRank(cardId: string) {
+    if (!isMyTurn || game.turnPhase === 'draw') return
+    setError(null)
     const card = handForDisplay.find((c) => c.id === cardId)
     if (!card) return
 
-    /* Wilds toggle alone; naturals select/deselect every card of that rank. */
     if (isWildCard(card)) {
-      setSelectedIds((prev) =>
-        prev.includes(cardId) ? prev.filter((id) => id !== cardId) : [...prev, cardId],
-      )
+      setSelectedIds((prev) => (prev.includes(cardId) ? prev : [...prev, cardId]))
       return
     }
 
@@ -706,12 +712,8 @@ export function GameView({
       .map((c) => c.id)
 
     setSelectedIds((prev) => {
-      const allSelected = sameRankIds.every((id) => prev.includes(id))
-      if (allSelected) {
-        return prev.filter((id) => !sameRankIds.includes(id))
-      }
       const keptWilds = prev.filter((id) => {
-        const c = handForDisplay.find((card) => card.id === id)
+        const c = handForDisplay.find((handCard) => handCard.id === id)
         return c != null && isWildCard(c)
       })
       return [...new Set([...keptWilds, ...sameRankIds])]
@@ -1269,6 +1271,7 @@ export function GameView({
                   onReorder={handleHandReorder}
                   selectedIds={selectedIds}
                   onToggle={toggleCard}
+                  onSelectRank={selectAllOfRank}
                   canSelect={isMyTurn && game.turnPhase === 'play'}
                   canDrag
                   spread
