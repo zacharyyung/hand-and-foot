@@ -313,10 +313,12 @@ function App() {
     )
   }
 
+  const lockSetupViewport = !game && humanCount === 1
+
   return (
     <div
       className={
-        game?.phase === 'playing'
+        game?.phase === 'playing' || lockSetupViewport
           ? 'room-bg h-dvh max-h-dvh overflow-hidden'
           : 'room-bg min-h-screen'
       }

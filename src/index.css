@@ -269,6 +269,151 @@
     font-weight: 600;
   }
 
+  /* Single-human mobile lobby — everything fits in one viewport, no scroll */
+  @media (max-width: 539px) {
+    .setup-screen-compact {
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      height: 100dvh;
+      max-height: 100dvh;
+      overflow: hidden;
+      padding:
+        max(2.75rem, calc(var(--safe-top) + 2.25rem))
+        1rem
+        max(0.75rem, calc(var(--safe-bottom) + 0.5rem));
+    }
+
+    .setup-screen-compact .setup-screen-header {
+      margin-bottom: 0.625rem;
+      flex-shrink: 0;
+    }
+
+    .setup-screen-compact .setup-screen-eyebrow {
+      display: none;
+    }
+
+    .setup-screen-compact .setup-screen-title {
+      font-size: 1.75rem;
+      line-height: 1.15;
+    }
+
+    .setup-screen-compact .setup-screen-subtitle {
+      margin-top: 0.25rem;
+      font-size: 0.75rem;
+      line-height: 1.35;
+    }
+
+    .setup-screen-compact .setup-screen-body {
+      display: flex;
+      min-height: 0;
+      flex: 1;
+      flex-direction: column;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+
+    .setup-screen-compact .setup-screen-section {
+      margin-bottom: 0;
+      flex-shrink: 0;
+    }
+
+    .setup-screen-compact .setup-screen-section-ai {
+      margin-bottom: 0;
+    }
+
+    .setup-screen-compact .setup-screen-label {
+      margin-bottom: 0.375rem;
+      font-size: 0.5625rem;
+      letter-spacing: 0.12em;
+    }
+
+    .setup-screen-compact .setup-choice-count {
+      min-width: 3.75rem;
+      padding: 0.375rem 0.75rem;
+      border-radius: 0.75rem;
+    }
+
+    .setup-screen-compact .setup-choice-count > span:first-child {
+      font-size: 1rem;
+    }
+
+    .setup-screen-compact .setup-choice-human {
+      min-width: 2.5rem;
+      padding: 0.3125rem 0.625rem;
+      border-radius: 0.75rem;
+    }
+
+    .setup-screen-compact .setup-choice-human > span {
+      font-size: 0.875rem;
+    }
+
+    .setup-screen-compact .setup-choice-ai {
+      min-width: 4.5rem;
+      padding: 0.375rem 0.75rem;
+      border-radius: 0.75rem;
+    }
+
+    .setup-screen-compact .setup-choice-ai > span {
+      font-size: 0.875rem;
+    }
+
+    .setup-screen-compact .setup-screen-players {
+      min-height: 0;
+      flex-shrink: 1;
+    }
+
+    .setup-screen-compact .setup-player-card {
+      padding: 0.625rem 0.75rem;
+      border-radius: 0.875rem;
+    }
+
+    .setup-screen-compact .setup-player-card-meta {
+      margin-bottom: 0.375rem;
+    }
+
+    .setup-screen-compact .setup-player-card-meta p {
+      font-size: 0.75rem;
+    }
+
+    .setup-screen-compact .setup-player-card-fields {
+      gap: 0.5rem 0.75rem;
+    }
+
+    .setup-screen-compact .setup-avatar-field {
+      width: 100%;
+    }
+
+    .setup-screen-compact .setup-avatar-grid {
+      gap: 0.1875rem;
+    }
+
+    .setup-screen-compact .setup-avatar-btn {
+      padding: 0.1875rem 0.3125rem;
+      font-size: 1rem;
+      line-height: 1;
+    }
+
+    .setup-screen-compact .setup-name-field {
+      width: 100%;
+    }
+
+    .setup-screen-compact .setup-name-field .field-control {
+      padding-top: 0.4375rem;
+      padding-bottom: 0.4375rem;
+      font-size: 0.8125rem;
+    }
+
+    .setup-screen-compact .setup-screen-cta {
+      margin-top: 0.625rem;
+      flex-shrink: 0;
+      padding-top: 0.625rem;
+      padding-bottom: 0.625rem;
+      font-size: 0.8125rem;
+    }
+  }
+
   .theme-scroll {
     scrollbar-width: thin;
     scrollbar-color: rgba(139, 99, 64, 0.62) rgba(0, 0, 0, 0.16);
