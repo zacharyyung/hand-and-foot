@@ -29,7 +29,7 @@ interface HandCardsProps {
 
 /** Snappy card motion — keep in sync with cardFlight / cardMotion. */
 const CARD_MS = 220
-const LONG_PRESS_MS = 450
+const LONG_PRESS_MS = 1500
 const LONG_PRESS_MOVE_PX = 8
 
 /** Active cards pop above board chrome and neighbor cards. */
