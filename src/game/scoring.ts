@@ -31,6 +31,24 @@ export function heldCardPenalty(cards: Card[]): number {
   }, 0)
 }
 
+/** How many red 3s are still held (hand + foot). */
+export function heldRedThreeCount(cards: Card[]): number {
+  return cards.filter(isRedThree).length
+}
+
+/** Points lost specifically from held red 3s (300 each). */
+export function heldRedThreePenalty(cards: Card[]): number {
+  return heldRedThreeCount(cards) * 300
+}
+
+/** Held-card penalty excluding red 3s (those are reported separately in the tally). */
+export function heldNonRedThreePenalty(cards: Card[]): number {
+  return cards.reduce((sum, card) => {
+    if (isRedThree(card)) return sum
+    return sum + cardPointValue(card)
+  }, 0)
+}
+
 export function bookBonus(book: Book): number {
   if (book.cards.length < 7) return 0
   return bookWildCount(book) > 0 ? 100 : 300

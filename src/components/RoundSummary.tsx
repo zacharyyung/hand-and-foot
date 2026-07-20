@@ -59,6 +59,17 @@ export function RoundSummary({ game, onContinue }: RoundSummaryProps) {
                 <span>Held cards</span>
                 <span className="tabular-nums text-ink-soft">−{b.handFootPenalty}</span>
               </li>
+              {b.redThreeCount > 0 && (
+                <li className="flex justify-between">
+                  <span>
+                    Red 3s
+                    <span className="ml-1 text-ink-faint">
+                      ({b.redThreeCount})
+                    </span>
+                  </span>
+                  <span className="tabular-nums text-ink-soft">−{b.redThreePenalty}</span>
+                </li>
+              )}
               <li className="mt-1 flex justify-between border-t border-white/10 pt-2 font-semibold text-ink">
                 <span>Round</span>
                 <span className="font-display tabular-nums">

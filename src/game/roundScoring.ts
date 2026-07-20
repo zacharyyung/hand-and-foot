@@ -1,6 +1,14 @@
 import type { GameState } from './deal'
 import { dealNewRound } from './deal'
-import { bookBonus, GOING_OUT_BONUS, heldCardPenalty, sumCardPoints, WINNING_SCORE } from './scoring'
+import {
+  bookBonus,
+  GOING_OUT_BONUS,
+  heldNonRedThreePenalty,
+  heldRedThreeCount,
+  heldRedThreePenalty,
+  sumCardPoints,
+  WINNING_SCORE,
+} from './scoring'
 import { nextSeatCounterClockwise, type PlayerCount } from './teams'
 
 export interface RoundScoreBreakdown {
@@ -8,7 +16,10 @@ export interface RoundScoreBreakdown {
   tableCardPoints: number
   bookBonuses: number
   goingOutBonus: number
+  /** Held non–red-3 cards only (red 3s are listed separately). */
   handFootPenalty: number
+  redThreeCount: number
+  redThreePenalty: number
   total: number
 }
 
@@ -24,9 +35,12 @@ export function scoreRound(state: GameState): RoundScoreBreakdown[] {
       .filter((p) => p.profile.teamId === team.id)
       .flatMap((p) => [...p.hand, ...p.foot])
 
-    const handFootPenalty = heldCardPenalty(handFootCards)
+    const handFootPenalty = heldNonRedThreePenalty(handFootCards)
+    const redThreeCount = heldRedThreeCount(handFootCards)
+    const redThreePenalty = heldRedThreePenalty(handFootCards)
 
-    const total = tableCardPoints + bookBonuses + goingOutBonus - handFootPenalty
+    const total =
+      tableCardPoints + bookBonuses + goingOutBonus - handFootPenalty - redThreePenalty
 
     return {
       teamId: team.id,
@@ -34,6 +48,8 @@ export function scoreRound(state: GameState): RoundScoreBreakdown[] {
       bookBonuses,
       goingOutBonus,
       handFootPenalty,
+      redThreeCount,
+      redThreePenalty,
       total,
     }
   })
