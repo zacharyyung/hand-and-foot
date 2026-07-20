@@ -54,6 +54,9 @@ interface SetupScreenProps {
   aiDifficulty: AiDifficulty
   onAiDifficultyChange: (difficulty: AiDifficulty) => void
   onStart: () => void
+  savedSessionLabel?: string | null
+  onResumeSaved?: () => void
+  onDiscardSaved?: () => void
 }
 
 export function createDefaultHumanPlayers(count: number): SetupHuman[] {
@@ -105,6 +108,9 @@ export function SetupScreen({
   aiDifficulty,
   onAiDifficultyChange,
   onStart,
+  savedSessionLabel = null,
+  onResumeSaved,
+  onDiscardSaved,
 }: SetupScreenProps) {
   function updateHuman(index: number, patch: Partial<SetupHuman>) {
     const next = [...humanPlayers]
@@ -343,8 +349,39 @@ export function SetupScreen({
         disabled={!canStart}
         className="setup-screen-cta btn-primary mt-10 w-full py-3.5 text-sm disabled:opacity-40"
       >
-        Sit down &amp; deal
+        {savedSessionLabel ? 'New game' : 'Sit down & deal'}
       </button>
+
+      {savedSessionLabel && onResumeSaved && onDiscardSaved && (
+        <div className="setup-saved-session mt-4 rounded-2xl border border-accent/25 bg-black/30 px-4 py-3.5">
+          <p className="text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-accent">
+            Saved game
+          </p>
+          <p className="mt-1.5 text-center text-xs text-ink-soft">{savedSessionLabel}</p>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+            <button
+              type="button"
+              onClick={() => {
+                playSound('button')
+                onResumeSaved()
+              }}
+              className="btn-primary flex-1 py-2.5 text-sm"
+            >
+              Resume
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                playSound('button')
+                onDiscardSaved()
+              }}
+              className="btn-secondary flex-1 py-2.5 text-sm"
+            >
+              Discard saved
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

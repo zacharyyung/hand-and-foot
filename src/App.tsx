@@ -13,6 +13,14 @@ import {
   startOverReached,
   undoEligibleVoters,
 } from './game/votes'
+import {
+  clearPersistedSession,
+  formatSavedSessionLabel,
+  loadPersistedSession,
+  peekSavedSessionSummary,
+  savePersistedSession,
+  type SavedSessionSummary,
+} from './game/sessionPersistence'
 import { GameView } from './components/GameView'
 import { RoundSummary } from './components/RoundSummary'
 import {
@@ -22,6 +30,7 @@ import {
 } from './components/VoteOverlays'
 import {
   SetupScreen,
+  HUMAN_AVATARS,
   buildSetupPlayers,
   createDefaultHumanPlayers,
 } from './components/SetupScreen'
@@ -48,10 +57,83 @@ function App() {
   const [showUndoPicker, setShowUndoPicker] = useState(false)
   const [autoSort, setAutoSort] = useState(() => loadAutoSortPreference())
   const [aiDebugEnabled, setAiDebugEnabled] = useState(() => loadAiDebugPreference())
+  const [savedSummary, setSavedSummary] = useState<SavedSessionSummary | null>(() =>
+    peekSavedSessionSummary(),
+  )
 
   useEffect(() => {
     loadMutePreference()
   }, [])
+
+  /* Auto-save whenever an in-progress session changes. */
+  useEffect(() => {
+    if (!game) return
+    savePersistedSession({
+      setup: {
+        playerCount,
+        humanCount,
+        humanPlayers,
+        aiDifficulty,
+      },
+      game,
+      chatMessages,
+      gameHistory,
+      startOverVotes,
+      undoRequest,
+    })
+    setSavedSummary(peekSavedSessionSummary())
+  }, [
+    game,
+    chatMessages,
+    gameHistory,
+    startOverVotes,
+    undoRequest,
+    playerCount,
+    humanCount,
+    humanPlayers,
+    aiDifficulty,
+  ])
+
+  /* Flush save when the tab is backgrounded (mobile leave / switch apps). */
+  useEffect(() => {
+    function persistNow() {
+      if (!game) return
+      savePersistedSession({
+        setup: {
+          playerCount,
+          humanCount,
+          humanPlayers,
+          aiDifficulty,
+        },
+        game,
+        chatMessages,
+        gameHistory,
+        startOverVotes,
+        undoRequest,
+      })
+    }
+
+    function onVisibility() {
+      if (document.visibilityState === 'hidden') persistNow()
+    }
+
+    window.addEventListener('pagehide', persistNow)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('pagehide', persistNow)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [
+    game,
+    chatMessages,
+    gameHistory,
+    startOverVotes,
+    undoRequest,
+    playerCount,
+    humanCount,
+    humanPlayers,
+    aiDifficulty,
+  ])
 
   function resetSession() {
     setGameHistory([])
@@ -90,6 +172,8 @@ function App() {
   function handleStart() {
     unlockAudio()
     playSound('threshold')
+    clearPersistedSession()
+    setSavedSummary(null)
     setChatMessages([])
     resetSession()
     setGame(
@@ -98,6 +182,41 @@ function App() {
         playerCount,
       ),
     )
+  }
+
+  function handleResumeSaved() {
+    const session = loadPersistedSession()
+    if (!session) {
+      setSavedSummary(null)
+      return
+    }
+    unlockAudio()
+    playSound('button')
+    setPlayerCount(session.setup.playerCount)
+    setHumanCount(session.setup.humanCount)
+    setHumanPlayers(
+      session.setup.humanPlayers.map((human, index) => ({
+        name: human.name,
+        age: human.age,
+        avatar: (HUMAN_AVATARS.includes(human.avatar as (typeof HUMAN_AVATARS)[number])
+          ? human.avatar
+          : HUMAN_AVATARS[index % HUMAN_AVATARS.length]) as (typeof HUMAN_AVATARS)[number],
+      })),
+    )
+    setAiDifficulty(session.setup.aiDifficulty)
+    setChatMessages(session.chatMessages)
+    setGameHistory(session.gameHistory)
+    setStartOverVotes(session.startOverVotes)
+    setUndoRequest(session.undoRequest)
+    setUndoResult(null)
+    setShowRestartNotice(false)
+    setShowUndoPicker(false)
+    setGame(session.game)
+  }
+
+  function handleDiscardSaved() {
+    clearPersistedSession()
+    setSavedSummary(null)
   }
 
   function handleGameChange(
@@ -123,6 +242,8 @@ function App() {
     setShowRestartNotice(true)
     window.setTimeout(() => {
       playSound('button')
+      clearPersistedSession()
+      setSavedSummary(null)
       setChatMessages([])
       resetSession()
       setGame(
@@ -226,6 +347,11 @@ function App() {
         aiDifficulty={aiDifficulty}
         onAiDifficultyChange={setAiDifficulty}
         onStart={handleStart}
+        savedSessionLabel={
+          savedSummary ? formatSavedSessionLabel(savedSummary) : null
+        }
+        onResumeSaved={handleResumeSaved}
+        onDiscardSaved={handleDiscardSaved}
       />
     )
   } else if (game.phase === 'roundEnd') {
@@ -270,6 +396,8 @@ function App() {
         <button
           onClick={() => {
             playSound('button')
+            clearPersistedSession()
+            setSavedSummary(null)
             resetSession()
             setGame(null)
           }}

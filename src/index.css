@@ -412,6 +412,20 @@
       padding-bottom: 0.625rem;
       font-size: 0.8125rem;
     }
+
+    .setup-screen-compact .setup-saved-session {
+      margin-top: 0.5rem;
+      flex-shrink: 0;
+      padding: 0.625rem 0.75rem;
+      border-radius: 0.875rem;
+    }
+
+    .setup-screen-compact .setup-saved-session .btn-primary,
+    .setup-screen-compact .setup-saved-session .btn-secondary {
+      padding-top: 0.5rem;
+      padding-bottom: 0.5rem;
+      font-size: 0.75rem;
+    }
   }
 
   .theme-scroll {
