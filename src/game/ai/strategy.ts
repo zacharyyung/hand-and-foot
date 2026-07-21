@@ -532,13 +532,6 @@ export function pickBestStartWhenUnlocked(
     difficulty === 'expert'
 
   if (preferCleanOnly) {
-    if (
-      urgency === 'low' &&
-      Math.random() < 0.12 &&
-      cleanStarts.length > 1
-    ) {
-      return cleanStarts[1].opt.cardIds
-    }
     return cleanStarts[0].opt.cardIds
   }
 

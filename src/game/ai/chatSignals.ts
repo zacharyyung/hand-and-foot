@@ -1,6 +1,6 @@
 import type { GameState } from '../deal'
 import { getTeam } from '../actions'
-import { getGoOutBlockReason } from '../books'
+import { getGoOutBlockReason, isCleanBook } from '../books'
 import { buildAiPublicState } from './publicState'
 import { isRedThree } from '../cards'
 import { heldCardPenalty } from '../scoring'
@@ -79,13 +79,27 @@ export function analyzePartnerGoOutRequest(
   else if (handPenalty >= 30) score -= 3
 
   if (difficulty === 'expert') {
-    if (opponentRacing && !partnerClosing) score -= 2
-    if (partnerClosing && opponentCards >= 12) score += 2
+    // Expected stranded-opponent value: going out with opponents holding many cards
+    // is high EV; racing into a close opponent finish is low EV unless we're also set.
+    const expectedStrand = opponentCards * 4
+    if (opponentRacing && !partnerClosing && !aiAlsoLow) score -= 4
+    if (partnerClosing && opponentCards >= 12) score += 3
+    if (expectedStrand >= 80 && partnerClosing) score += 3
+    if (expectedStrand >= 100 && handPenalty <= 25) score += 2
+    if (pub.stockCount <= 15 && opponentCards >= 14) score += 2
+    if (aiCardsLeft >= 8 && handPenalty >= 40 && !opponentRacing) score -= 3
+    // Prefer denying when we can still complete a clean book bonus this round.
+    const almostClean = team.books.some(
+      (b) => b.cards.length >= 5 && b.cards.length < 7 && isCleanBook(b),
+    )
+    if (almostClean && aiCardsLeft >= 5 && !opponentRacing && !partnerClosing) {
+      score -= 2
+    }
   } else if (difficulty === 'normal') {
     if (teamCanGoOut(state, team.id) && partnerInFoot) score += 1
   }
 
-  const approve = score >= 3
+  const approve = score >= (difficulty === 'expert' ? 4 : 3)
 
   if (approve) {
     if (partnerClosing && opponentCards >= 18) {
