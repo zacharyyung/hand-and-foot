@@ -375,6 +375,22 @@ export function shouldAiAttemptGoOut(
     return opponentsHoldManyCards(state, seatIndex)
   }
 
+  // Expert: if an opponent is one discard from going out and our partner still
+  // holds a large pile, prefer going out now to bank the round.
+  if (player.profile.aiDifficulty === 'expert') {
+    const myTeamId = player.profile.teamId
+    const opponents = state.players.filter((p) => p.profile.teamId !== myTeamId)
+    const opponentClosing = opponents.some(
+      (p) => p.isPlayingFoot && p.foot.length === 0 && p.hand.length <= 3,
+    )
+    if (opponentClosing) return true
+
+    // When books are set and we're on the last card, close unless partner
+    // denial coincides with us still holding a huge unplayed foot elsewhere
+    // (handled above via opponentsHoldManyCards / approval).
+    return true
+  }
+
   return true
 }
 

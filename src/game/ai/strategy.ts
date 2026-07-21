@@ -8,6 +8,7 @@ import {
   countWildsInCards,
   isCleanBook,
   isDirtyBook,
+  teamHasCleanAndDirtyBooks,
 } from '../books'
 import type { GameState } from '../deal'
 import type { ChatMessage } from '../chat'
@@ -264,10 +265,38 @@ export function meldUrgency(teamScore: number): 'low' | 'medium' | 'high' {
   return 'low'
 }
 
-/** How hard the AI should push to meld — rises with meld limits, hand size, and a shrinking stock. */
+function raisePressure(
+  level: 'low' | 'medium' | 'high',
+  target: 'medium' | 'high',
+): 'low' | 'medium' | 'high' {
+  if (target === 'high') return 'high'
+  if (level === 'low') return 'medium'
+  return level
+}
+
+/** Cards still held by the acting AI (foot count mirrors hand while playing foot). */
+export function myCardsRemaining(pub: AiPublicState): number {
+  return pub.isPlayingFoot ? pub.myHand.length : pub.myHand.length + pub.myFootCount
+}
+
+/** How hard the AI should push to meld — rises with meld limits, hand size, race, and stock. */
 export function meldPressure(pub: AiPublicState): 'low' | 'medium' | 'high' {
   let level = meldUrgency(pub.teamScore)
-  const held = pub.myHand.length + pub.myFootCount
+  const held = myCardsRemaining(pub)
+  const goOutReady =
+    pub.teamMeldThresholdMet && teamHasCleanAndDirtyBooks(pub.myTeamBooks)
+  const needsDirtyDone = !teamHasCompletedDirtyBook(pub.myTeamBooks)
+  const needsCleanDone = !teamHasCompletedCleanBook(pub.myTeamBooks)
+  const hasCompletedClean = teamHasCompletedCleanBook(pub.myTeamBooks)
+  const opponentsRacing = opponents(pub.otherPlayers, pub.myTeamId).some(
+    (p) => p.handCount + p.footCount <= 6,
+  )
+  const opponentClosing = opponents(pub.otherPlayers, pub.myTeamId).some(
+    (p) => p.isPlayingFoot && p.handCount + p.footCount <= 4,
+  )
+  const partnerClosing = teammates(pub.otherPlayers, pub.myTeamId).some(
+    (p) => p.isPlayingFoot && p.handCount + p.footCount <= 4,
+  )
 
   if (held >= 22) return 'high'
   if (held >= 18) level = 'high'
@@ -290,6 +319,30 @@ export function meldPressure(pub: AiPublicState): 'low' | 'medium' | 'high' {
 
   if (pub.isPlayingFoot && pub.myFootCount >= 9 && level === 'low') {
     level = 'medium'
+  }
+
+  // Endgame / race: small feet used to stay "low" and freeze melding — push hard instead.
+  if (pub.isPlayingFoot && pub.myHand.length <= 6) {
+    level = raisePressure(level, 'medium')
+  }
+  if (pub.isPlayingFoot && pub.myHand.length <= 4) {
+    level = raisePressure(level, 'high')
+  }
+  if (goOutReady && pub.isPlayingFoot) {
+    level = 'high'
+  }
+  // One completed clean but no dirty yet — must create/finish dirty to catch a race.
+  if (hasCompletedClean && needsDirtyDone && pub.isPlayingFoot) {
+    level = raisePressure(level, 'high')
+  }
+  if (needsCleanDone && pub.isPlayingFoot && pub.myHand.length <= 8) {
+    level = raisePressure(level, 'medium')
+  }
+  if (opponentsRacing || partnerClosing) {
+    level = raisePressure(level, 'high')
+  }
+  if (opponentClosing) {
+    level = 'high'
   }
 
   return level
@@ -354,7 +407,7 @@ function partnerNearGoOut(
     return true
   }
   return teammates(otherPlayers, myTeamId).some(
-    (p) => p.isPlayingFoot && p.footCount === 0 && p.handCount <= 3,
+    (p) => p.isPlayingFoot && p.handCount + p.footCount <= 3,
   )
 }
 
@@ -401,6 +454,9 @@ export function hasAlternativeWildTarget(
 /**
  * Wild on a clean book costs a 300-point bonus — only allow when dumping/endgame
  * or completing the team's required dirty book to go out.
+ *
+ * Go-out / race exceptions are checked BEFORE the early-round clean-book lock,
+ * otherwise expert AI freezes in foot with a completed clean and no dirty.
  */
 export function justifyDirtyingCleanBook(
   book: Book,
@@ -414,7 +470,7 @@ export function justifyDirtyingCleanBook(
   if (countWildsInCards(cards) === 0) return true
 
   const urgency = meldPressure(pub)
-  const heldCards = pub.myHand.length + pub.myFootCount
+  const heldCards = myCardsRemaining(pub)
   const alternative = hasAlternativeWildTarget(
     pub.myHand,
     pub.myTeamBooks,
@@ -431,17 +487,44 @@ export function justifyDirtyingCleanBook(
     (b) => b.id !== book.id && b.cards.length >= 7 && isCleanBook(b),
   )
   const needsDirtyCompleted = !teamHasCompletedDirtyBook(books)
-  const earlyRound = pub.teamScore <= 999 && urgency === 'low'
+  const racing = opponentRacing(
+    pub.otherPlayers,
+    pub.myTeamId,
+    chatMessages,
+    state?.playerCount as PlayerCount | undefined,
+  )
+  const partnerClosing = partnerNearGoOut(
+    pub.otherPlayers,
+    pub.myTeamId,
+    chatMessages,
+    state,
+  )
 
-  if (earlyRound) return false
-
+  // Sole path to the required dirty book for going out — never block this.
   const completesForGoOut =
-    completes &&
-    otherCompletedClean &&
-    needsDirtyCompleted &&
-    book.cards.length >= 6
+    completes && otherCompletedClean && needsDirtyCompleted && book.cards.length >= 5
 
-  if (completesForGoOut && (urgency !== 'low' || book.cards.length === 6)) {
+  if (completesForGoOut) {
+    return true
+  }
+
+  // Progress a near-complete clean into the missing dirty when racing / in foot.
+  if (
+    needsDirtyCompleted &&
+    otherCompletedClean &&
+    book.cards.length >= 5 &&
+    (urgency !== 'low' || racing || partnerClosing || pub.isPlayingFoot)
+  ) {
+    return true
+  }
+
+  // No dirty book exists at all and we already have a completed clean — start one.
+  if (
+    needsDirtyCompleted &&
+    otherCompletedClean &&
+    !books.some((b) => isDirtyBook(b)) &&
+    (racing || partnerClosing || pub.isPlayingFoot || urgency === 'high')
+  ) {
     return true
   }
 
@@ -449,21 +532,12 @@ export function justifyDirtyingCleanBook(
     urgency === 'high' &&
     heldCards <= 6 &&
     pub.myHand.length <= 3 &&
-    partnerNearGoOut(pub.otherPlayers, pub.myTeamId, chatMessages, state)
+    partnerClosing
   ) {
     return true
   }
 
-  if (
-    urgency === 'high' &&
-    pub.myHand.length <= 2 &&
-    opponentRacing(
-      pub.otherPlayers,
-      pub.myTeamId,
-      chatMessages,
-      state?.playerCount as PlayerCount | undefined,
-    )
-  ) {
+  if (urgency === 'high' && pub.myHand.length <= 3 && racing) {
     return true
   }
 
@@ -476,6 +550,10 @@ export function justifyDirtyingCleanBook(
   ) {
     return true
   }
+
+  // Early rounds: protect clean bonuses unless a go-out/race exception above fired.
+  const earlyRound = pub.teamScore <= 999 && urgency === 'low'
+  if (earlyRound) return false
 
   return false
 }
@@ -532,13 +610,6 @@ export function pickBestStartWhenUnlocked(
     difficulty === 'expert'
 
   if (preferCleanOnly) {
-    if (
-      urgency === 'low' &&
-      Math.random() < 0.12 &&
-      cleanStarts.length > 1
-    ) {
-      return cleanStarts[1].opt.cardIds
-    }
     return cleanStarts[0].opt.cardIds
   }
 
@@ -585,7 +656,7 @@ export function pickBestAddToBook(
   if (allowed.length === 0) return null
 
   const urgency = meldPressure(pub)
-  const heldCards = pub.myHand.length + pub.myFootCount
+  const heldCards = myCardsRemaining(pub)
   const aggressive = urgency === 'high' || (urgency === 'medium' && heldCards >= 12)
 
   const scored = allowed.map((action) => {

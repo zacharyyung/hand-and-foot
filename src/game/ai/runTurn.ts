@@ -17,6 +17,7 @@ import { findAddToBookActions } from './decisions'
 import { AiDebugCollector } from './debugTrace'
 import { buildAiPublicState } from './publicState'
 import { maybeAiChatSignal } from './chatSignals'
+import { applyExpertPlan, planExpertTurn } from './expert'
 import {
   initialMeldUrgency,
   meldPressure,
@@ -48,16 +49,11 @@ function labelCards(hand: Card[], ids: string[]): string {
     .join(' ')
 }
 
-export function runAiTurn(
+function runExpertAiTurn(
   state: GameState,
-  chatMessages: ChatMessage[] = [],
-  options?: AiTurnOptions,
+  chatMessages: ChatMessage[],
+  debug?: AiDebugCollector,
 ): AiTurnResult {
-  const player = getCurrentPlayer(state)
-  if (player.profile.isHuman) return { state }
-
-  const difficulty = player.profile.aiDifficulty ?? 'normal'
-  const debug = options?.debug
   let current = state
   let chatMessage: ChatMessage | undefined
   let messages = chatMessages
@@ -71,10 +67,56 @@ export function runAiTurn(
     return { state: current, chatMessage, debugTrace: debug?.trace }
   }
 
-  const maxPlays = difficulty === 'expert' ? 14 : 10
+  const player = getCurrentPlayer(current)
   debug?.step(
     'turn',
-    `${player.profile.name} (${difficulty}) · hand ${player.hand.length} · max ${maxPlays} meld plays`,
+    `${player.profile.name} (expert) · hand ${player.hand.length} · beam-search + value function`,
+  )
+
+  if (current.turnPhase === 'play') {
+    const goOutSignal = maybeAiChatSignal(current, current.currentPlayerIndex, messages)
+    if (goOutSignal) {
+      debug?.step('chat', 'Signaling ready to go out.')
+      chatMessage = goOutSignal
+      messages = [...messages, goOutSignal]
+    }
+
+    const plan = planExpertTurn(current, messages)
+    debug?.step('expert', `Planned ${plan.length} action(s) via game-tree search.`)
+    const applied = applyExpertPlan(current, plan, messages)
+    current = applied.state
+    for (const step of applied.debugSteps) {
+      debug?.step(step.phase, step.detail)
+    }
+  }
+
+  return { state: current, chatMessage, debugTrace: debug?.trace }
+}
+
+function runNormalAiTurn(
+  state: GameState,
+  chatMessages: ChatMessage[],
+  debug?: AiDebugCollector,
+): AiTurnResult {
+  const player = getCurrentPlayer(state)
+  const difficulty = 'normal'
+  let current = state
+  let chatMessage: ChatMessage | undefined
+  let messages = chatMessages
+
+  if (current.turnPhase === 'draw') {
+    debug?.step('draw', 'Drawing 2 from stock.')
+    current = drawCards(current)
+  }
+
+  if (current.phase !== 'playing') {
+    return { state: current, chatMessage, debugTrace: debug?.trace }
+  }
+
+  const maxPlays = 10
+  debug?.step(
+    'turn',
+    `${player.profile.name} (normal) · hand ${player.hand.length} · max ${maxPlays} meld plays`,
   )
 
   for (let i = 0; i < maxPlays; i++) {
@@ -289,6 +331,24 @@ export function runAiTurn(
   }
 
   return { state: current, chatMessage, debugTrace: debug?.trace }
+}
+
+export function runAiTurn(
+  state: GameState,
+  chatMessages: ChatMessage[] = [],
+  options?: AiTurnOptions,
+): AiTurnResult {
+  const player = getCurrentPlayer(state)
+  if (player.profile.isHuman) return { state }
+
+  const difficulty = player.profile.aiDifficulty ?? 'normal'
+  const debug = options?.debug
+
+  if (difficulty === 'expert') {
+    return runExpertAiTurn(state, chatMessages, debug)
+  }
+
+  return runNormalAiTurn(state, chatMessages, debug)
 }
 
 export function isAiPlayer(state: GameState): boolean {

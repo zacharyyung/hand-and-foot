@@ -5,6 +5,8 @@ import { getTeam } from '../actions'
 import type { ChatMessage } from '../chat'
 import { findAddToBookActions, findStartBookActions } from './decisions'
 import { buildAiPublicState } from './publicState'
+import { planExpertInitialMeld, pickExpertDiscard } from './expert'
+import { buildCardBeliefs } from './beliefs'
 import {
   initialMeldUrgency,
   meldPressure,
@@ -129,24 +131,41 @@ export function buildAiDebugSnapshot(
   const required = Math.max(0, pub.requiredMeld - pub.meldPointsThisTurn)
   const openUrgency = initialMeldUrgency(pub.requiredMeld, urgency)
   let plan = !pub.teamMeldThresholdMet
-    ? planInitialMeld(
-        pub.myHand,
-        pub.myTeamBooks,
-        required,
-        openUrgency,
-        difficulty,
-        pub.isPlayingFoot,
-      )
+    ? difficulty === 'expert'
+      ? planExpertInitialMeld(
+          pub.myHand,
+          pub.myTeamBooks,
+          required,
+          openUrgency,
+          pub.isPlayingFoot,
+        )
+      : planInitialMeld(
+          pub.myHand,
+          pub.myTeamBooks,
+          required,
+          openUrgency,
+          difficulty,
+          pub.isPlayingFoot,
+        )
     : null
   if (!plan && !pub.teamMeldThresholdMet && openUrgency !== 'high') {
-    plan = planInitialMeld(
-      pub.myHand,
-      pub.myTeamBooks,
-      required,
-      'high',
-      difficulty,
-      pub.isPlayingFoot,
-    )
+    plan =
+      difficulty === 'expert'
+        ? planExpertInitialMeld(
+            pub.myHand,
+            pub.myTeamBooks,
+            required,
+            'high',
+            pub.isPlayingFoot,
+          )
+        : planInitialMeld(
+            pub.myHand,
+            pub.myTeamBooks,
+            required,
+            'high',
+            difficulty,
+            pub.isPlayingFoot,
+          )
     if (plan) notes.push('Initial meld only works at high urgency retry.')
   }
 
@@ -175,12 +194,15 @@ export function buildAiDebugSnapshot(
       )
     : null
 
-  const discardId = pickDiscardCard(
-    pub.myHand,
-    pub.myTeamBooks,
-    difficulty,
-    false,
-  )
+  const discardId =
+    difficulty === 'expert'
+      ? pickExpertDiscard(
+          pub,
+          buildCardBeliefs(pub, state.playerCount),
+          false,
+          state,
+        )
+      : pickDiscardCard(pub.myHand, pub.myTeamBooks, difficulty, false)
   const discardPreviewCard = pub.myHand.find((c) => c.id === discardId)
 
   if (!pub.teamMeldThresholdMet && startBookActions.length === 0) {
@@ -194,6 +216,9 @@ export function buildAiDebugSnapshot(
   }
   if (difficulty === 'normal') {
     notes.push('Normal mode randomly skips melds ~2–10% (add) and ~3–10% (end turn).')
+  }
+  if (difficulty === 'expert') {
+    notes.push('Expert uses card-counting beliefs, a TD-style value function, and beam search.')
   }
 
   const topStarts = [...startBookActions]

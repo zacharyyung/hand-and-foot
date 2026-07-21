@@ -1,6 +1,6 @@
 import type { GameState } from '../deal'
 import { getTeam } from '../actions'
-import { getGoOutBlockReason } from '../books'
+import { getGoOutBlockReason, isCleanBook } from '../books'
 import { buildAiPublicState } from './publicState'
 import { isRedThree } from '../cards'
 import { heldCardPenalty } from '../scoring'
@@ -46,18 +46,21 @@ export function analyzePartnerGoOutRequest(
   const opponents = pub.otherPlayers.filter((p) => p.teamId !== pub.myTeamId)
   const opponentCards = opponents.reduce((sum, p) => sum + p.handCount + p.footCount, 0)
   const opponentRacing = opponents.some(
-    (p) => p.isPlayingFoot && p.footCount === 0 && p.handCount <= 3,
+    (p) => p.isPlayingFoot && p.handCount + p.footCount <= 3,
   )
   const opponentLow = opponents.some((p) => p.handCount + p.footCount <= 5)
 
   const partnerInFoot = partnerInfo?.isPlayingFoot ?? false
-  const partnerHand = partnerInfo?.handCount ?? 99
-  const partnerFootLeft = partnerInfo?.footCount ?? 0
-  const partnerClosing =
-    partnerInFoot && partnerFootLeft === 0 && partnerHand <= 3
+  const partnerHeld = (partnerInfo?.handCount ?? 99) + (partnerInfo?.footCount ?? 0)
+  const partnerHand = partnerHeld
+  const partnerFootLeft = partnerInfo?.isPlayingFoot ? 0 : (partnerInfo?.footCount ?? 0)
+  const partnerClosing = partnerInFoot && partnerHeld <= 3
   const partnerStillInHand = !partnerInFoot || partnerFootLeft > 0
 
-  const aiCardsLeft = pub.myHand.length + pub.myFootCount
+  // Own cards: while playing foot, myFootCount mirrors hand length for UI — don't double-count.
+  const aiCardsLeft = pub.isPlayingFoot
+    ? pub.myHand.length
+    : pub.myHand.length + pub.myFootCount
   const aiAlsoLow = aiCardsLeft <= 4
 
   const aiHand = player.hand
@@ -79,13 +82,27 @@ export function analyzePartnerGoOutRequest(
   else if (handPenalty >= 30) score -= 3
 
   if (difficulty === 'expert') {
-    if (opponentRacing && !partnerClosing) score -= 2
-    if (partnerClosing && opponentCards >= 12) score += 2
+    // Expected stranded-opponent value: going out with opponents holding many cards
+    // is high EV; racing into a close opponent finish is low EV unless we're also set.
+    const expectedStrand = opponentCards * 4
+    if (opponentRacing && !partnerClosing && !aiAlsoLow) score -= 4
+    if (partnerClosing && opponentCards >= 12) score += 3
+    if (expectedStrand >= 80 && partnerClosing) score += 3
+    if (expectedStrand >= 100 && handPenalty <= 25) score += 2
+    if (pub.stockCount <= 15 && opponentCards >= 14) score += 2
+    if (aiCardsLeft >= 8 && handPenalty >= 40 && !opponentRacing) score -= 3
+    // Prefer denying when we can still complete a clean book bonus this round.
+    const almostClean = team.books.some(
+      (b) => b.cards.length >= 5 && b.cards.length < 7 && isCleanBook(b),
+    )
+    if (almostClean && aiCardsLeft >= 5 && !opponentRacing && !partnerClosing) {
+      score -= 2
+    }
   } else if (difficulty === 'normal') {
     if (teamCanGoOut(state, team.id) && partnerInFoot) score += 1
   }
 
-  const approve = score >= 3
+  const approve = score >= (difficulty === 'expert' ? 4 : 3)
 
   if (approve) {
     if (partnerClosing && opponentCards >= 18) {
@@ -192,7 +209,7 @@ export function maybeAiChatSignal(
   const pub = buildAiPublicState(state, seatIndex)
   if (!pub.isPlayingFoot) return null
 
-  const closing = pub.myFootCount === 0 && pub.myHand.length <= 4
+  const closing = pub.isPlayingFoot && pub.myHand.length <= 4
   if (!closing) return null
 
   return createReadyGoOutSignal(
