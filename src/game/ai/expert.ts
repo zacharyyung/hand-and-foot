@@ -6,9 +6,11 @@ import {
   canStartBook,
   countWildsInCards,
   isCleanBook,
+  teamHasCleanAndDirtyBooks,
 } from '../books'
 import {
   addToBook,
+  canGoOut,
   canPlayerGoOut,
   canTeamGoOut,
   commitStagedMelds,
@@ -39,8 +41,11 @@ import {
   initialMeldUrgency,
   justifyDirtyingCleanBook,
   meldPressure,
+  myCardsRemaining,
   pickLoneWildAdd,
   pickWildStartBook,
+  teamHasCompletedCleanBook,
+  teamHasCompletedDirtyBook,
   teamNeedsCleanBook,
   teamNeedsDirtyBook,
 } from './strategy'
@@ -307,10 +312,24 @@ function scoreAddAction(
   const newSize = book.cards.length + cards.length
   const completes = newSize >= 7
   const urgency = meldPressure(pub)
+  const goOutReady = teamHasCleanAndDirtyBooks(pub.myTeamBooks)
+  const becomesGoOutReady =
+    !goOutReady &&
+    completes &&
+    ((clean && wilds > 0 && teamHasCompletedCleanBook(pub.myTeamBooks.filter((b) => b.id !== book.id))) ||
+      (!clean && teamHasCompletedCleanBook(pub.myTeamBooks)) ||
+      (clean && wilds === 0 && teamHasCompletedDirtyBook(pub.myTeamBooks)))
 
   let score = action.priority + naturals * 36 + sumPoints(cards) * 0.65 + cards.length * 18
 
-  if (clean && wilds > 0) score -= 450
+  if (clean && wilds > 0) {
+    // Still costly, but completing the missing dirty for go-out overrides.
+    score -= becomesGoOutReady || (completes && teamHasCompletedCleanBook(
+      pub.myTeamBooks.filter((b) => b.id !== book.id),
+    ) && !teamHasCompletedDirtyBook(pub.myTeamBooks))
+      ? 40
+      : 450
+  }
   if (clean && naturals > 0) {
     score += 75
     if (completes) score += 110
@@ -319,9 +338,11 @@ function scoreAddAction(
   if (!clean && wilds > 0 && bookWildCount(book) < 2) score += 45
   if (!clean && naturals > 0) score += 36
   if (completes && clean) score += 70
+  if (becomesGoOutReady) score += 400
+  if (goOutReady) score += cards.length * 50
 
   // Dumping onto books always beats holding when race/stock pressure is up.
-  const held = pub.myHand.length + pub.myFootCount
+  const held = myCardsRemaining(pub)
   if (held >= 14) score += cards.length * 20
   if (pub.stockCount <= 25) score += cards.length * 10
   if (pub.isPlayingFoot) score += cards.length * 16
@@ -400,6 +421,8 @@ function candidateStarts(state: GameState): Array<{ cardIds: string[]; score: nu
   )
   const needsDirty = teamNeedsDirtyBook(pub.myTeamBooks)
   const needsClean = teamNeedsCleanBook(pub.myTeamBooks)
+  const needsDirtyCompleted = !teamHasCompletedDirtyBook(pub.myTeamBooks)
+  const hasCleanDone = teamHasCompletedCleanBook(pub.myTeamBooks)
 
   return options
     .map((opt) => {
@@ -415,6 +438,13 @@ function candidateStarts(state: GameState): Array<{ cardIds: string[]; score: nu
         needsDirty,
       )
       score += rankCount * 6
+      // Endgame: prefer opening the missing dirty book when clean is already done.
+      if (!opt.clean && needsDirtyCompleted && hasCleanDone) {
+        score += urgency === 'high' ? 120 : 70
+      }
+      if (opt.clean && needsClean && !hasCleanDone) {
+        score += 80
+      }
       return { cardIds: opt.cardIds, score }
     })
     .sort((a, b) => b.score - a.score)
@@ -423,12 +453,15 @@ function candidateStarts(state: GameState): Array<{ cardIds: string[]; score: nu
 
 function terminalValue(
   state: GameState,
-  chatMessages: ChatMessage[],
+  _chatMessages: ChatMessage[],
 ): { value: number; discardId: string } {
   const pub = buildAiPublicState(state, state.currentPlayerIndex)
   const beliefs = buildCardBeliefs(pub, state.playerCount)
-  const goingOut = canPlayerGoOut(state, chatMessages)
-  const discardId = pickExpertDiscard(pub, beliefs, goingOut, state)
+  const team = getTeam(state, pub.myTeamId)
+  // Use rules go-out (ignore partner chat) so terminal scoring still races to close.
+  const rulesGoOut = canGoOut(state)
+  const goOutReady = canTeamGoOut(team.books, team.meldThresholdMet)
+  const discardId = pickExpertDiscard(pub, beliefs, rulesGoOut, state)
   const afterDiscardHand = pub.myHand.filter((c) => c.id !== discardId)
   const discardCardObj = pub.myHand.find((c) => c.id === discardId)
 
@@ -449,9 +482,30 @@ function terminalValue(
 
   let value = evaluatePosition(simulatedPub, state.playerCount, beliefs).score
 
-  if (goingOut && discardId) {
-    value += 500
+  if (rulesGoOut && discardId) {
+    value += 800
+  } else if (goOutReady && pub.isPlayingFoot) {
+    // Reward getting down to a closable hand; punish parking with dumpable cards.
+    value += Math.max(0, 8 - pub.myHand.length) * 45
+    const teamRanks = new Set(pub.myTeamBooks.map((b) => b.rank))
+    const dumpableLeft = afterDiscardHand.filter(
+      (c) =>
+        (!isWildCard(c) && !isRedThree(c) && teamRanks.has(c.rank)) ||
+        (isWildCard(c) &&
+          pub.myTeamBooks.some((b) => !isCleanBook(b) && bookWildCount(b) < 2)),
+    ).length
+    value -= dumpableLeft * 90
   }
+
+  // Missing dirty while holding a wild and a completed clean — bad terminal.
+  if (
+    teamHasCompletedCleanBook(pub.myTeamBooks) &&
+    !teamHasCompletedDirtyBook(pub.myTeamBooks) &&
+    pub.myHand.some((c) => isWildCard(c) && !isRedThree(c))
+  ) {
+    value -= 250
+  }
+
   if (discardCardObj && isRedThree(discardCardObj)) {
     value += 200
   }
@@ -662,23 +716,59 @@ export function planExpertTurn(
   ]
 
   let bestTerminal: { plays: ExpertPlay[]; value: number } | null = null
+  const rootPub = buildAiPublicState(state, state.currentPlayerIndex)
+  const raceMode =
+    meldPressure(rootPub) === 'high' ||
+    (rootPub.isPlayingFoot &&
+      teamHasCompletedCleanBook(rootPub.myTeamBooks) &&
+      !teamHasCompletedDirtyBook(rootPub.myTeamBooks)) ||
+    (rootPub.teamMeldThresholdMet &&
+      teamHasCleanAndDirtyBooks(rootPub.myTeamBooks) &&
+      rootPub.isPlayingFoot)
 
   for (let depth = 0; depth < MAX_PLAY_DEPTH; depth++) {
     const nextBeams: BeamNode[] = []
 
     for (const node of beams) {
-      const terminal = terminalValue(node.state, chatMessages)
-      const stopValue = terminal.value
-      if (!bestTerminal || stopValue > bestTerminal.value) {
-        bestTerminal = {
-          plays: [...node.plays, { type: 'discard', cardId: terminal.discardId }],
-          value: stopValue,
+      const children = expandNode(node, chatMessages)
+
+      // In race/endgame, keep melding while legal dump/add/start children exist.
+      const mustContinue = raceMode && children.length > 0
+      if (!mustContinue) {
+        const terminal = terminalValue(node.state, chatMessages)
+        if (!bestTerminal || terminal.value > bestTerminal.value) {
+          bestTerminal = {
+            plays: [...node.plays, { type: 'discard', cardId: terminal.discardId }],
+            value: terminal.value,
+          }
         }
       }
 
-      const children = expandNode(node, chatMessages)
-      if (children.length === 0) continue
-      nextBeams.push(...children)
+      if (children.length === 0) {
+        const terminal = terminalValue(node.state, chatMessages)
+        if (!bestTerminal || terminal.value > bestTerminal.value) {
+          bestTerminal = {
+            plays: [...node.plays, { type: 'discard', cardId: terminal.discardId }],
+            value: terminal.value,
+          }
+        }
+        continue
+      }
+
+      // Rank children by eventual terminal value so go-out progress isn't pruned away.
+      for (const child of children) {
+        const childTerminal = terminalValue(child.state, chatMessages)
+        const goOutProgress =
+          Number(teamHasCleanAndDirtyBooks(
+            buildAiPublicState(child.state, child.state.currentPlayerIndex).myTeamBooks,
+          )) *
+            200 +
+          (rootPub.myHand.length -
+            buildAiPublicState(child.state, child.state.currentPlayerIndex).myHand.length) *
+            25
+        child.value = childTerminal.value + goOutProgress * 0.15 + child.value * 0.05
+        nextBeams.push(child)
+      }
     }
 
     if (nextBeams.length === 0) break
@@ -706,7 +796,7 @@ export function planExpertTurn(
   const discardId = pickExpertDiscard(
     pub,
     beliefs,
-    canPlayerGoOut(state, chatMessages),
+    canGoOut(state) || canPlayerGoOut(state, chatMessages),
     state,
   )
   return [{ type: 'discard', cardId: discardId }]

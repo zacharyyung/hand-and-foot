@@ -68,17 +68,17 @@ export interface PositionEval {
 const W = {
   board: 1.0,
   completedClean: 320,
-  completedDirty: 140,
+  completedDirty: 180,
   cleanProgress: 28,
-  dirtyProgress: 18,
-  goOutReady: 220,
+  dirtyProgress: 32,
+  goOutReady: 320,
   handStructure: 1.0,
   wildCapital: 1.0,
-  heldPenalty: -1.15,
+  heldPenalty: -1.25,
   footProgress: 1.0,
   racePressure: 1.0,
   stockPressure: 1.0,
-  drawExpectation: 0.55,
+  drawExpectation: 0.45,
   thresholdGap: -1.4,
   partnerSupport: 1.0,
   winningProximity: 0.08,
@@ -173,16 +173,26 @@ function wildCapitalValue(hand: Card[], teamBooks: Book[]): number {
 
 function footProgressValue(pub: AiPublicState): number {
   let value = 0
+  const goOutReady =
+    pub.teamMeldThresholdMet && teamHasCleanAndDirtyBooks(pub.myTeamBooks)
+
   if (pub.isPlayingFoot) {
     value += 110
     value += Math.max(0, 14 - pub.myHand.length) * 12
     if (pub.myHand.length <= 3) value += 55
     if (pub.myHand.length === 1) value += 80
+    // Once books allow going out, emptying the foot is the whole game.
+    if (goOutReady) {
+      value += Math.max(0, 10 - pub.myHand.length) * 35
+      if (pub.myHand.length <= 2) value += 120
+      if (pub.myHand.length === 1) value += 200
+    }
   } else {
     // Strong incentive to empty the hand and pick up the foot.
     value += Math.max(0, 12 - pub.myHand.length) * 10
     if (pub.myHand.length <= 3) value += 45
     if (pub.myHand.length <= 1) value += 70
+    if (goOutReady && pub.myHand.length <= 4) value += 60
   }
   return value
 }
@@ -190,34 +200,48 @@ function footProgressValue(pub: AiPublicState): number {
 function racePressureValue(pub: AiPublicState): number {
   const opponents = pub.otherPlayers.filter((p) => p.teamId !== pub.myTeamId)
   const partners = pub.otherPlayers.filter((p) => p.teamId === pub.myTeamId)
-  const goOutReady = teamHasCleanAndDirtyBooks(pub.myTeamBooks) && pub.teamMeldThresholdMet
+  const goOutReady =
+    pub.teamMeldThresholdMet && teamHasCleanAndDirtyBooks(pub.myTeamBooks)
+  const missingDirty = !teamHasCompletedDirtyBook(pub.myTeamBooks)
+  const missingClean = !teamHasCompletedCleanBook(pub.myTeamBooks)
+  const hasClean = teamHasCompletedCleanBook(pub.myTeamBooks)
 
   let pressure = 0
   for (const opp of opponents) {
     const held = opp.handCount + opp.footCount
-    if (opp.isPlayingFoot && opp.footCount === 0 && opp.handCount <= 3) {
-      pressure -= goOutReady ? 30 : 120
+    if (opp.isPlayingFoot && held <= 3) {
+      // Opponent is about to go out — panic unless we can close too.
+      pressure -= goOutReady ? 80 : 180
+      if (pub.isPlayingFoot) pressure -= 40
     } else if (held <= 5) {
-      pressure -= goOutReady ? 10 : 55
+      pressure -= goOutReady ? 25 : 70
     } else if (held <= 8) {
-      pressure -= 18
+      pressure -= 22
     }
   }
 
   for (const partner of partners) {
     const held = partner.handCount + partner.footCount
-    if (partner.isPlayingFoot && partner.footCount === 0 && partner.handCount <= 3) {
-      pressure += goOutReady ? 70 : 25
+    if (partner.isPlayingFoot && held <= 3) {
+      pressure += goOutReady ? 90 : 35
     } else if (held <= 6 && partner.isPlayingFoot) {
-      pressure += 20
+      pressure += 25
     }
+  }
+
+  // Huge incentive to finish the missing book type while racing.
+  if (hasClean && missingDirty) {
+    pressure -= pub.isPlayingFoot ? 90 : 45
+  }
+  if (missingClean && pub.isPlayingFoot) {
+    pressure -= 50
   }
 
   return pressure
 }
 
 function stockPressureValue(pub: AiPublicState): number {
-  const held = pub.myHand.length + pub.myFootCount
+  const held = pub.isPlayingFoot ? pub.myHand.length : pub.myHand.length + pub.myFootCount
   if (pub.stockCount <= 12 && held >= 10) return -70
   if (pub.stockCount <= 20 && held >= 12) return -40
   if (pub.stockCount <= 35 && held >= 16) return -22
