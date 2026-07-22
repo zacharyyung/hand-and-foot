@@ -68,13 +68,15 @@ export function findStartBookActions(
   meldThresholdMet = true,
 ): AiAction[] {
   const actions: AiAction[] = []
-  const ranks = new Set<Rank>()
-  const playable = hand.filter((c) => !isRedThree(c))
+  const groups = groupByRank(hand)
+  const wilds = hand.filter((c) => isWildCard(c) && !isRedThree(c))
+  const takenRanks = new Set(teamBooks.map((b) => b.rank))
+  const bestByRank = new Map<Rank, AiAction & { type: 'startBook' }>()
 
-  for (const combo of combinations(playable, 3, Math.min(7, playable.length))) {
+  function consider(combo: Card[]) {
     const cardIds = combo.map((c) => c.id)
     const check = canStartBook(combo, teamBooks)
-    if (!check.ok) continue
+    if (!check.ok) return
     const projectedBook: Book = {
       id: `preview-${check.rank}`,
       rank: check.rank,
@@ -91,17 +93,43 @@ export function findStartBookActions(
         meldThresholdMet,
       )
     ) {
-      continue
+      return
     }
-    if (ranks.has(check.rank)) continue
-    ranks.add(check.rank)
-    actions.push({
-      type: 'startBook',
-      cardIds: combo.map((c) => c.id),
-      score: meldContributionFromCards(combo),
-    })
+    const score = meldContributionFromCards(combo)
+    const existing = bestByRank.get(check.rank)
+    if (
+      !existing ||
+      score > existing.score ||
+      (score === existing.score && combo.length > existing.cardIds.length)
+    ) {
+      bestByRank.set(check.rank, {
+        type: 'startBook',
+        cardIds,
+        score,
+      })
+    }
   }
 
+  for (const [rank, naturals] of groups) {
+    if (takenRanks.has(rank)) continue
+    const maxClean = Math.min(7, naturals.length)
+    for (let size = 3; size <= maxClean; size++) {
+      consider(naturals.slice(0, size))
+    }
+    if (wilds.length === 0 || naturals.length < 2) continue
+    for (const wild of wilds) {
+      const maxNat = Math.min(6, naturals.length)
+      for (let natCount = 2; natCount <= maxNat; natCount++) {
+        const combo = [...naturals.slice(0, natCount), wild]
+        if (combo.length > 7) continue
+        consider(combo)
+      }
+    }
+  }
+
+  for (const action of bestByRank.values()) {
+    actions.push(action)
+  }
   return actions
 }
 

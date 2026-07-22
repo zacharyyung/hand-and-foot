@@ -28,6 +28,7 @@ import {
   planInitialMeld,
   shouldRandomlySkipMeld,
 } from './strategy'
+import { getLearnedPreferences, learningStrength } from './learning'
 
 export interface AiTurnResult {
   state: GameState
@@ -72,10 +73,18 @@ export function runAiTurn(
   }
 
   const maxPlays = difficulty === 'expert' ? 14 : 10
+  const learned = getLearnedPreferences()
+  const learnStrength = learningStrength(learned.sampleSize, difficulty)
   debug?.step(
     'turn',
     `${player.profile.name} (${difficulty}) · hand ${player.hand.length} · max ${maxPlays} meld plays`,
   )
+  if (learnStrength > 0) {
+    debug?.step(
+      'learn',
+      `Studied ${learned.sampleSize} moves (strength ${(learnStrength * 100).toFixed(0)}%) · early meld ${(learned.earlyMeldAggressiveness * 100).toFixed(0)}% · clean ${(learned.cleanBias * 100).toFixed(0)}% · large books ${(learned.largeBookBias * 100).toFixed(0)}%`,
+    )
+  }
 
   for (let i = 0; i < maxPlays; i++) {
     if (current.turnPhase !== 'play') break

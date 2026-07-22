@@ -6,6 +6,7 @@ import type { ChatMessage } from './game/chat'
 import { isAllowedChatMessage } from './game/chat'
 import { loadMutePreference, playSound, unlockAudio } from './game/audio'
 import { loadAutoSortPreference, loadAiDebugPreference, saveAutoSortPreference, saveAiDebugPreference } from './game/preferences'
+import { observeGameTransition } from './game/ai/learning'
 import type { UndoVoteRequest } from './game/votes'
 import {
   humanSeats,
@@ -223,6 +224,9 @@ function App() {
     next: GameState,
     options?: { recordHistory?: boolean },
   ) {
+    if (game) {
+      observeGameTransition(game, next)
+    }
     if (options?.recordHistory && game) {
       setGameHistory((history) => [...history.slice(-40), game])
     }
@@ -320,15 +324,21 @@ function App() {
 
     if (game.phase === 'roundEnd') {
       if (!game.roundScores) {
-        setGame(applyRoundScores(game))
+        const scored = applyRoundScores(game)
+        observeGameTransition(game, scored)
+        setGame(scored)
         return
       }
       if (game.winnerTeamId !== null) {
         playSound('goOut')
-        setGame({ ...game, phase: 'gameOver' })
+        const over = { ...game, phase: 'gameOver' as const }
+        observeGameTransition(game, over)
+        setGame(over)
         return
       }
-      setGame(startNextRound(game))
+      const nextRound = startNextRound(game)
+      observeGameTransition(game, nextRound)
+      setGame(nextRound)
       setChatMessages([])
     }
   }
