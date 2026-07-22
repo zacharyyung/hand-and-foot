@@ -399,8 +399,9 @@ export function hasAlternativeWildTarget(
 }
 
 /**
- * Wild on a clean book costs a 300-point bonus — only allow when dumping/endgame
- * or completing the team's required dirty book to go out.
+ * Wild on a clean book costs a 300-point bonus — only allow when:
+ * - Completing a 6-card clean book with a wild for the required dirty canasta (+100), or
+ * - Dumping / closing out (partner near go-out or opponents racing with a tiny hand).
  */
 export function justifyDirtyingCleanBook(
   book: Book,
@@ -422,6 +423,7 @@ export function justifyDirtyingCleanBook(
     booksWithWildAddedThisTurn,
   )
 
+  // Prefer an already-dirty book whenever one can take the wild.
   if (alternative) return false
 
   const books = pub.myTeamBooks
@@ -431,28 +433,27 @@ export function justifyDirtyingCleanBook(
     (b) => b.id !== book.id && b.cards.length >= 7 && isCleanBook(b),
   )
   const needsDirtyCompleted = !teamHasCompletedDirtyBook(books)
-  const earlyRound = pub.teamScore <= 999 && urgency === 'low'
 
-  if (earlyRound) return false
-
+  // Strategic: 6 clean + 1 wild → completed dirty canasta (+100) when another clean 7+ exists.
   const completesForGoOut =
     completes &&
     otherCompletedClean &&
     needsDirtyCompleted &&
     book.cards.length >= 6
 
-  if (completesForGoOut && (urgency !== 'low' || book.cards.length === 6)) {
+  if (completesForGoOut) {
     return true
   }
 
-  if (
+  // Only dirty without completing the go-out dirty when truly closing / racing.
+  const closingOut =
     urgency === 'high' &&
     heldCards <= 6 &&
     pub.myHand.length <= 3 &&
-    partnerNearGoOut(pub.otherPlayers, pub.myTeamId, chatMessages, state)
-  ) {
-    return true
-  }
+    (partnerNearGoOut(pub.otherPlayers, pub.myTeamId, chatMessages, state) ||
+      pub.isPlayingFoot)
+
+  if (closingOut) return true
 
   if (
     urgency === 'high' &&
@@ -463,16 +464,6 @@ export function justifyDirtyingCleanBook(
       chatMessages,
       state?.playerCount as PlayerCount | undefined,
     )
-  ) {
-    return true
-  }
-
-  if (
-    urgency === 'high' &&
-    heldCards >= 14 &&
-    pub.stockCount <= 25 &&
-    completes &&
-    book.cards.length >= 5
   ) {
     return true
   }
@@ -529,12 +520,12 @@ export function pickBestStartWhenUnlocked(
     cleanStarts.length > 0 &&
     urgency === 'low' &&
     !needsDirty &&
-    difficulty === 'expert'
+    (difficulty === 'expert' || difficulty === 'normal')
 
   if (preferCleanOnly) {
     if (
       urgency === 'low' &&
-      Math.random() < 0.12 &&
+      Math.random() < (difficulty === 'expert' ? 0.12 : 0.06) &&
       cleanStarts.length > 1
     ) {
       return cleanStarts[1].opt.cardIds
@@ -562,6 +553,7 @@ export function pickBestAddToBook(
   difficulty: AiDifficulty,
   chatMessages: ChatMessage[] = [],
   state?: GameState,
+  deniedDirtyKeys: Set<string> = new Set(),
 ): Extract<AiAction, { type: 'addToBook' }> | null {
   if (actions.length === 0) return null
 
@@ -572,6 +564,10 @@ export function pickBestAddToBook(
     const book = teamBooks.find((b) => b.id === action.bookId)
     if (!book) return false
     const cards = hand.filter((c) => action.cardIds.includes(c.id))
+    const dirtiesClean = isCleanBook(book) && countWildsInCards(cards) > 0
+    if (dirtiesClean && deniedDirtyKeys.has(dirtyActionKey(action.bookId, action.cardIds))) {
+      return false
+    }
     return justifyDirtyingCleanBook(
       book,
       cards,
@@ -600,7 +596,12 @@ export function pickBestAddToBook(
     let score = action.priority
 
     if (clean && wildsAdded > 0) {
-      score -= difficulty === 'expert' ? 400 : 300
+      // Completing required dirty canasta from 6 clean is the intended exception.
+      if (book.cards.length >= 6 && completes && !teamHasCompletedDirtyBook(teamBooks)) {
+        score += difficulty === 'expert' ? 80 : 50
+      } else {
+        score -= difficulty === 'expert' ? 400 : 300
+      }
     }
 
     if (clean && naturalsAdded > 0) {
@@ -684,6 +685,22 @@ export function pickBestAddToBook(
   return pool[0].action
 }
 
+export function dirtyActionKey(bookId: string, cardIds: string[]): string {
+  return `${bookId}:${[...cardIds].sort().join(',')}`
+}
+
+/** True when this add would put a wild on a currently-clean book. */
+export function actionDirtiesCleanBook(
+  action: Extract<AiAction, { type: 'addToBook' }>,
+  teamBooks: Book[],
+  hand: Card[],
+): boolean {
+  const book = teamBooks.find((b) => b.id === action.bookId)
+  if (!book || !isCleanBook(book)) return false
+  const cards = hand.filter((c) => action.cardIds.includes(c.id))
+  return countWildsInCards(cards) > 0
+}
+
 /** Place a lone wild on a dirty book before the AI is forced to discard it. */
 export function pickLoneWildAdd(
   hand: Card[],
@@ -719,14 +736,19 @@ export function pickLoneWildAdd(
   return null
 }
 
-/** Start a dirty book with a wild (especially a joker) instead of discarding it. */
+/** Start a dirty book with a wild only when the team still needs a dirty book, or to dump before going out. */
 export function pickWildStartBook(
   hand: Card[],
   teamBooks: Book[],
   isPlayingFoot = false,
+  urgency: 'low' | 'medium' | 'high' = 'low',
 ): string[] | null {
   const wilds = hand.filter((c) => isWildCard(c) && !isRedThree(c))
   if (wilds.length === 0) return null
+
+  const needsDirty = teamNeedsDirtyBook(teamBooks)
+  const dumping = urgency === 'high' && hand.length <= 4 && isPlayingFoot
+  if (!needsDirty && !dumping) return null
 
   const dirtyStarts = getStartOptions(hand, teamBooks, isPlayingFoot).filter((opt) => !opt.clean)
   if (dirtyStarts.length === 0) return null

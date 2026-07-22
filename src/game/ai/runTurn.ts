@@ -10,14 +10,26 @@ import {
   startBook,
 } from '../actions'
 import type { GameState } from '../deal'
-import type { ChatMessage } from '../chat'
+import type { ChatMessage, DirtyBookProposal } from '../chat'
+import {
+  createAskDirtyBookSignal,
+  dirtyBookAskText,
+  hasPartnerDirtyBookApproval,
+  isAwaitingDirtyBookConfirmation,
+  wasDirtyProposalDenied,
+} from '../chat'
 import type { Card } from '../cards'
 import { cardLabel } from '../cards'
 import { findAddToBookActions } from './decisions'
 import { AiDebugCollector } from './debugTrace'
 import { buildAiPublicState } from './publicState'
 import { maybeAiChatSignal } from './chatSignals'
+import type { PlayerCount } from '../teams'
+import { partnerSeat } from '../teams'
+import { countWildsInCards } from '../books'
 import {
+  actionDirtiesCleanBook,
+  dirtyActionKey,
   initialMeldUrgency,
   meldPressure,
   pickBestAddToBook,
@@ -32,6 +44,8 @@ import {
 export interface AiTurnResult {
   state: GameState
   chatMessage?: ChatMessage
+  /** True when the AI paused mid-turn waiting for a human partner dirty-book reply. */
+  awaitingPartner?: boolean
   debugTrace?: AiDebugCollector['trace']
 }
 
@@ -48,6 +62,31 @@ function labelCards(hand: Card[], ids: string[]): string {
     .join(' ')
 }
 
+function deniedDirtyKeysFromChat(
+  messages: ChatMessage[],
+  seatIndex: number,
+  playerCount: PlayerCount,
+): Set<string> {
+  const denied = new Set<string>()
+  for (const msg of messages) {
+    if (msg.type !== 'ask_dirty_book' || msg.senderSeatIndex !== seatIndex) continue
+    const proposal = msg.dirtyProposal
+    if (!proposal) continue
+    if (wasDirtyProposalDenied(messages, seatIndex, playerCount, proposal)) {
+      denied.add(dirtyActionKey(proposal.bookId, proposal.cardIds))
+    }
+  }
+  return denied
+}
+
+function needsHumanDirtyConsent(
+  state: GameState,
+  seatIndex: number,
+): boolean {
+  const partnerIdx = partnerSeat(seatIndex, state.playerCount as PlayerCount)
+  return state.players[partnerIdx]?.profile.isHuman === true
+}
+
 export function runAiTurn(
   state: GameState,
   chatMessages: ChatMessage[] = [],
@@ -61,6 +100,13 @@ export function runAiTurn(
   let current = state
   let chatMessage: ChatMessage | undefined
   let messages = chatMessages
+  const seatIndex = current.currentPlayerIndex
+  const playerCount = current.playerCount as PlayerCount
+
+  if (isAwaitingDirtyBookConfirmation(current, seatIndex, messages)) {
+    debug?.step('chat', 'Waiting for partner to approve dirtying a clean book.')
+    return { state: current, awaitingPartner: true, debugTrace: debug?.trace }
+  }
 
   if (current.turnPhase === 'draw') {
     debug?.step('draw', 'Drawing 2 from stock.')
@@ -76,6 +122,9 @@ export function runAiTurn(
     'turn',
     `${player.profile.name} (${difficulty}) · hand ${player.hand.length} · max ${maxPlays} meld plays`,
   )
+
+  const deniedDirtyKeys = deniedDirtyKeysFromChat(messages, seatIndex, playerCount)
+  const askHumanBeforeDirty = needsHumanDirtyConsent(current, seatIndex)
 
   for (let i = 0; i < maxPlays; i++) {
     if (current.turnPhase !== 'play') break
@@ -160,6 +209,7 @@ export function runAiTurn(
           difficulty,
           messages,
           current,
+          deniedDirtyKeys,
         )
         if (!bestAdd) {
           debug?.step('add', 'No scored add action left.')
@@ -176,9 +226,48 @@ export function runAiTurn(
         }
 
         const book = pub.myTeamBooks.find((b) => b.id === bestAdd.bookId)
+        const dirtiesClean = actionDirtiesCleanBook(bestAdd, pub.myTeamBooks, pub.myHand)
+
+        if (dirtiesClean && askHumanBeforeDirty && book) {
+          const proposal: DirtyBookProposal = {
+            bookId: bestAdd.bookId,
+            rank: book.rank,
+            cardIds: bestAdd.cardIds,
+          }
+          const approved = hasPartnerDirtyBookApproval(
+            messages,
+            seatIndex,
+            playerCount,
+            proposal,
+          )
+
+          if (!approved) {
+            const cardLabels = labelCards(pub.myHand, bestAdd.cardIds)
+            debug?.step(
+              'chat',
+              `Asking partner before dirtying ${book.rank}s with ${cardLabels}.`,
+            )
+            chatMessage = createAskDirtyBookSignal(
+              seatIndex,
+              player.profile.name,
+              player.profile.avatar,
+              proposal,
+              dirtyBookAskText(book.rank, cardLabels),
+            )
+            return {
+              state: current,
+              chatMessage,
+              awaitingPartner: true,
+              debugTrace: debug?.trace,
+            }
+          }
+        }
+
         debug?.step(
           'add',
-          `Adding to ${book?.rank ?? '?'} book: ${labelCards(pub.myHand, bestAdd.cardIds)}`,
+          `Adding to ${book?.rank ?? '?'} book: ${labelCards(pub.myHand, bestAdd.cardIds)}${
+            dirtiesClean ? ' (dirtying clean book)' : ''
+          }`,
         )
         const result = addToBook(current, bestAdd.bookId, bestAdd.cardIds)
         if (!result.error) {
@@ -254,12 +343,22 @@ export function runAiTurn(
           refreshed.myHand,
           refreshed.myTeamBooks,
           refreshed.isPlayingFoot,
+          meldPressure(refreshed),
         )
         if (wildStart) {
-          debug?.step('wild', `Starting book with wild: ${wildStart.map((id) => {
+          const startsDirty = wildStart.some((id) => {
             const card = refreshed.myHand.find((c) => c.id === id)
-            return card ? cardLabel(card) : id
-          }).join(' ')}`)
+            return card && countWildsInCards([card]) > 0
+          })
+          debug?.step(
+            'wild',
+            `Starting book with wild${startsDirty ? ' (dirty start)' : ''}: ${wildStart
+              .map((id) => {
+                const card = refreshed.myHand.find((c) => c.id === id)
+                return card ? cardLabel(card) : id
+              })
+              .join(' ')}`,
+          )
           const startResult = startBook(current, wildStart)
           if (!startResult.error) {
             current = startResult.state

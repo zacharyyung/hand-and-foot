@@ -53,7 +53,11 @@ import { AiDebugPanel } from './AiDebugPanel'
 import { useGameShellLayout } from './useGameShellLayout'
 import { TEAM_COLORS, partnerSeat, type PlayerCount } from '../game/teams'
 import type { ChatMessage } from '../game/chat'
-import { getPartnerGoOutHint, pendingPartnerGoOutRequest } from '../game/chat'
+import {
+  getPartnerGoOutHint,
+  isAwaitingDirtyBookConfirmation,
+  pendingPartnerGoOutRequest,
+} from '../game/chat'
 import { aiPartnerGoOutReplySeats, maybeAiPartnerGoOutResponse } from '../game/ai/chatSignals'
 
 interface GameViewProps {
@@ -78,6 +82,7 @@ const AI_PARTNER_REPLY_DELAY_MS = 900
 
 function shortStatus(opts: {
   aiThinking: boolean
+  awaitingDirtyConfirm: boolean
   currentName: string
   currentAvatar: string
   isMyTurn: boolean
@@ -86,6 +91,7 @@ function shortStatus(opts: {
   goingOut: boolean
   hasFoot: boolean
 }): string {
+  if (opts.awaitingDirtyConfirm) return `${opts.currentName} asks…`
   if (opts.aiThinking) return `${opts.currentName}…`
   if (!opts.isMyTurn) return `${opts.currentAvatar} ${opts.currentName}`
   if (opts.turnPhase === 'draw') {
@@ -675,8 +681,18 @@ export function GameView({
     return () => timers.forEach(clearTimeout)
   }, [chatMessages, game, onChatSend])
 
+  const awaitingDirtyConfirm =
+    !current.profile.isHuman &&
+    isAwaitingDirtyBookConfirmation(game, current.profile.seatIndex, chatMessages)
+
   useEffect(() => {
     if (game.phase !== 'playing' || current.profile.isHuman) {
+      setAiThinking(false)
+      return
+    }
+
+    // Pause the AI turn until the human partner answers a dirty-book ask.
+    if (awaitingDirtyConfirm) {
       setAiThinking(false)
       return
     }
@@ -704,12 +720,31 @@ export function GameView({
       if (result.chatMessage) {
         onChatSend(result.chatMessage, result.state)
       }
-      onGameChange(result.state)
+      // Persist mid-turn state when pausing for partner consent (e.g. after draw).
+      if (result.state !== game || !result.awaitingPartner) {
+        onGameChange(
+          result.state,
+          result.awaitingPartner ? { recordHistory: false } : undefined,
+        )
+      }
       setAiThinking(false)
     }, resumeDelay)
 
     return () => clearTimeout(timer)
-  }, [game, chatMessages, current.profile.isHuman, onGameChange, onChatSend, aiDebugEnabled])
+  }, [
+    game,
+    chatMessages,
+    current.profile.isHuman,
+    current.profile.seatIndex,
+    current.profile.name,
+    current.profile.aiDifficulty,
+    current.hand,
+    current.foot,
+    awaitingDirtyConfirm,
+    onGameChange,
+    onChatSend,
+    aiDebugEnabled,
+  ])
 
   function toggleCard(cardId: string) {
     if (!isMyTurn || game.turnPhase === 'draw') return
@@ -1201,6 +1236,7 @@ export function GameView({
 
   const statusText = shortStatus({
     aiThinking,
+    awaitingDirtyConfirm,
     currentName: current.profile.name,
     currentAvatar: current.profile.avatar,
     isMyTurn,
