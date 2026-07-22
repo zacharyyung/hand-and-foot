@@ -15,6 +15,7 @@ import {
   teamNeedsCleanBook,
   teamNeedsDirtyBook,
 } from './strategy'
+import { getLearnedPreferences, learningStrength } from './learning'
 
 export interface AiDebugStep {
   phase: string
@@ -194,6 +195,16 @@ export function buildAiDebugSnapshot(
   }
   if (difficulty === 'normal') {
     notes.push('Normal mode randomly skips melds ~2–10% (add) and ~3–10% (end turn).')
+  }
+
+  const learned = getLearnedPreferences()
+  const learnStrength = learningStrength(learned.sampleSize, difficulty)
+  if (learnStrength > 0) {
+    notes.push(
+      `Learning from ${learned.sampleSize} studied moves (${(learnStrength * 100).toFixed(0)}% influence): early meld ${(learned.earlyMeldAggressiveness * 100).toFixed(0)}%, clean ${(learned.cleanBias * 100).toFixed(0)}%, large books ${(learned.largeBookBias * 100).toFixed(0)}%.`,
+    )
+  } else {
+    notes.push('AI learning memory is empty — will study melds and discards as games are played.')
   }
 
   const topStarts = [...startBookActions]
