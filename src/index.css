@@ -725,6 +725,41 @@
     color: #fce8ef;
   }
 
+  .playing-card-face-joker {
+    align-items: center;
+    justify-content: center;
+    padding: 0.08rem;
+  }
+
+  .playing-card-face-joker-full {
+    height: 100%;
+    width: 100%;
+  }
+
+  .playing-card-joker-figure {
+    display: block;
+    width: 88%;
+    height: auto;
+    max-height: 94%;
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.28));
+  }
+
+  .playing-card-joker-figure-micro {
+    width: 92%;
+  }
+
+  .playing-card-joker-figure-tiny {
+    width: 90%;
+  }
+
+  .playing-card-joker-figure-small {
+    width: 82%;
+  }
+
+  .playing-card-joker-figure-large {
+    width: 78%;
+  }
+
   /* Phone / book-mini faces — rank fills the face; suit stays quiet */
   .playing-card-face-inner {
     display: flex;
