@@ -1,5 +1,6 @@
 import { buildCommentary, computeExcitement, eventCacheKey } from './commentary'
 import { resetCommentaryVariety } from './commentaryVariety'
+import { elevenLabsConfigHint } from './elevenLabsConfigHint'
 import { generateCommentary } from './llmCommentary'
 import { loadNarrationSettings, saveNarrationSettings } from './preferences'
 import { NarrationQueue, priorityForEvent } from './NarrationQueue'
@@ -171,7 +172,7 @@ class NarrationServiceImpl {
     const status = getElevenLabsProviderStatus()
     if (status.lastError) return status.lastError
     if (!status.configured) {
-      return 'Add ELEVENLABS_API_KEY to .env and restart the dev server to enable narration.'
+      return elevenLabsConfigHint({ includeNarrationSuffix: true })
     }
     return null
   }

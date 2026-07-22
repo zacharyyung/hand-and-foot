@@ -1,4 +1,5 @@
 import { loadPartnerVoiceSettings, savePartnerVoiceSettings } from './preferences'
+import { elevenLabsConfigHint } from '../narration/elevenLabsConfigHint'
 import { ElevenLabsProvider, refreshElevenLabsProviderStatus } from '../narration/providers/ElevenLabsProvider'
 import { unlockNarrationAudio } from '../narration/audioPlayback'
 import { getNarratorVoice } from '../narration/voices'
@@ -37,7 +38,7 @@ class PartnerVoiceServiceImpl {
 
   getStatusMessage(): string | null {
     if (!this.elevenLabs.isAvailable()) {
-      return 'Add ELEVENLABS_API_KEY to .env and restart the dev server.'
+      return elevenLabsConfigHint()
     }
     return null
   }

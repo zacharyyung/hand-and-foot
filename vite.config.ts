@@ -4,6 +4,13 @@ import type { IncomingMessage, ServerResponse } from 'http'
 
 const DEFAULT_MODEL = 'eleven_turbo_v2_5'
 
+function configHint(): string {
+  if (process.env.VERCEL) {
+    return 'Set ELEVENLABS_API_KEY in the Vercel project Environment Variables (Production), then redeploy.'
+  }
+  return 'Add ELEVENLABS_API_KEY to .env and restart the dev server.'
+}
+
 function readJsonBody(req: IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
@@ -64,7 +71,7 @@ function elevenLabsDevProxy(env: Record<string, string>): Plugin {
         if (!apiKey) {
           sendJson(res, 503, {
             error: 'ELEVENLABS_API_KEY not configured',
-            hint: 'Add ELEVENLABS_API_KEY to .env and restart the dev server.',
+            hint: configHint(),
           })
           return
         }
