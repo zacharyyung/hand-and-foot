@@ -145,7 +145,7 @@ export function HandCards({
        * Leave a little room for fan rotation overhang on the outer cards
        * so scaled/tight hands don't visually clip past the dock.
        */
-      const rotPad = mobile ? 14 : 20
+      const rotPad = mobile ? 16 : 20
       setFitWidth(Math.max(120, scrollEl.clientWidth - rotPad * 2))
     }
 
@@ -357,7 +357,7 @@ export function HandCards({
         mobile ? 'hand-cards-spread-mobile' : ''
       }`}
       style={{
-        minHeight: n > 0 ? (mobile ? '3.375rem' : 'min(6.25rem, 22dvh)') : undefined,
+        minHeight: n > 0 ? (mobile ? '4.75rem' : 'min(6.25rem, 22dvh)') : undefined,
       }}
       onMouseLeave={() => setHoverCardId(null)}
     >
@@ -371,7 +371,7 @@ export function HandCards({
           className="relative transition-[width,transform] ease-snappy will-change-[width,transform]"
           style={{
             width: fanLayout.fanWidth,
-            height: mobile ? '3.25rem' : 'min(5.75rem, 21dvh)',
+            height: mobile ? '4.5rem' : 'min(5.75rem, 21dvh)',
             transitionDuration: `${handSpreadMs}ms`,
             transform: fitScale < 1 ? `scale(${fitScale})` : undefined,
             transformOrigin: 'bottom center',

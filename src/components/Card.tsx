@@ -1,6 +1,7 @@
 import type { Card as CardType } from '../game/cards'
-import { cardLabel, isRedCard, isWildCard } from '../game/cards'
+import { cardLabel, isRedCard, isRedThree, isWildCard } from '../game/cards'
 import { useId } from 'react'
+import { CARD_SIZE_CLASS } from './cardSizes'
 
 /** Shared wild styling — deep wine, not neon. */
 export const WILD_TEXT_CLASS = 'text-rose-200'
@@ -163,6 +164,105 @@ function BicycleCardBack({
   )
 }
 
+type CardTier = 'micro' | 'tiny' | 'small' | 'large'
+
+function cardTier(micro: boolean, tiny: boolean, small: boolean): CardTier {
+  if (micro) return 'micro'
+  if (tiny) return 'tiny'
+  if (small) return 'small'
+  return 'large'
+}
+
+/** Compact phone faces: huge rank fills the card; suit stays a quiet cue. */
+function CompactFace({
+  card,
+  tier,
+  wild = false,
+}: {
+  card: CardType
+  tier: 'micro' | 'tiny'
+  wild?: boolean
+}) {
+  const redThree = isRedThree(card)
+  const glyph = suitGlyph(card.suit)
+  const rank = card.rank === 'Joker' ? 'J' : card.rank
+  const isTen = rank === '10'
+
+  /* Rank is the whole point on mobile — size it to dominate the face. */
+  const centerRankClass =
+    tier === 'micro'
+      ? isTen
+        ? 'text-[1.05rem]'
+        : 'text-[1.35rem]'
+      : isTen
+        ? 'text-[1.55rem]'
+        : 'text-[1.85rem]'
+
+  const indexRankClass =
+    tier === 'micro'
+      ? isTen
+        ? 'text-[9px]'
+        : 'text-[11px]'
+      : isTen
+        ? 'text-[11px]'
+        : 'text-[13px]'
+
+  /* Suit only shouts for red threes; otherwise a whisper under the peek index. */
+  const suitClass = redThree
+    ? tier === 'micro'
+      ? 'text-[10px]'
+      : 'text-[12px]'
+    : tier === 'micro'
+      ? 'text-[6px] opacity-45'
+      : 'text-[7px] opacity-40'
+
+  return (
+    <div
+      className={`playing-card-face-inner playing-card-face-compact ${
+        wild ? 'playing-card-face-wild-inner' : ''
+      }`}
+    >
+      <div className="playing-card-index">
+        <span
+          className={`playing-card-rank font-display font-bold leading-none tracking-tight ${indexRankClass}`}
+        >
+          {rank}
+        </span>
+        <span className={`playing-card-suit leading-none ${suitClass}`} aria-hidden>
+          {glyph}
+        </span>
+      </div>
+
+      <span
+        className={`playing-card-center-rank font-display font-bold leading-none tracking-tight ${centerRankClass}`}
+        aria-hidden
+      >
+        {rank}
+      </span>
+
+      {redThree ? (
+        <span
+          className={`playing-card-center-suit leading-none ${
+            tier === 'micro' ? 'text-[12px]' : 'text-[15px]'
+          }`}
+          aria-hidden
+        >
+          {glyph}
+        </span>
+      ) : (
+        <span
+          className={`playing-card-foot-suit leading-none ${
+            tier === 'micro' ? 'text-[7px] opacity-40' : 'text-[8px] opacity-35'
+          }`}
+          aria-hidden
+        >
+          {glyph}
+        </span>
+      )}
+    </div>
+  )
+}
+
 export function Card({
   card,
   faceDown = false,
@@ -172,14 +272,8 @@ export function Card({
   lifted = false,
   className = '',
 }: CardProps) {
-  const sizeClass = micro
-    ? 'h-8 w-[1.3125rem] text-[5px]'
-    : tiny
-      ? 'h-11 w-[1.85rem] text-[7px]'
-      : small
-        ? 'h-[4.1rem] w-[2.85rem] text-[11px] sm:h-16 sm:w-11 sm:text-xs'
-        : 'h-24 w-16 text-sm'
-
+  const tier = cardTier(micro, tiny, small)
+  const sizeClass = CARD_SIZE_CLASS[tier]
   const liftClass = lifted ? '-translate-y-2 shadow-card-lift' : ''
 
   if (faceDown || !card) {
@@ -194,6 +288,17 @@ export function Card({
   }
 
   if (card.rank === 'Joker') {
+    if (tier === 'micro' || tier === 'tiny') {
+      return (
+        <div
+          className={`playing-card playing-card-wild ${sizeClass} ${liftClass} ${className}`}
+          aria-label={cardLabel(card)}
+        >
+          <CompactFace card={card} tier={tier} wild />
+        </div>
+      )
+    }
+
     return (
       <div
         className={`playing-card playing-card-wild ${sizeClass} ${liftClass} ${className}`}
@@ -202,34 +307,35 @@ export function Card({
         <div className="flex h-full flex-col items-center justify-center gap-0.5 p-0.5">
           <span
             className={`font-display font-semibold leading-none tracking-wide ${
-              micro ? 'text-[4px]' : tiny ? 'text-[6px]' : small ? 'text-[8px]' : 'text-[10px]'
+              small ? 'text-[8px]' : 'text-[10px]'
             }`}
           >
-            {micro ? 'J' : 'JOKER'}
+            JOKER
           </span>
-          <span
-            className={`leading-none opacity-90 ${
-              micro ? 'text-[10px]' : tiny ? 'text-base' : small ? 'text-xl' : 'text-3xl'
-            }`}
-          >
-            ★
-          </span>
+          <span className={`leading-none opacity-90 ${small ? 'text-xl' : 'text-3xl'}`}>★</span>
         </div>
       </div>
     )
   }
 
   if (isWildCard(card)) {
+    if (tier === 'micro' || tier === 'tiny') {
+      return (
+        <div
+          className={`playing-card playing-card-wild ${sizeClass} ${liftClass} ${className}`}
+          aria-label={cardLabel(card)}
+        >
+          <CompactFace card={card} tier={tier} wild />
+        </div>
+      )
+    }
+
     return (
       <div
         className={`playing-card playing-card-wild ${sizeClass} ${liftClass} ${className}`}
         aria-label={cardLabel(card)}
       >
-        <div
-          className={`flex h-full flex-col justify-between font-semibold ${
-            micro ? 'p-0.5' : 'p-1 sm:p-1.5'
-          }`}
-        >
+        <div className="flex h-full flex-col justify-between p-1 font-semibold sm:p-1.5">
           <span className="leading-none">2</span>
           <span className="text-center text-[0.95em] leading-none opacity-90">
             {suitGlyph(card.suit)}
@@ -242,27 +348,36 @@ export function Card({
 
   const isRed = isRedCard(card)
   const textColor = isRed ? 'text-red-700' : 'text-stone-800'
+  const redThree = isRedThree(card)
+
+  if (tier === 'micro' || tier === 'tiny') {
+    return (
+      <div
+        className={`playing-card playing-card-face ${sizeClass} ${liftClass} ${textColor} ${
+          redThree ? 'playing-card-red-three' : ''
+        } ${className}`}
+        aria-label={cardLabel(card)}
+      >
+        <CompactFace card={card} tier={tier} />
+      </div>
+    )
+  }
 
   return (
     <div
-      className={`playing-card playing-card-face ${sizeClass} ${liftClass} ${textColor} ${className}`}
+      className={`playing-card playing-card-face ${sizeClass} ${liftClass} ${textColor} ${
+        redThree ? 'playing-card-red-three' : ''
+      } ${className}`}
       aria-label={cardLabel(card)}
     >
-      <div
-        className={`flex h-full flex-col justify-between font-semibold ${
-          micro ? 'p-0.5' : 'p-1 sm:p-1.5'
-        }`}
-      >
+      <div className="flex h-full flex-col justify-between p-1 font-semibold sm:p-1.5">
         <span className="leading-none tracking-tight">{card.rank}</span>
         <span
-          className="text-center leading-none"
-          style={{ fontSize: micro ? '0.5rem' : tiny ? '0.65rem' : undefined }}
+          className={`text-center leading-none ${redThree ? 'text-[1.15em]' : 'opacity-70'}`}
         >
           {suitGlyph(card.suit)}
         </span>
-        {!micro && (
-          <span className="rotate-180 self-end leading-none tracking-tight">{card.rank}</span>
-        )}
+        <span className="rotate-180 self-end leading-none tracking-tight">{card.rank}</span>
       </div>
     </div>
   )

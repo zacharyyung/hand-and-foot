@@ -246,25 +246,26 @@ export function TableBookZone({
 
 function tableBookZoneClass(side: CompassSide, mobile = false): string {
   if (mobile) {
+    /* Wider strips so enlarged BookMini tiles wrap cleanly in 3 columns. */
     switch (side) {
       case 'north':
-        return 'left-1/2 top-[20%] w-[min(88%,18rem)] -translate-x-1/2'
+        return 'left-1/2 top-[18%] w-[min(92%,20rem)] -translate-x-1/2'
       case 'south':
-        return 'bottom-[26%] left-1/2 w-[min(88%,18rem)] -translate-x-1/2'
+        return 'bottom-[22%] left-1/2 w-[min(92%,20rem)] -translate-x-1/2'
       case 'west':
-        return 'left-[3%] top-1/2 w-[4.375rem] -translate-y-1/2'
+        return 'left-[1.5%] top-1/2 w-[6.25rem] -translate-y-1/2'
       case 'east':
-        return 'right-[3%] top-1/2 w-[4.375rem] -translate-y-1/2'
+        return 'right-[1.5%] top-1/2 w-[6.25rem] -translate-y-1/2'
       case 'nw':
-        return 'left-[3%] top-[19%] w-[4.375rem]'
+        return 'left-[1.5%] top-[16%] w-[6.25rem]'
       case 'ne':
-        return 'right-[3%] top-[19%] w-[4.375rem]'
+        return 'right-[1.5%] top-[16%] w-[6.25rem]'
       case 'sw':
-        return 'bottom-[26%] left-[3%] w-[4.375rem]'
+        return 'bottom-[22%] left-[1.5%] w-[6.25rem]'
       case 'se':
-        return 'bottom-[26%] right-[3%] w-[4.375rem]'
+        return 'bottom-[22%] right-[1.5%] w-[6.25rem]'
       default:
-        return 'left-1/2 top-[20%] w-[min(88%,18rem)] -translate-x-1/2'
+        return 'left-1/2 top-[18%] w-[min(92%,20rem)] -translate-x-1/2'
     }
   }
 
@@ -291,7 +292,7 @@ function tableBookZoneClass(side: CompassSide, mobile = false): string {
 }
 
 function tableBookFlexClass(side: CompassSide, mobile = false): string {
-  const gap = mobile ? 'gap-x-[3px] gap-y-[3px]' : 'gap-x-2.5 gap-y-2'
+  const gap = mobile ? 'gap-x-1 gap-y-1' : 'gap-x-2.5 gap-y-2'
 
   if (mobile && (side === 'west' || side === 'nw' || side === 'sw')) {
     return `grid grid-cols-3 ${gap} items-center justify-items-start`

@@ -168,11 +168,13 @@ export function StagingArea({
             </>
           )}
         </p>
-        <div className="flex flex-wrap items-center justify-center gap-1">
+        <div className={`flex flex-wrap items-center justify-center ${mobile ? 'gap-1.5' : 'gap-1'}`}>
           {stagedBooks.map((book) => (
             <div
               key={book.id}
-              className="flex items-center gap-1 rounded-lg bg-black/25 px-1.5 py-0.5"
+              className={`flex items-center gap-1 rounded-lg bg-black/25 ${
+                mobile ? 'px-1.5 py-1' : 'px-1.5 py-0.5'
+              }`}
             >
               <StagedBookFan
                 book={book}
