@@ -6,6 +6,11 @@ npm-debug.log*
 # Dependencies
 node_modules
 
+# Secrets
+.env
+.env.*
+!.env.example
+
 # Build
 dist
 dist-ssr

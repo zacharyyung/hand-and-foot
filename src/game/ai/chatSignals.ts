@@ -10,13 +10,17 @@ import {
   createApproveGoOutSignal,
   createDenyGoOutSignal,
   createReadyGoOutSignal,
+  createWildRequestSignal,
   DENY_GO_OUT_TEXT,
+  hasPartnerWildApproval,
   pendingPartnerGoOutRequest,
+  pendingPartnerWildRequest,
   teamCanGoOut,
   type ChatMessage,
 } from '../chat'
 import type { PlayerCount } from '../teams'
 import { partnerSeat } from '../teams'
+import { bookWildCount } from '../books'
 
 export interface PartnerGoOutRecommendation {
   approve: boolean
@@ -263,4 +267,45 @@ export function partnerGoOutSignaledInChat(
       m.type === 'ready_go_out' &&
       state.players[m.senderSeatIndex]?.profile.teamId === myTeamId,
   )
+}
+
+/** AI asks human partner before dirtying a clean book with a wild. */
+export function maybeAiWildRequest(
+  state: GameState,
+  seatIndex: number,
+  messages: ChatMessage[],
+  bookRank: string,
+): ChatMessage | null {
+  const player = state.players[seatIndex]
+  if (player.profile.isHuman) return null
+
+  const partnerIdx = partnerSeat(seatIndex, state.playerCount as PlayerCount)
+  if (!state.players[partnerIdx].profile.isHuman) return null
+  if (pendingPartnerWildRequest(messages, partnerIdx, seatIndex)) return null
+  if (hasPartnerWildApproval(messages, seatIndex, partnerIdx)) return null
+
+  return createWildRequestSignal(
+    seatIndex,
+    player.profile.name,
+    player.profile.avatar,
+    bookRank,
+  )
+}
+
+export function shouldDeferWildOnCleanBook(
+  state: GameState,
+  aiSeatIndex: number,
+  messages: ChatMessage[],
+  bookId: string,
+): boolean {
+  const player = state.players[aiSeatIndex]
+  const team = getTeam(state, player.profile.teamId)
+  const book = team.books.find((b) => b.id === bookId)
+  if (!book || bookWildCount(book) > 0) return false
+
+  const partnerIdx = partnerSeat(aiSeatIndex, state.playerCount as PlayerCount)
+  if (!state.players[partnerIdx].profile.isHuman) return false
+
+  if (hasPartnerWildApproval(messages, aiSeatIndex, partnerIdx)) return false
+  return true
 }

@@ -5,6 +5,8 @@ import {
   type PlayerCount,
 } from '../game/teams'
 import { playSound } from '../game/audio'
+import type { PartnerVoiceSettings } from '../partnerVoice'
+import { PartnerVoiceSettingsPanel } from './PartnerVoiceSettings'
 
 export const AI_AVATAR = '🤖'
 
@@ -54,6 +56,8 @@ interface SetupScreenProps {
   aiDifficulty: AiDifficulty
   onAiDifficultyChange: (difficulty: AiDifficulty) => void
   onStart: () => void
+  partnerVoiceSettings: PartnerVoiceSettings
+  onPartnerVoiceChange: (settings: PartnerVoiceSettings) => void
   savedSessionLabel?: string | null
   onResumeSaved?: () => void
   onDiscardSaved?: () => void
@@ -108,6 +112,8 @@ export function SetupScreen({
   aiDifficulty,
   onAiDifficultyChange,
   onStart,
+  partnerVoiceSettings,
+  onPartnerVoiceChange,
   savedSessionLabel = null,
   onResumeSaved,
   onDiscardSaved,
@@ -342,6 +348,13 @@ export function SetupScreen({
             </div>
           ))}
         </div>
+      </div>
+
+      <div className="mt-8">
+        <PartnerVoiceSettingsPanel
+          settings={partnerVoiceSettings}
+          onChange={onPartnerVoiceChange}
+        />
       </div>
 
       <button

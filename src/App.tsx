@@ -6,6 +6,11 @@ import type { ChatMessage } from './game/chat'
 import { isAllowedChatMessage } from './game/chat'
 import { loadMutePreference, playSound, unlockAudio } from './game/audio'
 import { loadAutoSortPreference, loadAiDebugPreference, saveAutoSortPreference, saveAiDebugPreference } from './game/preferences'
+import {
+  loadPartnerVoiceSettings,
+  partnerVoiceService,
+  type PartnerVoiceSettings,
+} from './partnerVoice'
 import type { UndoVoteRequest } from './game/votes'
 import {
   humanSeats,
@@ -57,6 +62,9 @@ function App() {
   const [showUndoPicker, setShowUndoPicker] = useState(false)
   const [autoSort, setAutoSort] = useState(() => loadAutoSortPreference())
   const [aiDebugEnabled, setAiDebugEnabled] = useState(() => loadAiDebugPreference())
+  const [partnerVoiceSettings, setPartnerVoiceSettings] = useState<PartnerVoiceSettings>(() =>
+    loadPartnerVoiceSettings(),
+  )
   const [savedSummary, setSavedSummary] = useState<SavedSessionSummary | null>(() =>
     peekSavedSessionSummary(),
   )
@@ -171,11 +179,13 @@ function App() {
 
   function handleStart() {
     unlockAudio()
+    partnerVoiceService.unlock()
     playSound('threshold')
     clearPersistedSession()
     setSavedSummary(null)
     setChatMessages([])
     resetSession()
+    partnerVoiceService.stop()
     setGame(
       startNewGame(
         buildSetupPlayers(humanPlayers, playerCount, aiDifficulty),
@@ -191,6 +201,7 @@ function App() {
       return
     }
     unlockAudio()
+    partnerVoiceService.unlock()
     playSound('button')
     setPlayerCount(session.setup.playerCount)
     setHumanCount(session.setup.humanCount)
@@ -347,6 +358,8 @@ function App() {
         aiDifficulty={aiDifficulty}
         onAiDifficultyChange={setAiDifficulty}
         onStart={handleStart}
+        partnerVoiceSettings={partnerVoiceSettings}
+        onPartnerVoiceChange={setPartnerVoiceSettings}
         savedSessionLabel={
           savedSummary ? formatSavedSessionLabel(savedSummary) : null
         }
@@ -425,6 +438,8 @@ function App() {
           setAiDebugEnabled(enabled)
           playSound('button')
         }}
+        partnerVoiceSettings={partnerVoiceSettings}
+        onPartnerVoiceChange={setPartnerVoiceSettings}
         onShowInstructions={() => setShowInstructions(true)}
         startOverVotes={startOverVotes}
         onStartOverVote={handleStartOverVote}

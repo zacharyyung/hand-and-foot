@@ -1,5 +1,7 @@
 import type { GameState } from '../game/deal'
+import type { PartnerVoiceSettings } from '../partnerVoice'
 import { majorityRequired, startOverReached } from '../game/votes'
+import { PartnerVoiceSettingsPanel } from './PartnerVoiceSettings'
 import { SoundToggle } from './SoundToggle'
 
 interface GameSettingsPanelProps {
@@ -17,6 +19,8 @@ interface GameSettingsPanelProps {
   onAutoSortChange: (enabled: boolean) => void
   aiDebugEnabled: boolean
   onAiDebugChange: (enabled: boolean) => void
+  partnerVoiceSettings: PartnerVoiceSettings
+  onPartnerVoiceChange: (settings: PartnerVoiceSettings) => void
   /** Render trigger inside the player dock instead of fixed corner. */
   dockInline?: boolean
   /** Icon-only trigger for narrow layouts. */
@@ -38,6 +42,8 @@ export function GameSettingsPanel({
   onAutoSortChange,
   aiDebugEnabled,
   onAiDebugChange,
+  partnerVoiceSettings,
+  onPartnerVoiceChange,
   dockInline = false,
   compact = false,
 }: GameSettingsPanelProps) {
@@ -88,6 +94,11 @@ export function GameSettingsPanel({
                 </p>
                 <SoundToggle variant="row" />
               </section>
+
+              <PartnerVoiceSettingsPanel
+                settings={partnerVoiceSettings}
+                onChange={onPartnerVoiceChange}
+              />
 
               <section className="rounded-xl bg-black/20 px-3 py-2.5">
                 <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">

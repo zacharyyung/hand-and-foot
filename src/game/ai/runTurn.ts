@@ -13,10 +13,13 @@ import type { GameState } from '../deal'
 import type { ChatMessage } from '../chat'
 import type { Card } from '../cards'
 import { cardLabel } from '../cards'
+import { bookWildCount } from '../books'
+import { hasPartnerWildApproval } from '../chat'
+import { partnerSeat, type PlayerCount } from '../teams'
 import { findAddToBookActions } from './decisions'
 import { AiDebugCollector } from './debugTrace'
 import { buildAiPublicState } from './publicState'
-import { maybeAiChatSignal } from './chatSignals'
+import { maybeAiChatSignal, maybeAiWildRequest, shouldDeferWildOnCleanBook } from './chatSignals'
 import {
   initialMeldUrgency,
   meldPressure,
@@ -242,10 +245,29 @@ export function runAiTurn(
       current.booksWithWildAddedThisTurn,
     )
     if (loneWild && !goingOut) {
-      debug?.step('wild', `Adding lone wild to book ${loneWild.bookId.slice(0, 8)}…`)
-      const wildResult = addToBook(current, loneWild.bookId, [loneWild.cardId])
-      if (!wildResult.error) {
-        current = wildResult.state
+      const team = getTeam(current, player.profile.teamId)
+      const book = team.books.find((b) => b.id === loneWild.bookId)
+      const partnerIdx = partnerSeat(current.currentPlayerIndex, current.playerCount as PlayerCount)
+      const partnerIsHuman = current.players[partnerIdx].profile.isHuman
+      const isCleanBook = book != null && bookWildCount(book) === 0
+
+      if (partnerIsHuman && isCleanBook) {
+        if (hasPartnerWildApproval(messages, current.currentPlayerIndex, partnerIdx)) {
+          debug?.step('wild', `Adding wild to book ${loneWild.bookId.slice(0, 8)} (partner approved).`)
+          const wildResult = addToBook(current, loneWild.bookId, [loneWild.cardId])
+          if (!wildResult.error) current = wildResult.state
+        } else if (shouldDeferWildOnCleanBook(current, current.currentPlayerIndex, messages, loneWild.bookId)) {
+          const wildReq = maybeAiWildRequest(current, current.currentPlayerIndex, messages, book!.rank)
+          if (wildReq && !chatMessage) {
+            debug?.step('chat', 'Asking partner before dirtying clean book.')
+            chatMessage = wildReq
+            messages = [...messages, wildReq]
+          }
+        }
+      } else {
+        debug?.step('wild', `Adding lone wild to book ${loneWild.bookId.slice(0, 8)}…`)
+        const wildResult = addToBook(current, loneWild.bookId, [loneWild.cardId])
+        if (!wildResult.error) current = wildResult.state
       }
     } else if (!goingOut) {
       const refreshed = buildAiPublicState(current, current.currentPlayerIndex)

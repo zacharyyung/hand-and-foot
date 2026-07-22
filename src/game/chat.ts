@@ -8,6 +8,9 @@ export type ChatMessageType =
   | 'approve_go_out'
   | 'deny_go_out'
   | 'partner_reply'
+  | 'wild_request'
+  | 'wild_approve'
+  | 'wild_deny'
 
 export interface ChatMessage {
   id: string
@@ -120,6 +123,14 @@ export function isAllowedChatMessage(
     )
   }
 
+  if (message.type === 'wild_approve' || message.type === 'wild_deny') {
+    return canRespondToPartnerWildRequest(
+      existingMessages,
+      message.senderSeatIndex,
+      state.playerCount as PlayerCount,
+    )
+  }
+
   return false
 }
 
@@ -197,6 +208,107 @@ export function createPartnerReplySignal(
     timestamp: Date.now(),
     type: 'partner_reply',
   }
+}
+
+export function createWildRequestSignal(
+  senderSeatIndex: number,
+  senderName: string,
+  senderAvatar: string,
+  bookRank: string,
+): ChatMessage {
+  const rankLabel = bookRank === 'Joker' ? 'joker' : bookRank
+  return {
+    id: `chat-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    senderSeatIndex,
+    senderName,
+    senderAvatar,
+    text: `Can I add a wild to our ${rankLabel}s book? It's clean right now.`,
+    timestamp: Date.now(),
+    type: 'wild_request',
+  }
+}
+
+export function createWildApproveSignal(
+  senderSeatIndex: number,
+  senderName: string,
+  senderAvatar: string,
+): ChatMessage {
+  return {
+    id: `chat-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    senderSeatIndex,
+    senderName,
+    senderAvatar,
+    text: 'Yes — go ahead with the wild.',
+    timestamp: Date.now(),
+    type: 'wild_approve',
+  }
+}
+
+export function createWildDenySignal(
+  senderSeatIndex: number,
+  senderName: string,
+  senderAvatar: string,
+): ChatMessage {
+  return {
+    id: `chat-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    senderSeatIndex,
+    senderName,
+    senderAvatar,
+    text: 'No — keep that book clean for now.',
+    timestamp: Date.now(),
+    type: 'wild_deny',
+  }
+}
+
+function latestWildRequestFrom(messages: ChatMessage[], senderSeat: number): ChatMessage | null {
+  let latest: ChatMessage | null = null
+  for (const msg of messages) {
+    if (msg.senderSeatIndex !== senderSeat || msg.type !== 'wild_request') continue
+    if (!latest || msg.timestamp > latest.timestamp) latest = msg
+  }
+  return latest
+}
+
+/** AI partner asked to wild a clean book — waiting for human reply. */
+export function pendingPartnerWildRequest(
+  messages: ChatMessage[],
+  responderSeat: number,
+  aiPartnerSeat: number,
+): ChatMessage | null {
+  const request = latestWildRequestFrom(messages, aiPartnerSeat)
+  if (!request) return null
+
+  const responded = messages.some(
+    (m) =>
+      m.senderSeatIndex === responderSeat &&
+      (m.type === 'wild_approve' || m.type === 'wild_deny') &&
+      m.timestamp > request.timestamp,
+  )
+  return responded ? null : request
+}
+
+export function canRespondToPartnerWildRequest(
+  messages: ChatMessage[],
+  responderSeat: number,
+  playerCount: PlayerCount,
+): boolean {
+  const partnerIdx = partnerSeat(responderSeat, playerCount)
+  return pendingPartnerWildRequest(messages, responderSeat, partnerIdx) !== null
+}
+
+export function hasPartnerWildApproval(
+  messages: ChatMessage[],
+  aiPartnerSeat: number,
+  responderSeat: number,
+): boolean {
+  const request = latestWildRequestFrom(messages, aiPartnerSeat)
+  if (!request) return false
+  return messages.some(
+    (m) =>
+      m.senderSeatIndex === responderSeat &&
+      m.type === 'wild_approve' &&
+      m.timestamp > request.timestamp,
+  )
 }
 
 /** Infer yes/no from a partner's free-form reply (for AI clearance). */

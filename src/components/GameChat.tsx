@@ -7,6 +7,7 @@ import {
   createReadyGoOutSignal,
   canInitiateGoOutSignal,
   pendingPartnerGoOutRequest,
+  pendingPartnerWildRequest,
   READY_GO_OUT_SIGNAL_TEXT,
   awaitingPartnerGoOutResponse,
 } from '../game/chat'
@@ -42,6 +43,9 @@ export function GameChat({
   const canSignalGoOut = canInitiateGoOutSignal(game, viewerSeat)
 
   const partnerRequest = pendingPartnerGoOutRequest(messages, viewerSeat, partnerIdx)
+  const wildRequest = pendingPartnerWildRequest(messages, viewerSeat, partnerIdx)
+  const pendingDecision = partnerRequest ?? wildRequest
+  const aiPartner = !partner.profile.isHuman
   const waitingForPartnerReply =
     viewerIsHuman &&
     awaitingPartnerGoOutResponse(messages, viewerSeat, partnerIdx)
@@ -54,10 +58,10 @@ export function GameChat({
   }, [messages, open])
 
   useEffect(() => {
-    if ((partnerRequest || waitingForPartnerReply) && viewerIsHuman) {
+    if ((pendingDecision || waitingForPartnerReply) && viewerIsHuman) {
       setOpen(true)
     }
-  }, [partnerRequest, waitingForPartnerReply, viewerIsHuman])
+  }, [pendingDecision, waitingForPartnerReply, viewerIsHuman])
 
   function sendReadyGoOut() {
     if (!viewerIsHuman || !canSignalGoOut) return
@@ -101,23 +105,23 @@ export function GameChat({
         }}
         className={`${
           dockInline ? 'dock-control dock-control-chat table-chat-chip' : 'corner-control corner-control-bl table-chat-chip'
-        } ${compact ? 'dock-control-icon' : ''} ${partnerRequest || waitingForPartnerReply ? 'table-chat-chip-alert' : ''}`}
+        } ${compact ? 'dock-control-icon' : ''} ${pendingDecision || waitingForPartnerReply ? 'table-chat-chip-alert' : ''}`}
         aria-expanded={open}
         aria-haspopup="dialog"
         aria-label="Table chat"
       >
         <span className="table-chat-chip-label">{compact ? 'Chat' : 'Table chat'}</span>
-        {partnerRequest && (
+        {pendingDecision && (
           <span className="table-chat-chip-badge table-chat-chip-badge-alert" aria-hidden>
             !
           </span>
         )}
-        {!partnerRequest && waitingForPartnerReply && (
+        {!pendingDecision && waitingForPartnerReply && (
           <span className="table-chat-chip-badge table-chat-chip-badge-alert" aria-hidden>
             …
           </span>
         )}
-        {!partnerRequest && !waitingForPartnerReply && messages.length > 0 && (
+        {!pendingDecision && !waitingForPartnerReply && messages.length > 0 && (
           <span className="table-chat-chip-badge" aria-label={`${messages.length} messages`}>
             {messages.length}
           </span>
@@ -176,7 +180,7 @@ export function GameChat({
               </div>
             )}
 
-            {partnerRequest && viewerIsHuman && (
+            {partnerRequest && viewerIsHuman && !aiPartner && (
               <div className="table-chat-partner-prompt">
                 <p className="text-[11px] font-semibold text-ink">
                   {partner.profile.avatar} {partner.profile.name} says they can go out!
@@ -203,6 +207,28 @@ export function GameChat({
               </div>
             )}
 
+            {wildRequest && viewerIsHuman && aiPartner && (
+              <div className="table-chat-partner-prompt">
+                <p className="text-[11px] font-semibold text-ink">
+                  {partner.profile.avatar} {partner.profile.name} asked about a wild card
+                </p>
+                <p className="mt-1 text-[10px] text-ink-muted">
+                  Use the partner prompt on screen to reply.
+                </p>
+              </div>
+            )}
+
+            {partnerRequest && viewerIsHuman && aiPartner && (
+              <div className="table-chat-partner-prompt">
+                <p className="text-[11px] font-semibold text-ink">
+                  {partner.profile.avatar} {partner.profile.name} wants to go out
+                </p>
+                <p className="mt-1 text-[10px] text-ink-muted">
+                  Use the partner prompt on screen to reply.
+                </p>
+              </div>
+            )}
+
             <div ref={listRef} className="table-chat-messages">
               {messages.length === 0 ? (
                 <p className="py-4 text-center text-[11px] leading-relaxed text-ink-faint">
@@ -213,8 +239,9 @@ export function GameChat({
                 messages.map((msg) => {
                   const teamId = game.players[msg.senderSeatIndex]?.profile.teamId ?? 0
                   const isRequest = msg.type === 'ready_go_out'
-                  const isApprove = msg.type === 'approve_go_out'
-                  const isDeny = msg.type === 'deny_go_out'
+                  const isApprove = msg.type === 'approve_go_out' || msg.type === 'wild_approve'
+                  const isDeny = msg.type === 'deny_go_out' || msg.type === 'wild_deny'
+                  const isWildRequest = msg.type === 'wild_request'
                   const isReply = msg.type === 'partner_reply'
                   return (
                     <div
@@ -222,7 +249,9 @@ export function GameChat({
                       className={`rounded-lg px-2.5 py-2 ${
                         isRequest
                           ? 'bg-accent/16 ring-1 ring-accent/35'
-                          : isApprove
+                          : isWildRequest
+                            ? 'bg-amber-500/14 ring-1 ring-amber-400/30'
+                            : isApprove
                             ? 'bg-emerald-500/12 ring-1 ring-emerald-400/25'
                             : isDeny
                               ? 'bg-white/5 ring-1 ring-white/10'
@@ -246,7 +275,9 @@ export function GameChat({
                         className={`mt-1 text-[11px] leading-snug ${
                           isRequest
                             ? 'font-semibold text-accent'
-                            : isApprove
+                            : isWildRequest
+                              ? 'font-semibold text-amber-200'
+                              : isApprove
                               ? 'font-semibold text-emerald-300'
                               : isReply
                                 ? 'text-sky-100'

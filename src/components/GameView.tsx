@@ -37,6 +37,8 @@ import {
 } from '../game/books'
 import { meldContributionFromCards, meldThreshold, sumCardPoints } from '../game/scoring'
 import { playSound, unlockAudio } from '../game/audio'
+import { usePartnerVoice } from '../partnerVoice'
+import type { PartnerVoiceSettings } from '../partnerVoice'
 import { useCardSettleMotion } from '../game/cardMotion'
 import { useCardFlightSystem } from '../game/cardFlight'
 import { handFlightAnchor, stagingBookAnchor, bookFlightAnchor } from '../game/flightAnchors'
@@ -47,6 +49,7 @@ import { StagingArea, type StagedBook } from './StagingArea'
 import { RoundTable } from './RoundTable'
 import { MeldTracker, CurrentRoundTracker } from './Scoreboard'
 import { GameChat } from './GameChat'
+import { PartnerVoiceOverlay } from './PartnerVoiceOverlay'
 import { GameMessageBar } from './GameMessageBar'
 import { GameSettingsPanel } from './GameSettingsPanel'
 import { AiDebugPanel } from './AiDebugPanel'
@@ -71,6 +74,8 @@ interface GameViewProps {
   onRequestUndo?: () => void
   aiDebugEnabled?: boolean
   onAiDebugChange?: (enabled: boolean) => void
+  partnerVoiceSettings: PartnerVoiceSettings
+  onPartnerVoiceChange: (settings: PartnerVoiceSettings) => void
 }
 
 const AI_TURN_DELAY_MS = 900
@@ -112,6 +117,8 @@ export function GameView({
   onRequestUndo,
   aiDebugEnabled = false,
   onAiDebugChange,
+  partnerVoiceSettings,
+  onPartnerVoiceChange,
 }: GameViewProps) {
   const shellRef = useRef<HTMLDivElement>(null)
   const shellLayout = useGameShellLayout(shellRef)
@@ -142,6 +149,7 @@ export function GameView({
   const prevBooksGameRef = useRef<GameState | null>(null)
 
   const viewerSeat = useMemo(() => getViewerSeat(game.players), [game.players])
+  usePartnerVoice(game, chatMessages)
   const viewer = game.players[viewerSeat]
   const isHumanViewer = viewer.profile.isHuman
   const stagedCardIds = useMemo(
@@ -1598,6 +1606,8 @@ export function GameView({
                       onAutoSortChange={onAutoSortChange ?? (() => {})}
                       aiDebugEnabled={aiDebugEnabled}
                       onAiDebugChange={onAiDebugChange ?? (() => {})}
+                      partnerVoiceSettings={partnerVoiceSettings}
+                      onPartnerVoiceChange={onPartnerVoiceChange}
                       dockInline
                       compact={shellLayout === 'tight'}
                     />
@@ -1632,9 +1642,20 @@ export function GameView({
               onAutoSortChange={onAutoSortChange ?? (() => {})}
               aiDebugEnabled={aiDebugEnabled}
               onAiDebugChange={onAiDebugChange ?? (() => {})}
+              partnerVoiceSettings={partnerVoiceSettings}
+              onPartnerVoiceChange={onPartnerVoiceChange}
               compact
             />
           </>
+        )}
+
+        {isHumanViewer && (
+          <PartnerVoiceOverlay
+            game={game}
+            viewerSeat={viewerSeat}
+            messages={chatMessages}
+            onSend={onChatSend}
+          />
         )}
 
         <AiDebugPanel

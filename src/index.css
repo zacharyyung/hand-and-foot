@@ -1149,8 +1149,10 @@
   }
 
   .settings-popover {
-    max-height: none;
-    overflow: visible;
+    max-height: min(85dvh, 34rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
   }
 
   .corner-popover-tr {
