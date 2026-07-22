@@ -2,12 +2,16 @@ import { useEffect, useRef, useState } from 'react'
 import type { GameState } from '../game/deal'
 import type { ChatMessage } from '../game/chat'
 import {
+  createApproveDirtyBookSignal,
   createApproveGoOutSignal,
+  createDenyDirtyBookSignal,
   createDenyGoOutSignal,
   createReadyGoOutSignal,
   canInitiateGoOutSignal,
+  pendingPartnerDirtyBookRequest,
   pendingPartnerGoOutRequest,
   READY_GO_OUT_SIGNAL_TEXT,
+  awaitingPartnerDirtyBookResponse,
   awaitingPartnerGoOutResponse,
 } from '../game/chat'
 import { partnerSeat, TEAM_COLORS, type PlayerCount } from '../game/teams'
@@ -41,12 +45,20 @@ export function GameChat({
   const isMyTurn = game.currentPlayerIndex === viewerSeat
   const canSignalGoOut = canInitiateGoOutSignal(game, viewerSeat)
 
-  const partnerRequest = pendingPartnerGoOutRequest(messages, viewerSeat, partnerIdx)
-  const waitingForPartnerReply =
+  const partnerGoOutRequest = pendingPartnerGoOutRequest(messages, viewerSeat, partnerIdx)
+  const partnerDirtyRequest = pendingPartnerDirtyBookRequest(messages, viewerSeat, partnerIdx)
+  const partnerRequest = partnerDirtyRequest ?? partnerGoOutRequest
+
+  const waitingForGoOutReply =
     viewerIsHuman &&
     awaitingPartnerGoOutResponse(messages, viewerSeat, partnerIdx)
+  const waitingForDirtyReply =
+    viewerIsHuman &&
+    awaitingPartnerDirtyBookResponse(messages, viewerSeat, partnerIdx)
+  const waitingForPartnerReply = waitingForGoOutReply || waitingForDirtyReply
   const waitingForAiReview =
     waitingForPartnerReply && !partner.profile.isHuman
+  const hasAlert = !!(partnerRequest || waitingForPartnerReply)
 
   useEffect(() => {
     const el = listRef.current
@@ -72,8 +84,8 @@ export function GameChat({
     )
   }
 
-  function sendPartnerResponse(approve: boolean) {
-    if (!viewerIsHuman || !partnerRequest) return
+  function sendPartnerGoOutResponse(approve: boolean) {
+    if (!viewerIsHuman || !partnerGoOutRequest) return
     playSound('chat')
     onSend(
       approve
@@ -91,6 +103,27 @@ export function GameChat({
     )
   }
 
+  function sendPartnerDirtyResponse(approve: boolean) {
+    if (!viewerIsHuman || !partnerDirtyRequest?.dirtyProposal) return
+    playSound('chat')
+    onSend(
+      approve
+        ? createApproveDirtyBookSignal(
+            viewer.profile.seatIndex,
+            viewer.profile.name,
+            viewer.profile.avatar,
+            partnerDirtyRequest.dirtyProposal,
+          )
+        : createDenyDirtyBookSignal(
+            viewer.profile.seatIndex,
+            viewer.profile.name,
+            viewer.profile.avatar,
+            partnerDirtyRequest.dirtyProposal,
+          ),
+      game,
+    )
+  }
+
   return (
     <>
       <button
@@ -101,7 +134,7 @@ export function GameChat({
         }}
         className={`${
           dockInline ? 'dock-control dock-control-chat table-chat-chip' : 'corner-control corner-control-bl table-chat-chip'
-        } ${compact ? 'dock-control-icon' : ''} ${partnerRequest || waitingForPartnerReply ? 'table-chat-chip-alert' : ''}`}
+        } ${compact ? 'dock-control-icon' : ''} ${hasAlert ? 'table-chat-chip-alert' : ''}`}
         aria-expanded={open}
         aria-haspopup="dialog"
         aria-label="Table chat"
@@ -141,8 +174,7 @@ export function GameChat({
               <div>
                 <p className="font-display text-sm font-semibold text-ink">Table chat</p>
                 <p className="mt-0.5 text-[10px] leading-relaxed text-ink-muted">
-                  While playing your foot with books set, ask if you can go out. Your partner&apos;s
-                  reply is advice — you make the final call.
+                  Ask about going out, or answer when your AI partner wants to dirty a clean book.
                 </p>
               </div>
               <button
@@ -160,7 +192,9 @@ export function GameChat({
                   Waiting for {partner.profile.avatar} {partner.profile.name}…
                 </p>
                 <p className="mt-1 text-[10px] text-ink-muted">
-                  Your partner is deciding whether you should go out.
+                  {waitingForDirtyReply
+                    ? 'Your partner is deciding whether to dirty a clean book.'
+                    : 'Your partner is deciding whether you should go out.'}
                 </p>
               </div>
             )}
@@ -171,12 +205,43 @@ export function GameChat({
                   Waiting for {partner.profile.avatar} {partner.profile.name}…
                 </p>
                 <p className="mt-1 text-[10px] text-ink-muted">
-                  You asked to go out — your partner&apos;s reply is advice, not a rule.
+                  {waitingForDirtyReply
+                    ? 'You asked to dirty a book — waiting for your partner.'
+                    : "You asked to go out — your partner's reply is advice, not a rule."}
                 </p>
               </div>
             )}
 
-            {partnerRequest && viewerIsHuman && (
+            {partnerDirtyRequest && viewerIsHuman && (
+              <div className="table-chat-partner-prompt">
+                <p className="text-[11px] font-semibold text-ink">
+                  {partner.profile.avatar} {partner.profile.name} wants to dirty the{' '}
+                  {partnerDirtyRequest.dirtyProposal?.rank ?? '?'}s
+                </p>
+                <p className="mt-1 text-[10px] text-ink-muted">
+                  Clean books score +300; dirty books score +100. Your yes/no decides whether they
+                  play the wild.
+                </p>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => sendPartnerDirtyResponse(true)}
+                    className="btn-success flex-1 py-2 text-[11px]"
+                  >
+                    Dirty it
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => sendPartnerDirtyResponse(false)}
+                    className="btn-secondary flex-1 py-2 text-[11px]"
+                  >
+                    Keep clean
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!partnerDirtyRequest && partnerGoOutRequest && viewerIsHuman && (
               <div className="table-chat-partner-prompt">
                 <p className="text-[11px] font-semibold text-ink">
                   {partner.profile.avatar} {partner.profile.name} says they can go out!
@@ -187,14 +252,14 @@ export function GameChat({
                 <div className="mt-2 flex gap-2">
                   <button
                     type="button"
-                    onClick={() => sendPartnerResponse(true)}
+                    onClick={() => sendPartnerGoOutResponse(true)}
                     className="btn-success flex-1 py-2 text-[11px]"
                   >
                     Yes
                   </button>
                   <button
                     type="button"
-                    onClick={() => sendPartnerResponse(false)}
+                    onClick={() => sendPartnerGoOutResponse(false)}
                     className="btn-secondary flex-1 py-2 text-[11px]"
                   >
                     No
@@ -212,9 +277,12 @@ export function GameChat({
               ) : (
                 messages.map((msg) => {
                   const teamId = game.players[msg.senderSeatIndex]?.profile.teamId ?? 0
-                  const isRequest = msg.type === 'ready_go_out'
-                  const isApprove = msg.type === 'approve_go_out'
-                  const isDeny = msg.type === 'deny_go_out'
+                  const isRequest =
+                    msg.type === 'ready_go_out' || msg.type === 'ask_dirty_book'
+                  const isApprove =
+                    msg.type === 'approve_go_out' || msg.type === 'approve_dirty_book'
+                  const isDeny =
+                    msg.type === 'deny_go_out' || msg.type === 'deny_dirty_book'
                   const isReply = msg.type === 'partner_reply'
                   return (
                     <div

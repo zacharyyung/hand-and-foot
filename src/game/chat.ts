@@ -2,12 +2,23 @@ import type { PlayerCount } from './teams'
 import { partnerSeat, teamIdForSeat } from './teams'
 import type { GameState, PlayerState } from './deal'
 import { teamHasCleanAndDirtyBooks } from './books'
+import type { Rank } from './cards'
 
 export type ChatMessageType =
   | 'ready_go_out'
   | 'approve_go_out'
   | 'deny_go_out'
   | 'partner_reply'
+  | 'ask_dirty_book'
+  | 'approve_dirty_book'
+  | 'deny_dirty_book'
+
+/** Proposed wild add that would turn a clean book dirty. */
+export interface DirtyBookProposal {
+  bookId: string
+  rank: Rank
+  cardIds: string[]
+}
 
 export interface ChatMessage {
   id: string
@@ -17,11 +28,18 @@ export interface ChatMessage {
   text: string
   timestamp: number
   type: ChatMessageType
+  dirtyProposal?: DirtyBookProposal
 }
 
 export const READY_GO_OUT_SIGNAL_TEXT = 'I can go out!'
 export const APPROVE_GO_OUT_TEXT = 'Yes — you can go out!'
 export const DENY_GO_OUT_TEXT = "No — don't go out."
+export const APPROVE_DIRTY_BOOK_TEXT = 'Yes — dirty it.'
+export const DENY_DIRTY_BOOK_TEXT = 'No — keep it clean.'
+
+export function dirtyBookAskText(rank: Rank, cardLabels: string): string {
+  return `Want me to dirty the ${rank}s with ${cardLabels}? Clean books are +300; dirty are +100.`
+}
 
 export function isGoOutRequest(type: ChatMessageType): boolean {
   return type === 'ready_go_out'
@@ -101,6 +119,32 @@ export function canRespondToPartnerGoOutRequest(
   return pendingPartnerGoOutRequest(messages, responderSeat, partnerIdx) !== null
 }
 
+export function isDirtyBookAsk(type: ChatMessageType): boolean {
+  return type === 'ask_dirty_book'
+}
+
+export function isDirtyBookResponse(type: ChatMessageType): boolean {
+  return type === 'approve_dirty_book' || type === 'deny_dirty_book'
+}
+
+/** Only the partner of a pending dirty-book ask may reply yes/no. */
+export function canRespondToPartnerDirtyBookRequest(
+  messages: ChatMessage[],
+  responderSeat: number,
+  playerCount: PlayerCount,
+): boolean {
+  const partnerIdx = partnerSeat(responderSeat, playerCount)
+  return pendingPartnerDirtyBookRequest(messages, responderSeat, partnerIdx) !== null
+}
+
+/** AI may ask while it is mid-turn and proposing a dirty add. */
+export function canInitiateDirtyBookAsk(state: GameState, seatIndex: number): boolean {
+  if (state.phase !== 'playing' || state.currentPlayerIndex !== seatIndex) return false
+  if (state.turnPhase !== 'play') return false
+  const player = state.players[seatIndex]
+  return !player.profile.isHuman
+}
+
 export function isAllowedChatMessage(
   state: GameState,
   message: ChatMessage,
@@ -114,6 +158,22 @@ export function isAllowedChatMessage(
 
   if (isGoOutResponse(message.type)) {
     return canRespondToPartnerGoOutRequest(
+      existingMessages,
+      message.senderSeatIndex,
+      state.playerCount as PlayerCount,
+    )
+  }
+
+  if (message.type === 'ask_dirty_book') {
+    return (
+      canInitiateDirtyBookAsk(state, message.senderSeatIndex) &&
+      !!message.dirtyProposal?.bookId &&
+      (message.dirtyProposal.cardIds?.length ?? 0) > 0
+    )
+  }
+
+  if (isDirtyBookResponse(message.type)) {
+    return canRespondToPartnerDirtyBookRequest(
       existingMessages,
       message.senderSeatIndex,
       state.playerCount as PlayerCount,
@@ -197,6 +257,219 @@ export function createPartnerReplySignal(
     timestamp: Date.now(),
     type: 'partner_reply',
   }
+}
+
+export function createAskDirtyBookSignal(
+  senderSeatIndex: number,
+  senderName: string,
+  senderAvatar: string,
+  proposal: DirtyBookProposal,
+  text: string,
+): ChatMessage {
+  return {
+    id: `chat-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    senderSeatIndex,
+    senderName,
+    senderAvatar,
+    text,
+    timestamp: Date.now(),
+    type: 'ask_dirty_book',
+    dirtyProposal: proposal,
+  }
+}
+
+export function createApproveDirtyBookSignal(
+  senderSeatIndex: number,
+  senderName: string,
+  senderAvatar: string,
+  proposal: DirtyBookProposal,
+  text: string = APPROVE_DIRTY_BOOK_TEXT,
+): ChatMessage {
+  return {
+    id: `chat-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    senderSeatIndex,
+    senderName,
+    senderAvatar,
+    text,
+    timestamp: Date.now(),
+    type: 'approve_dirty_book',
+    dirtyProposal: proposal,
+  }
+}
+
+export function createDenyDirtyBookSignal(
+  senderSeatIndex: number,
+  senderName: string,
+  senderAvatar: string,
+  proposal: DirtyBookProposal,
+  text: string = DENY_DIRTY_BOOK_TEXT,
+): ChatMessage {
+  return {
+    id: `chat-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    senderSeatIndex,
+    senderName,
+    senderAvatar,
+    text,
+    timestamp: Date.now(),
+    type: 'deny_dirty_book',
+    dirtyProposal: proposal,
+  }
+}
+
+function sameDirtyProposal(
+  a: DirtyBookProposal | undefined,
+  b: DirtyBookProposal | undefined,
+): boolean {
+  if (!a || !b) return false
+  if (a.bookId !== b.bookId) return false
+  if (a.cardIds.length !== b.cardIds.length) return false
+  const aIds = [...a.cardIds].sort()
+  const bIds = [...b.cardIds].sort()
+  return aIds.every((id, i) => id === bIds[i])
+}
+
+export function latestDirtyBookAskFrom(
+  messages: ChatMessage[],
+  seatIndex: number,
+): ChatMessage | null {
+  let latest: ChatMessage | null = null
+  for (const msg of messages) {
+    if (msg.senderSeatIndex !== seatIndex) continue
+    if (msg.type !== 'ask_dirty_book') continue
+    if (!latest || msg.timestamp > latest.timestamp) latest = msg
+  }
+  return latest
+}
+
+export function dirtyBookResponseAfter(
+  messages: ChatMessage[],
+  responderSeat: number,
+  afterTimestamp: number,
+): ChatMessage | null {
+  let latest: ChatMessage | null = null
+  for (const msg of messages) {
+    if (msg.senderSeatIndex !== responderSeat) continue
+    if (!isDirtyBookResponse(msg.type)) continue
+    if (msg.timestamp <= afterTimestamp) continue
+    if (!latest || msg.timestamp > latest.timestamp) latest = msg
+  }
+  return latest
+}
+
+/** Partner asked to dirty a book and is waiting for this seat's yes/no. */
+export function pendingPartnerDirtyBookRequest(
+  messages: ChatMessage[],
+  responderSeat: number,
+  partnerSeatIndex: number,
+): ChatMessage | null {
+  const ask = latestDirtyBookAskFrom(messages, partnerSeatIndex)
+  if (!ask) return null
+
+  const responded = messages.some(
+    (m) =>
+      m.senderSeatIndex === responderSeat &&
+      isDirtyBookResponse(m.type) &&
+      m.timestamp > ask.timestamp,
+  )
+  return responded ? null : ask
+}
+
+/** Requester asked to dirty a book and is waiting for partner's yes/no. */
+export function awaitingPartnerDirtyBookResponse(
+  messages: ChatMessage[],
+  requesterSeat: number,
+  partnerSeatIndex: number,
+): boolean {
+  const ask = latestDirtyBookAskFrom(messages, requesterSeat)
+  if (!ask) return false
+
+  return !messages.some(
+    (m) =>
+      m.senderSeatIndex === partnerSeatIndex &&
+      isDirtyBookResponse(m.type) &&
+      m.timestamp > ask.timestamp,
+  )
+}
+
+/** Partner denied dirtying for this proposal (or the latest ask). */
+export function partnerDeniedDirtyBook(
+  messages: ChatMessage[],
+  requesterSeat: number,
+  playerCount: PlayerCount,
+  proposal?: DirtyBookProposal,
+): boolean {
+  const partnerIdx = partnerSeat(requesterSeat, playerCount)
+
+  if (proposal) {
+    for (const msg of messages) {
+      if (msg.type !== 'ask_dirty_book' || msg.senderSeatIndex !== requesterSeat) continue
+      if (!sameDirtyProposal(msg.dirtyProposal, proposal)) continue
+      const response = dirtyBookResponseAfter(messages, partnerIdx, msg.timestamp)
+      if (response?.type === 'deny_dirty_book') return true
+    }
+    return false
+  }
+
+  const ask = latestDirtyBookAskFrom(messages, requesterSeat)
+  if (!ask) return false
+  const response = dirtyBookResponseAfter(messages, partnerIdx, ask.timestamp)
+  return response?.type === 'deny_dirty_book'
+}
+
+/** Partner approved the latest dirty-book ask (optionally matching a proposal). */
+export function hasPartnerDirtyBookApproval(
+  messages: ChatMessage[],
+  requesterSeat: number,
+  playerCount: PlayerCount,
+  proposal?: DirtyBookProposal,
+): boolean {
+  const partnerIdx = partnerSeat(requesterSeat, playerCount)
+
+  if (proposal) {
+    // Prefer the most recent ask for this exact proposal.
+    let latestAsk: ChatMessage | null = null
+    for (const msg of messages) {
+      if (msg.type !== 'ask_dirty_book' || msg.senderSeatIndex !== requesterSeat) continue
+      if (!sameDirtyProposal(msg.dirtyProposal, proposal)) continue
+      if (!latestAsk || msg.timestamp > latestAsk.timestamp) latestAsk = msg
+    }
+    if (!latestAsk) return false
+    const response = dirtyBookResponseAfter(messages, partnerIdx, latestAsk.timestamp)
+    return response?.type === 'approve_dirty_book'
+  }
+
+  const ask = latestDirtyBookAskFrom(messages, requesterSeat)
+  if (!ask) return false
+  const response = dirtyBookResponseAfter(messages, partnerIdx, ask.timestamp)
+  return response?.type === 'approve_dirty_book'
+}
+
+/** AI turn is paused until the human partner answers a dirty-book ask. */
+export function isAwaitingDirtyBookConfirmation(
+  state: GameState,
+  seatIndex: number,
+  messages: ChatMessage[],
+): boolean {
+  if (state.phase !== 'playing' || state.currentPlayerIndex !== seatIndex) return false
+  if (state.turnPhase !== 'play') return false
+  const player = state.players[seatIndex]
+  if (player.profile.isHuman) return false
+
+  const partnerIdx = partnerSeat(seatIndex, state.playerCount as PlayerCount)
+  const partner = state.players[partnerIdx]
+  if (!partner?.profile.isHuman) return false
+
+  return awaitingPartnerDirtyBookResponse(messages, seatIndex, partnerIdx)
+}
+
+/** Whether this dirty proposal was already denied on the latest ask. */
+export function wasDirtyProposalDenied(
+  messages: ChatMessage[],
+  requesterSeat: number,
+  playerCount: PlayerCount,
+  proposal: DirtyBookProposal,
+): boolean {
+  return partnerDeniedDirtyBook(messages, requesterSeat, playerCount, proposal)
 }
 
 /** Infer yes/no from a partner's free-form reply (for AI clearance). */
@@ -453,5 +726,8 @@ export function signalLabel(type: ChatMessageType): string {
   if (type === 'ready_go_out') return READY_GO_OUT_SIGNAL_TEXT
   if (type === 'approve_go_out') return APPROVE_GO_OUT_TEXT
   if (type === 'deny_go_out') return DENY_GO_OUT_TEXT
+  if (type === 'ask_dirty_book') return 'Ask to dirty a book'
+  if (type === 'approve_dirty_book') return APPROVE_DIRTY_BOOK_TEXT
+  if (type === 'deny_dirty_book') return DENY_DIRTY_BOOK_TEXT
   return 'Partner reply'
 }
