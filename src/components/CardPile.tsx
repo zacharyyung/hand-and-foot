@@ -45,8 +45,8 @@ export function CardPile({
   }
 
   const depth = Math.min(displayCount, tiny ? 3 : 4)
-  const sizeH = tiny ? 'h-[3.25rem]' : small ? 'h-[4.1rem]' : 'h-24'
-  const sizeW = tiny ? 'w-[2.125rem]' : small ? 'w-[2.85rem]' : 'w-16'
+  const sizeH = tiny ? 'h-[3.75rem]' : small ? 'h-[4.1rem]' : 'h-24'
+  const sizeW = tiny ? 'w-10' : small ? 'w-[2.85rem]' : 'w-16'
   const cardSmall = !tiny && small
   const cardTiny = tiny
 

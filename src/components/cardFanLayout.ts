@@ -41,10 +41,10 @@ export function cardFanLayout(
         : 2.5
     : peek ??
       Math.max(
-        micro ? 3 : tiny ? 5 : 7,
+        micro ? 4 : tiny ? 6 : 7,
         Math.min(
-          micro ? 6 : tiny ? 9 : small ? 13 : 17,
-          Math.floor((micro ? 28 : tiny ? 40 : 52) / Math.max(cardCount, 1)),
+          micro ? 7 : tiny ? 11 : small ? 13 : 17,
+          Math.floor((micro ? 32 : tiny ? 48 : 52) / Math.max(cardCount, 1)),
         ),
       )
   const fanWidth = cardWidth + Math.max(0, cardCount - 1) * step

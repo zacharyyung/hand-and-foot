@@ -173,7 +173,7 @@ function cardTier(micro: boolean, tiny: boolean, small: boolean): CardTier {
   return 'large'
 }
 
-/** Compact phone faces: big readable rank in the peek edge; suit stays secondary. */
+/** Compact phone faces: huge rank fills the card; suit stays a quiet cue. */
 function CompactFace({
   card,
   tier,
@@ -186,24 +186,35 @@ function CompactFace({
   const redThree = isRedThree(card)
   const glyph = suitGlyph(card.suit)
   const rank = card.rank === 'Joker' ? 'J' : card.rank
+  const isTen = rank === '10'
 
-  const rankClass =
+  /* Rank is the whole point on mobile — size it to dominate the face. */
+  const centerRankClass =
     tier === 'micro'
-      ? redThree
-        ? 'text-[13px]'
-        : 'text-[14px]'
-      : redThree
-        ? 'text-[17px]'
-        : 'text-[18px]'
+      ? isTen
+        ? 'text-[1.05rem]'
+        : 'text-[1.35rem]'
+      : isTen
+        ? 'text-[1.55rem]'
+        : 'text-[1.85rem]'
 
-  /* Suit only needs to shout for red threes; otherwise keep it a quiet cue. */
+  const indexRankClass =
+    tier === 'micro'
+      ? isTen
+        ? 'text-[9px]'
+        : 'text-[11px]'
+      : isTen
+        ? 'text-[11px]'
+        : 'text-[13px]'
+
+  /* Suit only shouts for red threes; otherwise a whisper under the peek index. */
   const suitClass = redThree
     ? tier === 'micro'
-      ? 'text-[9px]'
-      : 'text-[11px]'
+      ? 'text-[10px]'
+      : 'text-[12px]'
     : tier === 'micro'
-      ? 'text-[5px] opacity-55'
-      : 'text-[6px] opacity-50'
+      ? 'text-[6px] opacity-45'
+      : 'text-[7px] opacity-40'
 
   return (
     <div
@@ -212,17 +223,36 @@ function CompactFace({
       }`}
     >
       <div className="playing-card-index">
-        <span className={`playing-card-rank font-display font-bold leading-none tracking-tight ${rankClass}`}>
+        <span
+          className={`playing-card-rank font-display font-bold leading-none tracking-tight ${indexRankClass}`}
+        >
           {rank}
         </span>
         <span className={`playing-card-suit leading-none ${suitClass}`} aria-hidden>
           {glyph}
         </span>
       </div>
-      {redThree && (
+
+      <span
+        className={`playing-card-center-rank font-display font-bold leading-none tracking-tight ${centerRankClass}`}
+        aria-hidden
+      >
+        {rank}
+      </span>
+
+      {redThree ? (
         <span
           className={`playing-card-center-suit leading-none ${
-            tier === 'micro' ? 'text-[11px]' : 'text-[14px]'
+            tier === 'micro' ? 'text-[12px]' : 'text-[15px]'
+          }`}
+          aria-hidden
+        >
+          {glyph}
+        </span>
+      ) : (
+        <span
+          className={`playing-card-foot-suit leading-none ${
+            tier === 'micro' ? 'text-[7px] opacity-40' : 'text-[8px] opacity-35'
           }`}
           aria-hidden
         >

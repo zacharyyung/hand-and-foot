@@ -37,11 +37,11 @@ function planFanGaps(
   const maxWidth = options?.maxWidth
 
   /* Comfortable peek of the big rank; hard floor before we lean on CSS scale. */
-  const comfortMin = mobile ? 12 : 16
-  const comfortMax = mobile ? 20 : 40
-  const hardMin = mobile ? 10 : 12
+  const comfortMin = mobile ? 13 : 16
+  const comfortMax = mobile ? 22 : 40
+  const hardMin = mobile ? 11 : 12
 
-  let selectedGap = mobile ? (count > 14 ? 5 : 8) : count > 18 ? 8 : 14
+  let selectedGap = mobile ? (count > 14 ? 6 : 9) : count > 18 ? 8 : 14
   let hoverGap = mobile ? 5 : 10
 
   let selectedExtras = 0
