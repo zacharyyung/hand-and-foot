@@ -1,5 +1,7 @@
 /** Shared hand-fan geometry — keep in sync with HandCards rendering. */
 
+import { CARD_SIZE_PX } from './cardSizes'
+
 export interface HandFanSlot {
   left: number
   rotation: number
@@ -30,16 +32,16 @@ function planFanGaps(
   options?: { mobile?: boolean; maxWidth?: number },
 ): FanGapPlan {
   const mobile = options?.mobile ?? false
-  const cardW = mobile ? 30 : 46
+  const cardW = mobile ? CARD_SIZE_PX.tiny.w : CARD_SIZE_PX.small.w
   const gaps = Math.max(count - 1, 0)
   const maxWidth = options?.maxWidth
 
-  /* Comfortable peek of rank/suit; hard floor before we lean on CSS scale. */
-  const comfortMin = mobile ? 10 : 16
-  const comfortMax = mobile ? 18 : 40
-  const hardMin = mobile ? 8 : 12
+  /* Comfortable peek of the big rank; hard floor before we lean on CSS scale. */
+  const comfortMin = mobile ? 12 : 16
+  const comfortMax = mobile ? 20 : 40
+  const hardMin = mobile ? 10 : 12
 
-  let selectedGap = mobile ? (count > 14 ? 5 : 7) : count > 18 ? 8 : 14
+  let selectedGap = mobile ? (count > 14 ? 5 : 8) : count > 18 ? 8 : 14
   let hoverGap = mobile ? 5 : 10
 
   let selectedExtras = 0
@@ -116,7 +118,7 @@ export function handFanOffsets(
   options?: { mobile?: boolean; maxWidth?: number },
 ): { lefts: number[]; width: number } {
   const mobile = options?.mobile ?? false
-  const cardW = mobile ? 30 : 46
+  const cardW = mobile ? CARD_SIZE_PX.tiny.w : CARD_SIZE_PX.small.w
   const { base, selectedGap, hoverGap } = planFanGaps(
     count,
     selected,

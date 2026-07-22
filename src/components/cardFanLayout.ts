@@ -1,4 +1,5 @@
 import type { Card as CardType } from '../game/cards'
+import { CARD_SIZE_PX } from './cardSizes'
 
 /** Deterministic ±2° tilt so stacked cards feel physical, not grid-perfect. */
 export function stackRotationDeg(seed: string, index = 0): number {
@@ -23,8 +24,15 @@ export function cardFanLayout(
   options: { small?: boolean; tiny?: boolean; micro?: boolean; stacked?: boolean; peek?: number } = {},
 ): CardFanLayout {
   const { small = true, tiny = false, micro = false, stacked = false, peek } = options
-  const cardWidth = micro ? 21 : tiny ? 30 : small ? 44 : 64
-  const cardHeight = micro ? 32 : tiny ? 44 : small ? 64 : 96
+  const size = micro
+    ? CARD_SIZE_PX.micro
+    : tiny
+      ? CARD_SIZE_PX.tiny
+      : small
+        ? CARD_SIZE_PX.small
+        : CARD_SIZE_PX.large
+  const cardWidth = size.w
+  const cardHeight = size.h
   const step = stacked
     ? micro
       ? 1.5
@@ -33,10 +41,10 @@ export function cardFanLayout(
         : 2.5
     : peek ??
       Math.max(
-        micro ? 3 : tiny ? 4 : 7,
+        micro ? 3 : tiny ? 5 : 7,
         Math.min(
-          micro ? 5 : tiny ? 8 : small ? 13 : 17,
-          Math.floor((micro ? 24 : tiny ? 36 : 52) / Math.max(cardCount, 1)),
+          micro ? 6 : tiny ? 9 : small ? 13 : 17,
+          Math.floor((micro ? 28 : tiny ? 40 : 52) / Math.max(cardCount, 1)),
         ),
       )
   const fanWidth = cardWidth + Math.max(0, cardCount - 1) * step
