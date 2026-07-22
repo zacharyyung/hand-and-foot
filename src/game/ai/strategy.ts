@@ -20,21 +20,6 @@ import type { AiPublicState } from './publicState'
 import { footMeldAllowedForHand } from '../actions'
 import { findAddToBookActions, findStartBookActions, type AiAction } from './decisions'
 
-function combinations<T>(items: T[], min: number, max: number): T[][] {
-  const results: T[][] = []
-  function helper(start: number, combo: T[]) {
-    if (combo.length >= min && combo.length <= max) results.push([...combo])
-    if (combo.length === max) return
-    for (let i = start; i < items.length; i++) {
-      combo.push(items[i])
-      helper(i + 1, combo)
-      combo.pop()
-    }
-  }
-  helper(0, [])
-  return results
-}
-
 function groupByRank(hand: Card[]): Map<Rank, Card[]> {
   const groups = new Map<Rank, Card[]>()
   for (const card of hand) {
@@ -73,6 +58,48 @@ function footMeldKeepsDiscard(
   )
 }
 
+function pushStartOption(
+  options: StartOption[],
+  hand: Card[],
+  teamBooks: Book[],
+  combo: Card[],
+  isPlayingFoot: boolean,
+  meldThresholdMetAfterMeld: boolean,
+): void {
+  const cardIds = combo.map((c) => c.id)
+  const check = canStartBook(combo, teamBooks)
+  if (!check.ok) return
+  const projectedBook: Book = {
+    id: `preview-${check.rank}`,
+    rank: check.rank,
+    cards: combo,
+    teamId: teamBooks[0]?.teamId ?? 0,
+    startedBySeatIndex: 0,
+  }
+  if (
+    !footMeldKeepsDiscard(
+      hand,
+      cardIds,
+      isPlayingFoot,
+      [...teamBooks, projectedBook],
+      meldThresholdMetAfterMeld,
+    )
+  ) {
+    return
+  }
+  options.push({
+    cardIds,
+    score: meldContributionFromCards(combo),
+    rank: check.rank,
+    clean: !hasWilds(combo),
+  })
+}
+
+/**
+ * Enumerate legal book starts per rank at every useful size (3–7), clean and
+ * with one wild. Previously only the first 3-card combo was kept, which blocked
+ * opening melds that need larger books to clear 100/150/200-point thresholds.
+ */
 function getStartOptions(
   hand: Card[],
   teamBooks: Book[],
@@ -80,41 +107,82 @@ function getStartOptions(
   meldThresholdMetAfterMeld = true,
 ): StartOption[] {
   const options: StartOption[] = []
-  const seen = new Set<Rank>()
-  const playable = hand.filter((c) => !isRedThree(c))
+  const groups = groupByRank(hand)
+  const wilds = hand.filter((c) => isWildCard(c) && !isRedThree(c))
+  const takenRanks = new Set(teamBooks.map((b) => b.rank))
 
-  for (const combo of combinations(playable, 3, Math.min(7, playable.length))) {
-    const cardIds = combo.map((c) => c.id)
-    const check = canStartBook(combo, teamBooks)
-    if (!check.ok || seen.has(check.rank)) continue
-    const projectedBook: Book = {
-      id: `preview-${check.rank}`,
-      rank: check.rank,
-      cards: combo,
-      teamId: teamBooks[0]?.teamId ?? 0,
-      startedBySeatIndex: 0,
-    }
-    if (
-      !footMeldKeepsDiscard(
+  for (const [rank, naturals] of groups) {
+    if (takenRanks.has(rank)) continue
+
+    const maxClean = Math.min(7, naturals.length)
+    for (let size = 3; size <= maxClean; size++) {
+      pushStartOption(
+        options,
         hand,
-        cardIds,
+        teamBooks,
+        naturals.slice(0, size),
         isPlayingFoot,
-        [...teamBooks, projectedBook],
         meldThresholdMetAfterMeld,
       )
-    ) {
-      continue
     }
-    seen.add(check.rank)
-    options.push({
-      cardIds: combo.map((c) => c.id),
-      score: meldContributionFromCards(combo),
-      rank: check.rank,
-      clean: !hasWilds(combo),
-    })
+
+    if (wilds.length === 0 || naturals.length < 2) continue
+    // One representative wild is enough — card IDs differ but scores do not.
+    const wild = wilds[0]
+    const maxNat = Math.min(6, naturals.length)
+    for (let natCount = 2; natCount <= maxNat; natCount++) {
+      const combo = [...naturals.slice(0, natCount), wild]
+      if (combo.length > 7) continue
+      pushStartOption(
+        options,
+        hand,
+        teamBooks,
+        combo,
+        isPlayingFoot,
+        meldThresholdMetAfterMeld,
+      )
+    }
   }
 
   return options
+}
+
+/** Keep a small set of sizes per rank so the initial-meld search stays fast. */
+function compactStartOptions(options: StartOption[], required: number): StartOption[] {
+  const byRank = new Map<Rank, StartOption[]>()
+  for (const opt of options) {
+    const list = byRank.get(opt.rank) ?? []
+    list.push(opt)
+    byRank.set(opt.rank, list)
+  }
+
+  const compacted: StartOption[] = []
+  const seen = new Set<string>()
+
+  function add(opt: StartOption | undefined) {
+    if (!opt) return
+    const key = opt.cardIds.slice().sort().join(',')
+    if (seen.has(key)) return
+    seen.add(key)
+    compacted.push(opt)
+  }
+
+  for (const list of byRank.values()) {
+    const clean = list.filter((o) => o.clean).sort((a, b) => b.score - a.score)
+    const dirty = list.filter((o) => !o.clean).sort((a, b) => b.score - a.score)
+
+    add(clean[0])
+    add([...clean].sort((a, b) => a.cardIds.length - b.cardIds.length)[0])
+    add(clean.find((o) => o.score >= required))
+    add(clean.find((o) => o.cardIds.length === 4 || o.cardIds.length === 5))
+    add(clean.find((o) => o.cardIds.length >= 7))
+
+    add(dirty[0])
+    add(dirty.find((o) => o.score >= required))
+    add(dirty.find((o) => o.cardIds.length >= 7))
+  }
+
+  return compacted
 }
 
 /** Pick non-overlapping books that meet the meld point requirement. */
@@ -126,44 +194,66 @@ export function planInitialMeld(
   difficulty: AiDifficulty = 'normal',
   isPlayingFoot = false,
 ): string[][] | null {
-  const options = getStartOptions(hand, teamBooks, isPlayingFoot)
+  // After a successful initial meld the threshold is met for foot checks.
+  const allOptions = getStartOptions(hand, teamBooks, isPlayingFoot, true)
+  const options = compactStartOptions(allOptions, required)
   if (options.length === 0) return null
 
   const needsDirty = teamNeedsDirtyBook(teamBooks)
   const needsClean = teamNeedsCleanBook(teamBooks)
+  const highRequirement = required >= 100
 
   const scoreOption = (opt: StartOption) => {
     let s = opt.score
     const rankCount = hand.filter((c) => c.rank === opt.rank && !isRedThree(c)).length
+    const sizeBonus = opt.cardIds.length >= 4 ? (opt.cardIds.length - 3) * 8 : 0
 
     if (difficulty === 'expert') {
       if (opt.clean) {
         s += urgency === 'low' ? 50 : urgency === 'medium' ? 35 : 20
         s += rankCount * 6
       } else {
-        s -= urgency === 'low' ? 50 : urgency === 'medium' ? 25 : 8
-      if (needsDirty) s += 18
-      else s -= 30
-      if (needsClean && opt.clean) s += 12
+        // At high opening requirements, dirty books are often necessary — don't over-penalize.
+        const dirtyPenalty = highRequirement
+          ? urgency === 'high'
+            ? 4
+            : 12
+          : urgency === 'low'
+            ? 50
+            : urgency === 'medium'
+              ? 25
+              : 8
+        s -= dirtyPenalty
+        if (needsDirty) s += 18
+        else if (!highRequirement) s -= 30
       }
-      if (urgency === 'high') s += opt.score * 0.35
+      if (needsClean && opt.clean) s += 12
+      if (urgency === 'high' || highRequirement) s += opt.score * 0.35
+      // Prefer plans that clear the opening requirement in fewer, larger books.
+      s += sizeBonus
+      if (opt.score >= required) s += 80
+      if (opt.cardIds.length >= 7) s += 40
     } else {
       if (opt.clean) {
         s += urgency === 'low' ? 25 : urgency === 'medium' ? 18 : 10
         s += rankCount * 4
       } else {
-        s -= needsDirty ? 15 : 50
+        s -= highRequirement ? (needsDirty ? 8 : 20) : needsDirty ? 15 : 50
         if (needsDirty) s += urgency === 'low' ? 12 : 8
       }
       if (needsClean && opt.clean) s += 15
-      if (urgency === 'high') s += opt.score * 0.35
+      if (urgency === 'high' || highRequirement) s += opt.score * 0.35
+      s += sizeBonus * 0.5
+      if (opt.score >= required) s += 40
+      if (opt.cardIds.length >= 7) s += 20
     }
 
     return s
   }
 
   const sorted = [...options].sort((a, b) => scoreOption(b) - scoreOption(a))
-  const allowDirtyStack = urgency !== 'low' || required <= 50
+  // High thresholds and medium/high urgency need dirty stacks to actually get in.
+  const allowDirtyStack = urgency !== 'low' || required <= 50 || highRequirement
 
   function dirtyBooksInPlan(chosen: string[][]): number {
     return chosen.filter((ids) =>
@@ -183,35 +273,33 @@ export function planInitialMeld(
     if (points >= required) return chosen
     if (index >= sorted.length) return null
 
-    const skip = search(index + 1, used, chosen, points)
-    if (skip) return skip
-
     const opt = sorted[index]
     if (opt.cardIds.some((id) => used.has(id))) {
       return search(index + 1, used, chosen, points)
     }
 
-    if (
-      !opt.clean &&
-      dirtyBooksInPlan(chosen) >= 1 &&
-      !allowDirtyStack
-    ) {
-      return search(index + 1, used, chosen, points)
+    // Prefer including higher-scored options first so we actually open early.
+    if (!(!opt.clean && dirtyBooksInPlan(chosen) >= 1 && !allowDirtyStack)) {
+      const nextUsed = new Set(used)
+      opt.cardIds.forEach((id) => nextUsed.add(id))
+      const withOpt = search(
+        index + 1,
+        nextUsed,
+        [...chosen, opt.cardIds],
+        points + opt.score,
+      )
+      if (withOpt) return withOpt
     }
 
-    const nextUsed = new Set(used)
-    opt.cardIds.forEach((id) => nextUsed.add(id))
-    return search(
-      index + 1,
-      nextUsed,
-      [...chosen, opt.cardIds],
-      points + opt.score,
-    )
+    return search(index + 1, used, chosen, points)
   }
 
   const plan = search(0, new Set(), [], 0)
   if (!plan) return null
-  if (difficulty !== 'expert' || urgency !== 'low' || required <= 50) return plan
+
+  // Expert clean-only preference is only for early 50-point opens at low urgency.
+  // At 100+ the AI must prioritize clearing the threshold over book purity.
+  if (difficulty !== 'expert' || urgency !== 'low' || required > 50) return plan
 
   const cleanOnly = options.filter((o) => o.clean)
   if (cleanOnly.length > 0) {
@@ -236,9 +324,6 @@ function searchCleanOnly(
     if (points >= required) return chosen
     if (index >= sorted.length) return null
 
-    const skip = search(index + 1, used, chosen, points)
-    if (skip) return skip
-
     const opt = sorted[index]
     if (opt.cardIds.some((id) => used.has(id))) {
       return search(index + 1, used, chosen, points)
@@ -246,12 +331,15 @@ function searchCleanOnly(
 
     const nextUsed = new Set(used)
     opt.cardIds.forEach((id) => nextUsed.add(id))
-    return search(
+    const withOpt = search(
       index + 1,
       nextUsed,
       [...chosen, opt.cardIds],
       points + opt.score,
     )
+    if (withOpt) return withOpt
+
+    return search(index + 1, used, chosen, points)
   }
 
   return search(0, new Set(), [], 0)
@@ -282,6 +370,15 @@ export function meldPressure(pub: AiPublicState): 'low' | 'medium' | 'high' {
   if (!pub.teamMeldThresholdMet && pub.requiredMeld >= 150) {
     level = 'high'
   }
+  // At 100+ with a full-ish hand, open aggressively — do not wait for partner.
+  if (
+    !pub.teamMeldThresholdMet &&
+    pub.requiredMeld >= 100 &&
+    held >= 12 &&
+    level !== 'high'
+  ) {
+    level = 'high'
+  }
 
   // Opening rounds (50-point meld): don't stall — treat as at least medium until in.
   if (!pub.teamMeldThresholdMet && pub.requiredMeld <= 50 && level === 'low') {
@@ -295,13 +392,14 @@ export function meldPressure(pub: AiPublicState): 'low' | 'medium' | 'high' {
   return level
 }
 
-/** Urgency used for initial 50+ meld planning — less picky than mid-game hoarding. */
+/** Urgency used for initial meld planning — push harder as the threshold climbs. */
 export function initialMeldUrgency(
   required: number,
   urgency: 'low' | 'medium' | 'high',
 ): 'low' | 'medium' | 'high' {
+  if (required >= 150) return 'high'
+  if (required >= 100) return urgency === 'high' ? 'high' : 'medium'
   if (required <= 50) return urgency === 'high' ? 'high' : 'medium'
-  if (required <= 100 && urgency === 'low') return 'medium'
   return urgency
 }
 
@@ -497,6 +595,8 @@ export function pickBestStartWhenUnlocked(
     let value = opt.score
     const rankCount = hand.filter((c) => c.rank === opt.rank && !isRedThree(c)).length
     value += rankCount * 4
+    value += opt.cardIds.length >= 4 ? (opt.cardIds.length - 3) * 6 : 0
+    if (opt.cardIds.length >= 7) value += 35
 
     if (difficulty === 'expert') {
       if (opt.clean) {
@@ -522,7 +622,10 @@ export function pickBestStartWhenUnlocked(
     return { opt, value }
   })
 
-  scored.sort((a, b) => b.value - a.value)
+  scored.sort((a, b) => {
+    if (b.value !== a.value) return b.value - a.value
+    return b.opt.cardIds.length - a.opt.cardIds.length
+  })
 
   const cleanStarts = scored.filter((s) => s.opt.clean)
   const preferCleanOnly =
@@ -532,14 +635,14 @@ export function pickBestStartWhenUnlocked(
     difficulty === 'expert'
 
   if (preferCleanOnly) {
-    if (
-      urgency === 'low' &&
-      Math.random() < 0.12 &&
-      cleanStarts.length > 1
-    ) {
-      return cleanStarts[1].opt.cardIds
+    const bestClean = [...cleanStarts].sort((a, b) => {
+      if (b.value !== a.value) return b.value - a.value
+      return b.opt.cardIds.length - a.opt.cardIds.length
+    })
+    if (urgency === 'low' && Math.random() < 0.12 && bestClean.length > 1) {
+      return bestClean[1].opt.cardIds
     }
-    return cleanStarts[0].opt.cardIds
+    return bestClean[0].opt.cardIds
   }
 
   if (

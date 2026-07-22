@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "check:ai-meld": "npx tsx scripts/check-ai-meld.ts"
   },
   "dependencies": {
     "react": "^19.1.0",
