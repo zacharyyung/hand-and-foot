@@ -594,6 +594,15 @@ export function GameView({
     setSelectedAddBookId(null)
   }, [game.currentPlayerIndex, game.turnPhase])
 
+  // Drop the discard-to-book prompt once the warned card is no longer the sole selection.
+  useEffect(() => {
+    setDiscardWarning((current) => {
+      if (!current) return null
+      if (selectedIds.length === 1 && selectedIds[0] === current.cardId) return current
+      return null
+    })
+  }, [selectedIds])
+
   useEffect(() => {
     if (!showAddBookPicker) {
       setSelectedAddBookId(null)
@@ -722,6 +731,7 @@ export function GameView({
   function toggleCard(cardId: string) {
     if (!isMyTurn || game.turnPhase === 'draw') return
     setError(null)
+    setDiscardWarning(null)
     setSelectedIds((prev) =>
       prev.includes(cardId) ? prev.filter((id) => id !== cardId) : [...prev, cardId],
     )
@@ -731,6 +741,7 @@ export function GameView({
   function selectAllOfRank(cardId: string) {
     if (!isMyTurn || game.turnPhase === 'draw') return
     setError(null)
+    setDiscardWarning(null)
     const card = handForDisplay.find((c) => c.id === cardId)
     if (!card) return
 
