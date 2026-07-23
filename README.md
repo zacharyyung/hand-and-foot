@@ -28,6 +28,19 @@ Open the URL shown in the terminal (typically http://localhost:5173).
 
 The included `vercel.json` enables client-side routing for the single-page app.
 
+### Partner voice (ElevenLabs)
+
+Partner voice calls a serverless function at `/api/narration-tts`. The API key must be available to that function — a local `.env` file is **not** deployed to Vercel.
+
+1. In the [Vercel dashboard](https://vercel.com), open the project → **Settings** → **Environment Variables**.
+2. Add `ELEVENLABS_API_KEY` with your ElevenLabs key.
+3. Enable it for **Production** (and Preview if you want it on preview URLs).
+4. **Redeploy** the latest production deployment (env vars only apply after a new deploy).
+
+Locally, put the same variable in `.env` (see `.env.example`) and restart `npm run dev`.
+
+On the setup screen, Partner Voice should show **ElevenLabs** instead of **Not configured**.
+
 ## Current features
 
 - 4- or 6-player games (2 or 3 teams)
