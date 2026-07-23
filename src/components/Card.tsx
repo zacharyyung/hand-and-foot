@@ -25,6 +25,81 @@ function suitGlyph(suit: CardType['suit']): string {
   return '★'
 }
 
+/** Classic court-jester bust — keeps jokers distinct from the jack's "J". */
+function JokerFigure({ className = '' }: { className?: string }) {
+  const uid = useId().replace(/:/g, '')
+  const faceGlowId = `joker-face-glow-${uid}`
+
+  return (
+    <svg
+      viewBox="0 0 64 80"
+      className={className}
+      aria-hidden
+      preserveAspectRatio="xMidYMid meet"
+    >
+      <defs>
+        <radialGradient id={faceGlowId} cx="50%" cy="42%" r="55%">
+          <stop offset="0%" stopColor="#fff8f0" stopOpacity="0.95" />
+          <stop offset="100%" stopColor="#f0d4c4" stopOpacity="0.9" />
+        </radialGradient>
+      </defs>
+
+      {/* Collar points */}
+      <path
+        d="M14 58 L20 48 L26 58 L32 46 L38 58 L44 48 L50 58 Z"
+        fill="#f4d35e"
+        stroke="rgba(255,240,200,0.55)"
+        strokeWidth="0.8"
+      />
+      <circle cx="20" cy="58" r="2.2" fill="#e8b85c" />
+      <circle cx="32" cy="58" r="2.2" fill="#c45c6a" />
+      <circle cx="44" cy="58" r="2.2" fill="#5b8fd9" />
+
+      {/* Shoulders / tunic */}
+      <path
+        d="M16 62 C22 54 42 54 48 62 L52 76 L12 76 Z"
+        fill="#6b2d4a"
+        stroke="rgba(255,220,200,0.35)"
+        strokeWidth="0.7"
+      />
+      <path d="M28 58 L32 72 L36 58" fill="#f4d35e" opacity="0.85" />
+
+      {/* Head */}
+      <ellipse cx="32" cy="36" rx="14" ry="16" fill={`url(#${faceGlowId})`} />
+
+      {/* Jester hat — three points with bells */}
+      <path
+        d="M18 30 C16 18 22 8 32 12 C42 8 48 18 46 30 L40 28 C42 20 38 14 32 16 C26 14 22 20 24 28 Z"
+        fill="#5b8fd9"
+        stroke="rgba(255,255,255,0.35)"
+        strokeWidth="0.7"
+      />
+      <path d="M22 28 L14 10 L26 26 Z" fill="#c45c6a" />
+      <path d="M42 28 L50 10 L38 26 Z" fill="#f4d35e" />
+      <path d="M28 16 L32 4 L36 16 Z" fill="#6b2d4a" />
+      <circle cx="14" cy="10" r="2.4" fill="#f4d35e" stroke="rgba(255,255,255,0.4)" strokeWidth="0.5" />
+      <circle cx="50" cy="10" r="2.4" fill="#c45c6a" stroke="rgba(255,255,255,0.4)" strokeWidth="0.5" />
+      <circle cx="32" cy="4" r="2.6" fill="#5b8fd9" stroke="rgba(255,255,255,0.4)" strokeWidth="0.5" />
+
+      {/* Eyes + smile */}
+      <ellipse cx="26.5" cy="34" rx="2.2" ry="2.6" fill="#2a1a22" />
+      <ellipse cx="37.5" cy="34" rx="2.2" ry="2.6" fill="#2a1a22" />
+      <circle cx="27.2" cy="33.2" r="0.7" fill="#fff8f0" />
+      <circle cx="38.2" cy="33.2" r="0.7" fill="#fff8f0" />
+      <path
+        d="M25 42 Q32 48 39 42"
+        fill="none"
+        stroke="#2a1a22"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+      {/* Cheek flush */}
+      <ellipse cx="22" cy="40" rx="2.5" ry="1.4" fill="#e89a9a" opacity="0.55" />
+      <ellipse cx="42" cy="40" rx="2.5" ry="1.4" fill="#e89a9a" opacity="0.55" />
+    </svg>
+  )
+}
+
 function BicycleCardBack({
   micro,
   tiny,
@@ -185,7 +260,7 @@ function CompactFace({
 }) {
   const redThree = isRedThree(card)
   const glyph = suitGlyph(card.suit)
-  const rank = card.rank === 'Joker' ? 'J' : card.rank
+  const rank = card.rank
   const isTen = rank === '10'
 
   /* Rank is the whole point on mobile — size it to dominate the face. */
@@ -263,6 +338,19 @@ function CompactFace({
   )
 }
 
+/** Compact joker: jester portrait instead of a "J" that reads as jack. */
+function CompactJokerFace({ tier }: { tier: 'micro' | 'tiny' }) {
+  return (
+    <div className="playing-card-face-inner playing-card-face-compact playing-card-face-joker">
+      <JokerFigure
+        className={`playing-card-joker-figure ${
+          tier === 'micro' ? 'playing-card-joker-figure-micro' : 'playing-card-joker-figure-tiny'
+        }`}
+      />
+    </div>
+  )
+}
+
 export function Card({
   card,
   faceDown = false,
@@ -294,7 +382,7 @@ export function Card({
           className={`playing-card playing-card-wild ${sizeClass} ${liftClass} ${className}`}
           aria-label={cardLabel(card)}
         >
-          <CompactFace card={card} tier={tier} wild />
+          <CompactJokerFace tier={tier} />
         </div>
       )
     }
@@ -304,15 +392,12 @@ export function Card({
         className={`playing-card playing-card-wild ${sizeClass} ${liftClass} ${className}`}
         aria-label={cardLabel(card)}
       >
-        <div className="flex h-full flex-col items-center justify-center gap-0.5 p-0.5">
-          <span
-            className={`font-display font-semibold leading-none tracking-wide ${
-              small ? 'text-[8px]' : 'text-[10px]'
+        <div className="playing-card-face-inner playing-card-face-joker playing-card-face-joker-full">
+          <JokerFigure
+            className={`playing-card-joker-figure ${
+              small ? 'playing-card-joker-figure-small' : 'playing-card-joker-figure-large'
             }`}
-          >
-            JOKER
-          </span>
-          <span className={`leading-none opacity-90 ${small ? 'text-xl' : 'text-3xl'}`}>★</span>
+          />
         </div>
       </div>
     )

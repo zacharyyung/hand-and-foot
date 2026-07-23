@@ -14,7 +14,7 @@ interface HandCardsProps {
   onReorder: (order: string[]) => void
   selectedIds: string[]
   onToggle: (cardId: string) => void
-  /** Long-press: select all cards of the same rank (caller decides wilds). */
+  /** Long-press: select/unselect all cards of the same class (caller decides). */
   onSelectRank?: (cardId: string) => void
   canSelect?: boolean
   canDrag?: boolean
@@ -29,7 +29,7 @@ interface HandCardsProps {
 
 /** Snappy card motion — keep in sync with cardFlight / cardMotion. */
 const CARD_MS = 220
-/** Hold this long (while pressed) to select every natural card of the same rank. */
+/** Hold this long (while pressed) to select/unselect every card of that class. */
 const LONG_PRESS_MS = 500
 /** Finger/mouse jitter allowance before the hold is cancelled. */
 const LONG_PRESS_MOVE_PX = 20
@@ -222,8 +222,9 @@ export function HandCards({
     longPressTimerRef.current = null
     pointerStartRef.current = null
     setHoldingCardId(null)
+    const clearing = selectedIds.includes(cardId)
     onSelectRank(cardId)
-    playSound('select')
+    playSound(clearing ? 'deselect' : 'select')
     if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
       navigator.vibrate(14)
     }
@@ -465,7 +466,7 @@ export function HandCards({
                 aria-hidden={inFlight}
                 title={
                   onSelectRank && canSelect
-                    ? 'Tap to select · hold to select all of this rank'
+                    ? 'Tap to select · hold to select all of this kind · hold a selected card to clear'
                     : undefined
                 }
                 {...pressHandlers(card.id)}

@@ -43,6 +43,17 @@ export function isRedThree(card: Card): boolean {
   return card.rank === '3' && isRedCard(card)
 }
 
+/**
+ * Natural cards that select together on long-press.
+ * Red threes are their own class — never grouped with black threes.
+ */
+export function sameNaturalSelectClass(a: Card, b: Card): boolean {
+  if (isWildCard(a) || isWildCard(b)) return false
+  if (a.rank !== b.rank) return false
+  if (a.rank === '3') return isRedThree(a) === isRedThree(b)
+  return true
+}
+
 export function cardLabel(card: Card): string {
   if (card.rank === 'Joker') return '🃏'
   const suitSymbol: Record<Suit, string> = {

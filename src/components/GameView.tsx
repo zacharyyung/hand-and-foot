@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { isWildCard, type Card } from '../game/cards'
+import { isWildCard, sameNaturalSelectClass, type Card } from '../game/cards'
 import type { GameState } from '../game/deal'
 import { playerFootCount, playerHandCount } from '../game/deal'
 import {
@@ -737,7 +737,11 @@ export function GameView({
     )
   }
 
-  /** Long-press: select every natural card of that rank (wilds stay individual). */
+  /**
+   * Long-press: select every natural card of that class (wilds stay individual).
+   * Hold again on an already-selected card to clear the whole selection.
+   * Red threes are their own class, separate from black threes.
+   */
   function selectAllOfRank(cardId: string) {
     if (!isMyTurn || game.turnPhase === 'draw') return
     setError(null)
@@ -745,13 +749,19 @@ export function GameView({
     const card = handForDisplay.find((c) => c.id === cardId)
     if (!card) return
 
-    if (isWildCard(card)) {
-      setSelectedIds((prev) => (prev.includes(cardId) ? prev : [...prev, cardId]))
+    // Press-and-hold on a selected card unselects everything.
+    if (selectedIds.includes(cardId)) {
+      setSelectedIds([])
       return
     }
 
-    const sameRankIds = handForDisplay
-      .filter((c) => !isWildCard(c) && c.rank === card.rank)
+    if (isWildCard(card)) {
+      setSelectedIds((prev) => [...prev, cardId])
+      return
+    }
+
+    const sameClassIds = handForDisplay
+      .filter((c) => sameNaturalSelectClass(card, c))
       .map((c) => c.id)
 
     setSelectedIds((prev) => {
@@ -759,7 +769,7 @@ export function GameView({
         const c = handForDisplay.find((handCard) => handCard.id === id)
         return c != null && isWildCard(c)
       })
-      return [...new Set([...keptWilds, ...sameRankIds])]
+      return [...new Set([...keptWilds, ...sameClassIds])]
     })
   }
 
