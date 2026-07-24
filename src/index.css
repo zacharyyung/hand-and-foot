@@ -725,16 +725,9 @@
     color: #fce8ef;
   }
 
-  /* Black card + white jester-hat icon — unmistakable vs jack. */
+  /* Same wine wild chrome as twos; white hat keeps it distinct from jacks. */
   .playing-card-joker {
     overflow: hidden;
-    background: #0a0a0a;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    color: #ffffff;
-    box-shadow:
-      0 1px 2px rgba(0, 0, 0, 0.2),
-      0 3px 8px rgba(0, 0, 0, 0.22),
-      inset 0 1px 0 rgba(255, 255, 255, 0.08);
   }
 
   .playing-card-face-joker {

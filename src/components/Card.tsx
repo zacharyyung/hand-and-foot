@@ -339,7 +339,7 @@ export function Card({
   if (card.rank === 'Joker') {
     return (
       <div
-        className={`playing-card playing-card-joker ${sizeClass} ${liftClass} ${className}`}
+        className={`playing-card playing-card-wild playing-card-joker ${sizeClass} ${liftClass} ${className}`}
         aria-label={cardLabel(card)}
       >
         <JokerFace />
