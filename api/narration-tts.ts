@@ -27,7 +27,13 @@ interface TtsRequestBody {
 }
 
 function getApiKey(): string | undefined {
-  return process.env.ELEVENLABS_API_KEY ?? process.env.VITE_ELEVENLABS_API_KEY
+  const raw = process.env.ELEVENLABS_API_KEY ?? process.env.VITE_ELEVENLABS_API_KEY
+  const trimmed = raw?.trim()
+  return trimmed || undefined
+}
+
+function missingKeyHint(): string {
+  return 'Add ELEVENLABS_API_KEY to .env (local dev) or Vercel Environment Variables (production), then redeploy.'
 }
 
 function sendJson(res: ServerResponse, status: number, payload: unknown) {
@@ -56,7 +62,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   if (!apiKey) {
     sendJson(res, 503, {
       error: 'ELEVENLABS_API_KEY not configured',
-      hint: 'Add ELEVENLABS_API_KEY to .env and restart the dev server.',
+      hint: missingKeyHint(),
     })
     return
   }

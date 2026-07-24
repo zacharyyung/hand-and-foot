@@ -146,6 +146,19 @@
       linear-gradient(165deg, #1a4530 0%, var(--felt-deep) 45%, #071a11 100%);
   }
 
+  /* Single-human setup: lock scroll only on small screens (compact lobby) */
+  .room-bg-setup-lock {
+    min-height: 100dvh;
+  }
+
+  @media (max-width: 539px) {
+    .room-bg-setup-lock {
+      height: 100dvh;
+      max-height: 100dvh;
+      overflow: hidden;
+    }
+  }
+
   .felt-texture {
     background-image:
       radial-gradient(ellipse at 30% 20%, rgba(255, 255, 255, 0.04), transparent 50%),
@@ -1167,8 +1180,11 @@
   }
 
   .settings-popover {
-    max-height: none;
-    overflow: visible;
+    width: min(19rem, calc(100vw - 1.5rem - var(--safe-left) - var(--safe-right)));
+    max-height: min(85dvh, 34rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
   }
 
   .corner-popover-tr {

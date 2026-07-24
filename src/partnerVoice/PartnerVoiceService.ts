@@ -3,6 +3,7 @@ import { ElevenLabsProvider, refreshElevenLabsProviderStatus } from '../narratio
 import { unlockNarrationAudio } from '../narration/audioPlayback'
 import { getNarratorVoice } from '../narration/voices'
 import type { PartnerVoiceSettings } from './types'
+import { getElevenLabsSetupHint } from './deploymentHint'
 
 class PartnerVoiceServiceImpl {
   private settings: PartnerVoiceSettings = loadPartnerVoiceSettings()
@@ -37,7 +38,7 @@ class PartnerVoiceServiceImpl {
 
   getStatusMessage(): string | null {
     if (!this.elevenLabs.isAvailable()) {
-      return 'Add ELEVENLABS_API_KEY to .env and restart the dev server.'
+      return getElevenLabsSetupHint()
     }
     return null
   }
