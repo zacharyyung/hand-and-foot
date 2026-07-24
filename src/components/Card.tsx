@@ -7,6 +7,8 @@ import { CARD_SIZE_CLASS } from './cardSizes'
 export const WILD_TEXT_CLASS = 'text-rose-200'
 export const WILD_RING_CLASS = 'ring-rose-300/50'
 
+type CardTier = 'micro' | 'tiny' | 'small' | 'large'
+
 interface CardProps {
   card?: CardType
   faceDown?: boolean
@@ -26,8 +28,9 @@ function suitGlyph(suit: CardType['suit']): string {
 }
 
 /**
- * Minimal joker icon: white three-point jester hat on a black card face.
- * Distinct from the jack's "J" at every size.
+ * Minimal joker icon: white three-point jester hat on the wild face.
+ * Paired with a corner "J" so the card reads as a joker at a glance
+ * (wine chrome + hat keep it distinct from a jack).
  */
 function JokerHatIcon({ className = '' }: { className?: string }) {
   return (
@@ -66,9 +69,24 @@ function JokerHatIcon({ className = '' }: { className?: string }) {
   )
 }
 
-function JokerFace() {
+function JokerFace({ tier }: { tier: CardTier }) {
+  const markClass =
+    tier === 'micro'
+      ? 'text-[10px]'
+      : tier === 'tiny'
+        ? 'text-[12px]'
+        : tier === 'small'
+          ? 'text-[13px]'
+          : 'text-sm'
+
   return (
     <div className="playing-card-face-inner playing-card-face-joker">
+      <span
+        className={`playing-card-joker-mark font-display font-bold leading-none tracking-tight ${markClass}`}
+        aria-hidden
+      >
+        J
+      </span>
       <JokerHatIcon className="playing-card-joker-hat" />
     </div>
   )
@@ -213,8 +231,6 @@ function BicycleCardBack({
   )
 }
 
-type CardTier = 'micro' | 'tiny' | 'small' | 'large'
-
 function cardTier(micro: boolean, tiny: boolean, small: boolean): CardTier {
   if (micro) return 'micro'
   if (tiny) return 'tiny'
@@ -342,7 +358,7 @@ export function Card({
         className={`playing-card playing-card-wild playing-card-joker ${sizeClass} ${liftClass} ${className}`}
         aria-label={cardLabel(card)}
       >
-        <JokerFace />
+        <JokerFace tier={tier} />
       </div>
     )
   }
