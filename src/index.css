@@ -725,67 +725,28 @@
     color: #fce8ef;
   }
 
-  /* Cream face like a real Bicycle joker; still reads as wild via the rose rim. */
+  /* Full-bleed Bicycle-style joker art; rose rim keeps it reading as wild. */
   .playing-card-joker {
+    overflow: hidden;
+    padding: 0;
+    background: #f3ebe0;
     color: #2a1a22;
     box-shadow:
       inset 0 0 0 1.5px rgba(176, 30, 46, 0.45),
       0 1px 2px rgba(0, 0, 0, 0.12);
   }
 
-  .playing-card-face-joker {
-    position: relative;
-    align-items: center;
-    justify-content: center;
-    padding: 0.1rem 0.06rem 0.06rem;
-  }
-
-  .playing-card-face-joker-full {
-    height: 100%;
-    width: 100%;
-  }
-
-  .playing-card-joker-index {
+  .playing-card-joker-art {
     position: absolute;
-    top: 0.1rem;
-    left: 0.1rem;
-    z-index: 1;
-    font-family: Georgia, 'Times New Roman', serif;
-    font-size: 0.42rem;
-    font-weight: 700;
-    letter-spacing: -0.04em;
-    line-height: 1;
-    color: #b01e2e;
-    opacity: 0.9;
-  }
-
-  .playing-card-joker-index-full {
-    font-size: 0.58rem;
-    top: 0.18rem;
-    left: 0.18rem;
-  }
-
-  .playing-card-joker-figure {
+    inset: 0;
     display: block;
-    width: 94%;
-    height: auto;
-    max-height: 96%;
-  }
-
-  .playing-card-joker-figure-micro {
-    width: 96%;
-  }
-
-  .playing-card-joker-figure-tiny {
-    width: 94%;
-  }
-
-  .playing-card-joker-figure-small {
-    width: 90%;
-  }
-
-  .playing-card-joker-figure-large {
-    width: 86%;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-drag: none;
   }
 
   /* Phone / book-mini faces — rank fills the face; suit stays quiet */
