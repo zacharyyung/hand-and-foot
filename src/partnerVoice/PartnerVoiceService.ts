@@ -11,6 +11,10 @@ class PartnerVoiceServiceImpl {
   private queue: string[] = []
   private processing = false
 
+  constructor() {
+    void refreshElevenLabsProviderStatus()
+  }
+
   getSettings(): PartnerVoiceSettings {
     return { ...this.settings }
   }
@@ -72,6 +76,11 @@ class PartnerVoiceServiceImpl {
     const next = this.queue.shift()
     if (!next) return
 
+    unlockNarrationAudio()
+
+    if (!this.elevenLabs.isAvailable()) {
+      await refreshElevenLabsProviderStatus()
+    }
     if (!this.elevenLabs.isAvailable()) return
 
     this.processing = true

@@ -3,6 +3,8 @@
  * No external assets — warm, short, non-arcade.
  */
 
+import { unlockNarrationAudio } from '../narration/audioPlayback'
+
 export type SoundId =
   | 'select'
   | 'deselect'
@@ -347,4 +349,7 @@ export function playSound(id: SoundId) {
 export function unlockAudio() {
   const audio = getCtx()
   if (audio?.state === 'suspended') void audio.resume()
+  // Partner voice uses a separate AudioContext — unlock it on the same taps as SFX
+  // so ElevenLabs lines can play after async TTS fetch on mobile Safari.
+  unlockNarrationAudio()
 }
