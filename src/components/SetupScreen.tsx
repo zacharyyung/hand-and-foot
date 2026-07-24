@@ -160,19 +160,10 @@ export function SetupScreen({
   }
 
   const aiCount = playerCount - humanCount
-  /** Single-human lobby — keep the whole form in the phone viewport. */
-  const compactHome = humanCount === 1
 
   return (
-    <div
-      className={[
-        'setup-screen relative mx-auto max-w-2xl px-6 py-12 sm:py-16',
-        compactHome ? 'setup-screen-compact' : '',
-      ]
-        .filter(Boolean)
-        .join(' ')}
-    >
-      <header className="setup-screen-header mb-10 text-center sm:mb-12">
+    <div className="setup-screen relative mx-auto max-w-2xl px-5 pb-[max(3rem,calc(var(--safe-bottom)+2rem))] pt-[max(3rem,calc(var(--safe-top)+2.5rem))] sm:px-6 sm:pb-16 sm:pt-16">
+      <header className="setup-screen-header mb-8 text-center sm:mb-12">
         <p className="setup-screen-eyebrow mb-2 font-sans text-[11px] uppercase tracking-[0.22em] text-ink-faint">
           Tabletop
         </p>
@@ -184,8 +175,8 @@ export function SetupScreen({
         </p>
       </header>
 
-      <div className="setup-screen-body">
-        <section className="setup-screen-section mb-8">
+      <div className="setup-screen-body space-y-8">
+        <section className="setup-screen-section">
           <label className="setup-screen-label mb-3 block text-center text-[11px] font-medium uppercase tracking-[0.14em] text-ink-muted">
             Players
           </label>
@@ -215,7 +206,7 @@ export function SetupScreen({
           </div>
         </section>
 
-        <section className="setup-screen-section mb-8">
+        <section className="setup-screen-section">
           <label className="setup-screen-label mb-3 block text-center text-[11px] font-medium uppercase tracking-[0.14em] text-ink-muted">
             Humans at the table
           </label>
@@ -237,7 +228,7 @@ export function SetupScreen({
         </section>
 
         {aiCount > 0 && (
-          <section className="setup-screen-section setup-screen-section-ai mb-10">
+          <section className="setup-screen-section">
             <label className="setup-screen-label mb-3 block text-center text-[11px] font-medium uppercase tracking-[0.14em] text-ink-muted">
               AI expertise
             </label>
@@ -262,11 +253,11 @@ export function SetupScreen({
           </section>
         )}
 
-        <div className="setup-screen-players space-y-3">
+        <div className="setup-screen-players space-y-4">
           {humanPlayers.map((player, index) => (
             <div
               key={index}
-              className="setup-player-card rounded-2xl bg-black/25 px-4 py-3.5 backdrop-blur-sm"
+              className="setup-player-card rounded-2xl bg-black/25 px-4 py-4"
             >
               <div className="setup-player-card-meta mb-3 flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm font-medium text-ink">
@@ -277,10 +268,10 @@ export function SetupScreen({
                 </p>
               </div>
 
-              <div className="setup-player-card-fields flex flex-wrap items-end gap-4">
-                <div className="setup-avatar-field flex min-w-0 flex-col gap-1">
+              <div className="setup-player-card-fields flex flex-col gap-4">
+                <div className="setup-avatar-field flex min-w-0 flex-col gap-1.5">
                   <span className="text-[10px] text-ink-faint">Avatar</span>
-                  <div className="setup-avatar-grid flex flex-wrap gap-1">
+                  <div className="setup-avatar-grid flex flex-wrap gap-1.5">
                     {HUMAN_AVATARS.map((avatar) => (
                       <button
                         key={avatar}
@@ -300,50 +291,52 @@ export function SetupScreen({
                   </div>
                 </div>
 
-                <label className="setup-name-field flex min-w-0 flex-col gap-1">
-                  <span className="text-[10px] text-ink-faint">Name</span>
-                  <input
-                    value={player.name}
-                    onChange={(e) => updateHuman(index, { name: e.target.value })}
-                    placeholder={`Player ${index + 1}`}
-                    className="field-control px-3 py-2 text-sm"
-                  />
-                </label>
-                {askAge && (
-                  <label className="flex flex-col gap-1">
-                    <span className="text-[10px] text-ink-faint">Age</span>
-                    <div className="field-age-group">
-                      <button
-                        type="button"
-                        className="field-stepper"
-                        aria-label="Decrease age"
-                        disabled={player.age <= 1}
-                        onClick={() => adjustAge(index, -1)}
-                      >
-                        −
-                      </button>
-                      <input
-                        type="number"
-                        min={1}
-                        max={120}
-                        value={player.age || ''}
-                        onChange={(e) =>
-                          updateHuman(index, { age: Number(e.target.value) })
-                        }
-                        className="field-control field-control--number py-2 text-sm"
-                      />
-                      <button
-                        type="button"
-                        className="field-stepper"
-                        aria-label="Increase age"
-                        disabled={player.age >= 120}
-                        onClick={() => adjustAge(index, 1)}
-                      >
-                        +
-                      </button>
-                    </div>
+                <div className="flex flex-wrap items-end gap-4">
+                  <label className="setup-name-field flex min-w-[12rem] flex-1 flex-col gap-1.5">
+                    <span className="text-[10px] text-ink-faint">Name</span>
+                    <input
+                      value={player.name}
+                      onChange={(e) => updateHuman(index, { name: e.target.value })}
+                      placeholder={`Player ${index + 1}`}
+                      className="field-control px-3 py-2 text-sm"
+                    />
                   </label>
-                )}
+                  {askAge && (
+                    <label className="flex flex-col gap-1.5">
+                      <span className="text-[10px] text-ink-faint">Age</span>
+                      <div className="field-age-group">
+                        <button
+                          type="button"
+                          className="field-stepper"
+                          aria-label="Decrease age"
+                          disabled={player.age <= 1}
+                          onClick={() => adjustAge(index, -1)}
+                        >
+                          −
+                        </button>
+                        <input
+                          type="number"
+                          min={1}
+                          max={120}
+                          value={player.age || ''}
+                          onChange={(e) =>
+                            updateHuman(index, { age: Number(e.target.value) })
+                          }
+                          className="field-control field-control--number py-2 text-sm"
+                        />
+                        <button
+                          type="button"
+                          className="field-stepper"
+                          aria-label="Increase age"
+                          disabled={player.age >= 120}
+                          onClick={() => adjustAge(index, 1)}
+                        >
+                          +
+                        </button>
+                      </div>
+                    </label>
+                  )}
+                </div>
               </div>
             </div>
           ))}

@@ -456,16 +456,12 @@ function App() {
     )
   }
 
-  const lockSetupViewport = !game && humanCount === 1
-
   return (
     <div
       className={
         game?.phase === 'playing'
           ? 'room-bg h-dvh max-h-dvh overflow-hidden'
-          : lockSetupViewport
-            ? 'room-bg room-bg-setup-lock'
-            : 'room-bg min-h-screen'
+          : 'room-bg min-h-screen'
       }
     >
       <InstructionsOverlay
