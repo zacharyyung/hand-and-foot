@@ -566,15 +566,25 @@
     color: #fce8ef;
   }
 
-  /* Same wine wild chrome as twos; white hat keeps it distinct from jacks. */
+  /* Same wine wild chrome as twos; hat + corner J mark the joker. */
   .playing-card-joker {
     overflow: hidden;
   }
 
   .playing-card-face-joker {
+    position: relative;
     align-items: center;
     justify-content: center;
     padding: 0.18rem;
+  }
+
+  .playing-card-joker-mark {
+    position: absolute;
+    top: 0.1rem;
+    left: 0.14rem;
+    z-index: 2;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
   }
 
   .playing-card-joker-hat {
