@@ -70,19 +70,33 @@ export function PartnerVoiceOverlay({
 
   function respondWild(approve: boolean) {
     playSound('chat')
+    const proposal = wildRequest?.wildProposal
     onSend(
       approve
-        ? createWildApproveSignal(viewerSeat, viewer.profile.name, viewer.profile.avatar)
-        : createWildDenySignal(viewerSeat, viewer.profile.name, viewer.profile.avatar),
+        ? createWildApproveSignal(
+            viewerSeat,
+            viewer.profile.name,
+            viewer.profile.avatar,
+            proposal,
+          )
+        : createWildDenySignal(
+            viewerSeat,
+            viewer.profile.name,
+            viewer.profile.avatar,
+            proposal,
+          ),
       game,
     )
     speakPartnerAck(approve)
   }
 
   const isGoOut = activeRequest.type === 'ready_go_out'
+  const bookRank = wildRequest?.wildProposal?.rank
   const title = isGoOut
     ? `${partner.profile.name} wants to go out`
-    : `${partner.profile.name} wants to play a wild`
+    : bookRank
+      ? `${partner.profile.name} wants to wild your ${bookRank}s`
+      : `${partner.profile.name} wants to play a wild`
 
   return (
     <>
@@ -111,8 +125,8 @@ export function PartnerVoiceOverlay({
 
         <p className="mb-3 text-[10px] leading-relaxed text-ink-muted">
           {isGoOut
-            ? 'Their answer is advice — you still choose whether to go out.'
-            : 'This only affects whether they dirty a clean book with a wild this round.'}
+            ? 'Yes lets them discard to go out. No keeps them in the round for now.'
+            : 'Yes lets them play the wild on that book. No makes them keep it or discard instead.'}
         </p>
 
         <div className="flex gap-2">

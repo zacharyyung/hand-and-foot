@@ -7,19 +7,36 @@ import {
   drawCards,
   getCurrentPlayer,
   getTeam,
+  isLastFootCard,
+  passTurnKeepingLastFootCard,
   startBook,
 } from '../actions'
 import type { GameState } from '../deal'
 import type { ChatMessage } from '../chat'
+import {
+  awaitingPartnerGoOutResponse,
+  awaitingPartnerWildResponse,
+  createReadyGoOutSignal,
+  deniedWildBookIds,
+  hasPartnerGoOutApproval,
+  hasPartnerWildApproval,
+  partnerAdvisedAgainstGoOut,
+  opponentsHoldManyCards,
+} from '../chat'
 import type { Card } from '../cards'
 import { cardLabel } from '../cards'
-import { bookWildCount } from '../books'
-import { hasPartnerWildApproval } from '../chat'
+import { isCleanBook } from '../books'
 import { partnerSeat, type PlayerCount } from '../teams'
 import { findAddToBookActions } from './decisions'
 import { AiDebugCollector } from './debugTrace'
 import { buildAiPublicState } from './publicState'
-import { maybeAiChatSignal, maybeAiWildRequest, shouldDeferWildOnCleanBook } from './chatSignals'
+import {
+  buildWildProposal,
+  maybeAiChatSignal,
+  maybeAiWildRequest,
+  needsHumanWildConsent,
+  shouldAskBeforeWildAdd,
+} from './chatSignals'
 import {
   initialMeldUrgency,
   meldPressure,
@@ -35,6 +52,8 @@ import {
 export interface AiTurnResult {
   state: GameState
   chatMessage?: ChatMessage
+  /** Pause mid-turn until the human partner answers yes/no in chat. */
+  awaitingPartner?: boolean
   debugTrace?: AiDebugCollector['trace']
 }
 
@@ -61,6 +80,10 @@ export function runAiTurn(
 
   const difficulty = player.profile.aiDifficulty ?? 'normal'
   const debug = options?.debug
+  const seatIndex = state.currentPlayerIndex
+  const playerCount = state.playerCount as PlayerCount
+  const partnerIdx = partnerSeat(seatIndex, playerCount)
+  const partnerIsHuman = state.players[partnerIdx]?.profile.isHuman === true
   let current = state
   let chatMessage: ChatMessage | undefined
   let messages = chatMessages
@@ -73,6 +96,23 @@ export function runAiTurn(
   if (current.phase !== 'playing') {
     return { state: current, chatMessage, debugTrace: debug?.trace }
   }
+
+  // Still waiting on a prior wild ask — do not advance the turn.
+  if (
+    partnerIsHuman &&
+    awaitingPartnerWildResponse(messages, seatIndex, partnerIdx)
+  ) {
+    debug?.step('chat', 'Waiting for partner wild yes/no.')
+    return {
+      state: current,
+      awaitingPartner: true,
+      debugTrace: debug?.trace,
+    }
+  }
+
+  const deniedWildBooks = partnerIsHuman
+    ? deniedWildBookIds(messages, seatIndex, partnerIdx)
+    : new Set<string>()
 
   const maxPlays = difficulty === 'expert' ? 14 : 10
   debug?.step(
@@ -148,7 +188,7 @@ export function runAiTurn(
         pub.isPlayingFoot,
         current.booksWithWildAddedThisTurn,
         team.meldThresholdMet,
-      )
+      ).filter((a) => !deniedWildBooks.has(a.bookId))
       debug?.step('add', `${addActions.length} add action(s) available.`)
       const triedAdds = new Set<string>()
 
@@ -179,9 +219,59 @@ export function runAiTurn(
         }
 
         const book = pub.myTeamBooks.find((b) => b.id === bestAdd.bookId)
+        if (!book) continue
+
+        if (
+          partnerIsHuman &&
+          shouldAskBeforeWildAdd(
+            current,
+            seatIndex,
+            messages,
+            book,
+            bestAdd.cardIds,
+            pub.myHand,
+          )
+        ) {
+          const proposal = buildWildProposal(book, bestAdd.cardIds)
+          const approved = hasPartnerWildApproval(
+            messages,
+            seatIndex,
+            partnerIdx,
+            proposal,
+          )
+          if (!approved) {
+            const wildReq = maybeAiWildRequest(current, seatIndex, messages, proposal, {
+              partnerOwned: book.startedBySeatIndex === partnerIdx,
+              clean: isCleanBook(book),
+            })
+            if (wildReq) {
+              debug?.step(
+                'chat',
+                `Asking partner before wild on ${book.rank}s (${labelCards(pub.myHand, bestAdd.cardIds)}).`,
+              )
+              return {
+                state: current,
+                chatMessage: wildReq,
+                awaitingPartner: true,
+                debugTrace: debug?.trace,
+              }
+            }
+            // Pending ask without a new message — keep waiting.
+            if (awaitingPartnerWildResponse(messages, seatIndex, partnerIdx)) {
+              return {
+                state: current,
+                awaitingPartner: true,
+                debugTrace: debug?.trace,
+              }
+            }
+            // Denied or unable to ask — skip this add.
+            continue
+          }
+        }
+
         debug?.step(
           'add',
-          `Adding to ${book?.rank ?? '?'} book: ${labelCards(pub.myHand, bestAdd.cardIds)}`,
+          `Adding to ${book.rank} book: ${labelCards(pub.myHand, bestAdd.cardIds)}`,
         )
         const result = addToBook(current, bestAdd.bookId, bestAdd.cardIds)
         if (!result.error) {
@@ -228,8 +318,55 @@ export function runAiTurn(
   }
 
   if (current.turnPhase === 'play') {
+    const currentPlayer = getCurrentPlayer(current)
+    const team = getTeam(current, currentPlayer.profile.teamId)
+    const lastFoot =
+      isLastFootCard(currentPlayer) &&
+      canTeamGoOut(team.books, team.meldThresholdMet)
+
+    // Ask human partner before going out — pause until yes/no.
+    if (partnerIsHuman && lastFoot) {
+      if (awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx)) {
+        debug?.step('chat', 'Waiting for partner go-out yes/no.')
+        return {
+          state: current,
+          awaitingPartner: true,
+          debugTrace: debug?.trace,
+        }
+      }
+
+      if (!hasPartnerGoOutApproval(current, seatIndex, messages)) {
+        if (
+          partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount) &&
+          !opponentsHoldManyCards(current, seatIndex)
+        ) {
+          debug?.step('discard', 'Partner said no to go-out — holding last card.')
+          const pass = passTurnKeepingLastFootCard(current)
+          return {
+            state: pass.error ? current : pass.state,
+            debugTrace: debug?.trace,
+          }
+        }
+
+        if (!partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)) {
+          const signal = createReadyGoOutSignal(
+            seatIndex,
+            currentPlayer.profile.name,
+            currentPlayer.profile.avatar,
+          )
+          debug?.step('chat', 'Asking partner before going out.')
+          return {
+            state: current,
+            chatMessage: signal,
+            awaitingPartner: true,
+            debugTrace: debug?.trace,
+          }
+        }
+      }
+    }
+
     const goOutSignal = maybeAiChatSignal(current, current.currentPlayerIndex, messages)
-    if (goOutSignal && !chatMessage) {
+    if (goOutSignal && !chatMessage && !partnerIsHuman) {
       debug?.step('chat', 'Signaling ready to go out.')
       chatMessage = goOutSignal
       messages = [...messages, goOutSignal]
@@ -241,28 +378,40 @@ export function runAiTurn(
 
     const loneWild = pickLoneWildAdd(
       pub.myHand,
-      pub.myTeamBooks,
+      pub.myTeamBooks.filter((b) => !deniedWildBooks.has(b.id)),
       current.booksWithWildAddedThisTurn,
     )
     if (loneWild && !goingOut) {
-      const team = getTeam(current, player.profile.teamId)
-      const book = team.books.find((b) => b.id === loneWild.bookId)
-      const partnerIdx = partnerSeat(current.currentPlayerIndex, current.playerCount as PlayerCount)
-      const partnerIsHuman = current.players[partnerIdx].profile.isHuman
-      const isCleanBook = book != null && bookWildCount(book) === 0
-
-      if (partnerIsHuman && isCleanBook) {
-        if (hasPartnerWildApproval(messages, current.currentPlayerIndex, partnerIdx)) {
-          debug?.step('wild', `Adding wild to book ${loneWild.bookId.slice(0, 8)} (partner approved).`)
+      const book = getTeam(current, currentPlayer.profile.teamId).books.find(
+        (b) => b.id === loneWild.bookId,
+      )
+      if (book && partnerIsHuman) {
+        const cards = pub.myHand.filter((c) => c.id === loneWild.cardId)
+        if (needsHumanWildConsent(book, cards, partnerIdx)) {
+          const proposal = buildWildProposal(book, [loneWild.cardId])
+          if (hasPartnerWildApproval(messages, seatIndex, partnerIdx, proposal)) {
+            debug?.step('wild', `Adding wild to ${book.rank}s (partner approved).`)
+            const wildResult = addToBook(current, loneWild.bookId, [loneWild.cardId])
+            if (!wildResult.error) current = wildResult.state
+          } else {
+            const wildReq = maybeAiWildRequest(current, seatIndex, messages, proposal, {
+              partnerOwned: book.startedBySeatIndex === partnerIdx,
+              clean: isCleanBook(book),
+            })
+            if (wildReq) {
+              debug?.step('chat', 'Asking partner before lone wild add.')
+              return {
+                state: current,
+                chatMessage: wildReq,
+                awaitingPartner: true,
+                debugTrace: debug?.trace,
+              }
+            }
+          }
+        } else {
+          debug?.step('wild', `Adding lone wild to book ${loneWild.bookId.slice(0, 8)}…`)
           const wildResult = addToBook(current, loneWild.bookId, [loneWild.cardId])
           if (!wildResult.error) current = wildResult.state
-        } else if (shouldDeferWildOnCleanBook(current, current.currentPlayerIndex, messages, loneWild.bookId)) {
-          const wildReq = maybeAiWildRequest(current, current.currentPlayerIndex, messages, book!.rank)
-          if (wildReq && !chatMessage) {
-            debug?.step('chat', 'Asking partner before dirtying clean book.')
-            chatMessage = wildReq
-            messages = [...messages, wildReq]
-          }
         }
       } else {
         debug?.step('wild', `Adding lone wild to book ${loneWild.bookId.slice(0, 8)}…`)
@@ -278,10 +427,15 @@ export function runAiTurn(
           refreshed.isPlayingFoot,
         )
         if (wildStart) {
-          debug?.step('wild', `Starting book with wild: ${wildStart.map((id) => {
-            const card = refreshed.myHand.find((c) => c.id === id)
-            return card ? cardLabel(card) : id
-          }).join(' ')}`)
+          debug?.step(
+            'wild',
+            `Starting book with wild: ${wildStart
+              .map((id) => {
+                const card = refreshed.myHand.find((c) => c.id === id)
+                return card ? cardLabel(card) : id
+              })
+              .join(' ')}`,
+          )
           const startResult = startBook(current, wildStart)
           if (!startResult.error) {
             current = startResult.state
@@ -290,12 +444,34 @@ export function runAiTurn(
       }
     }
 
+    // Re-check go-out after possible wild play.
+    const goingOutNow = canPlayerGoOut(current, messages)
+    if (
+      partnerIsHuman &&
+      isLastFootCard(getCurrentPlayer(current)) &&
+      canTeamGoOut(
+        getTeam(current, getCurrentPlayer(current).profile.teamId).books,
+        getTeam(current, getCurrentPlayer(current).profile.teamId).meldThresholdMet,
+      ) &&
+      !goingOutNow &&
+      partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount) &&
+      !opponentsHoldManyCards(current, seatIndex)
+    ) {
+      debug?.step('discard', 'Partner denied go-out — ending turn with last card.')
+      const pass = passTurnKeepingLastFootCard(current)
+      return {
+        state: pass.error ? current : pass.state,
+        chatMessage,
+        debugTrace: debug?.trace,
+      }
+    }
+
     const discardPub = buildAiPublicState(current, current.currentPlayerIndex)
     const discardId = pickDiscardCard(
       discardPub.myHand,
       discardPub.myTeamBooks,
       difficulty,
-      goingOut,
+      goingOutNow,
     )
     const cardToDiscard = discardPub.myHand.find((c) => c.id === discardId)
     debug?.step(
