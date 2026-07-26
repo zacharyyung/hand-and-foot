@@ -182,7 +182,10 @@ export function commitStagedMelds(
     })
   }
 
-  const meldCheck = checkFootMeld(player, allStagedIds, virtualBooks, true)
+  const meldCheck = checkFootMeld(player, allStagedIds, virtualBooks, true, {
+    booksBeforeMeld: team.books,
+    meldThresholdMetBeforeMeld: team.meldThresholdMet,
+  })
   if (!meldCheck.ok) return { state, error: meldCheck.error }
 
   if (totalPoints < required) {
@@ -293,6 +296,10 @@ export function startBook(
     cardIds,
     [...team.books, projectedBook],
     thresholdNowMet,
+    {
+      booksBeforeMeld: team.books,
+      meldThresholdMetBeforeMeld: team.meldThresholdMet,
+    },
   )
   if (!meldCheck.ok) return { state, error: meldCheck.error }
 
@@ -386,6 +393,10 @@ export function addToBook(
     cardIds,
     team.books.map((b) => (b.id === bookId ? updatedBook : b)),
     team.meldThresholdMet,
+    {
+      booksBeforeMeld: team.books,
+      meldThresholdMetBeforeMeld: team.meldThresholdMet,
+    },
   )
   if (!meldCheck.ok) return { state, error: meldCheck.error }
 
@@ -538,6 +549,9 @@ const FOOT_MELD_MUST_LEAVE_DISCARD_ERROR =
 export const FOOT_MELD_INELIGIBLE_GO_OUT_ERROR =
   'You cannot leave one foot card unless your team can go out — need 1 clean and 1 dirty completed book (7+).'
 
+export const FOOT_MELD_DIRTIES_ONLY_CLEAN_ERROR =
+  'This meld would dirty your only clean completed book — keep a clean book to go out.'
+
 /** True when a foot meld still leaves at least one card to discard this turn. */
 export function footMeldLeavesDiscard(
   player: PlayerState,
@@ -567,11 +581,39 @@ export function wouldLeaveIneligibleLastFootCard(
   return !canTeamGoOut(booksAfterMeld, meldThresholdMetAfterMeld)
 }
 
+export interface FootMeldCheckOptions {
+  /** Table books before this meld — used to explain dirtying the only clean book. */
+  booksBeforeMeld?: Book[]
+  meldThresholdMetBeforeMeld?: boolean
+}
+
+/** Explain why a foot meld that leaves one card is blocked for going out. */
+export function getFootMeldIneligibleReason(
+  booksAfterMeld: Book[],
+  meldThresholdMetAfterMeld: boolean,
+  options?: FootMeldCheckOptions,
+): string {
+  const beforeBooks = options?.booksBeforeMeld
+  if (
+    beforeBooks &&
+    canTeamGoOut(
+      beforeBooks,
+      options?.meldThresholdMetBeforeMeld ?? meldThresholdMetAfterMeld,
+    ) &&
+    !canTeamGoOut(booksAfterMeld, meldThresholdMetAfterMeld)
+  ) {
+    return FOOT_MELD_DIRTIES_ONLY_CLEAN_ERROR
+  }
+
+  return FOOT_MELD_INELIGIBLE_GO_OUT_ERROR
+}
+
 export function checkFootMeld(
   player: PlayerState,
   meldCardIds: string[],
   booksAfterMeld: Book[],
   meldThresholdMetAfterMeld: boolean,
+  options?: FootMeldCheckOptions,
 ): { ok: true } | { ok: false; error: string } {
   if (!player.isPlayingFoot) return { ok: true }
   if (isLastFootCard(player)) {
@@ -588,7 +630,14 @@ export function checkFootMeld(
       meldThresholdMetAfterMeld,
     )
   ) {
-    return { ok: false, error: FOOT_MELD_INELIGIBLE_GO_OUT_ERROR }
+    return {
+      ok: false,
+      error: getFootMeldIneligibleReason(
+        booksAfterMeld,
+        meldThresholdMetAfterMeld,
+        options,
+      ),
+    }
   }
   return { ok: true }
 }
@@ -600,6 +649,7 @@ export function footMeldAllowedForHand(
   isPlayingFoot: boolean,
   booksAfterMeld: Book[],
   meldThresholdMetAfterMeld: boolean,
+  options?: FootMeldCheckOptions,
 ): boolean {
   if (!isPlayingFoot) return true
   const player = {
@@ -608,7 +658,13 @@ export function footMeldAllowedForHand(
     foot: [],
     footOnHold: false,
   } as unknown as PlayerState
-  return checkFootMeld(player, meldCardIds, booksAfterMeld, meldThresholdMetAfterMeld).ok
+  return checkFootMeld(
+    player,
+    meldCardIds,
+    booksAfterMeld,
+    meldThresholdMetAfterMeld,
+    options,
+  ).ok
 }
 
 /** Discarding the last hand card while the foot pile is still waiting. */

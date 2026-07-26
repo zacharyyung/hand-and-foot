@@ -30,6 +30,7 @@ import {
   getGoOutBlockReason,
   getWildPlayBlockReason,
   needsAddBookPicker,
+  pickPreferredAddBook,
   shouldWarnDiscardToBook,
   bookWildCount,
   cardsForBookFan,
@@ -367,7 +368,10 @@ export function GameView({
 
     const tryCheck = (cardIds: string[], books: Book[], thresholdMet: boolean) => {
       if (cardIds.length === 0) return null
-      const result = checkFootMeld(viewer, cardIds, books, thresholdMet)
+      const result = checkFootMeld(viewer, cardIds, books, thresholdMet, {
+        booksBeforeMeld: team.books,
+        meldThresholdMetBeforeMeld: team.meldThresholdMet,
+      })
       return result.ok ? null : result.error
     }
 
@@ -608,10 +612,13 @@ export function GameView({
       setSelectedAddBookId(null)
       return
     }
-    setSelectedAddBookId((prev) =>
-      prev && addBookOptions.some((b) => b.id === prev) ? prev : addBookOptions[0]?.id ?? null,
-    )
-  }, [showAddBookPicker, addBookOptions, selectedIds])
+    setSelectedAddBookId((prev) => {
+      if (prev && addBookOptions.some((b) => b.id === prev)) return prev
+      const selected = viewer.hand.filter((c) => selectedIds.includes(c.id))
+      const preferred = pickPreferredAddBook(addBookOptions, selected)
+      return preferred?.id ?? addBookOptions[0]?.id ?? null
+    })
+  }, [showAddBookPicker, addBookOptions, selectedIds, viewer.hand])
 
   /* Turn-change / your-turn cues */
   useEffect(() => {
@@ -963,7 +970,10 @@ export function GameView({
       const stagedAndSelected = [
         ...new Set([...stagedBooks.flatMap((b) => b.cardIds), ...selectedIds]),
       ]
-      const footCheck = checkFootMeld(viewer, stagedAndSelected, virtualBooks, true)
+      const footCheck = checkFootMeld(viewer, stagedAndSelected, virtualBooks, true, {
+        booksBeforeMeld: team.books,
+        meldThresholdMetBeforeMeld: team.meldThresholdMet,
+      })
       if (!footCheck.ok) {
         setError(footCheck.error)
         playSound('invalid')
@@ -1026,7 +1036,10 @@ export function GameView({
     const stagedAndSelected = [
       ...new Set([...stagedBooks.flatMap((b) => b.cardIds), ...selectedIds]),
     ]
-    const footCheck = checkFootMeld(viewer, stagedAndSelected, virtualBooks, true)
+    const footCheck = checkFootMeld(viewer, stagedAndSelected, virtualBooks, true, {
+      booksBeforeMeld: team.books,
+      meldThresholdMetBeforeMeld: team.meldThresholdMet,
+    })
     if (!footCheck.ok) {
       setError(footCheck.error)
       playSound('invalid')
