@@ -1,12 +1,13 @@
 import type { GameState } from '../deal'
 import { getTeam } from '../actions'
-import { getGoOutBlockReason } from '../books'
+import { getGoOutBlockReason, isCleanBook, type Book } from '../books'
 import { buildAiPublicState } from './publicState'
-import { isRedThree } from '../cards'
+import { isRedThree, isWildCard, type Card } from '../cards'
 import { heldCardPenalty } from '../scoring'
 import {
   APPROVE_GO_OUT_TEXT,
   awaitingPartnerGoOutResponse,
+  awaitingPartnerWildResponse,
   createApproveGoOutSignal,
   createDenyGoOutSignal,
   createReadyGoOutSignal,
@@ -16,11 +17,13 @@ import {
   pendingPartnerGoOutRequest,
   pendingPartnerWildRequest,
   teamCanGoOut,
+  wildAskText,
   type ChatMessage,
+  type WildBookProposal,
 } from '../chat'
 import type { PlayerCount } from '../teams'
 import { partnerSeat } from '../teams'
-import { bookWildCount } from '../books'
+import { countWildsInCards } from '../books'
 
 export interface PartnerGoOutRecommendation {
   approve: boolean
@@ -269,12 +272,36 @@ export function partnerGoOutSignaledInChat(
   )
 }
 
-/** AI asks human partner before dirtying a clean book with a wild. */
+/** Whether this wild add needs a yes/no from the human partner. */
+export function needsHumanWildConsent(
+  book: Book,
+  cards: Card[],
+  humanPartnerSeat: number,
+): boolean {
+  if (countWildsInCards(cards) === 0) return false
+  if (book.startedBySeatIndex === humanPartnerSeat) return true
+  // Dirtying a clean book is a team-scoring decision — always ask.
+  return isCleanBook(book)
+}
+
+export function buildWildProposal(
+  book: Book,
+  cardIds: string[],
+): WildBookProposal {
+  return {
+    bookId: book.id,
+    rank: book.rank,
+    cardIds: [...cardIds],
+  }
+}
+
+/** AI asks human partner before adding a wild to their book (or dirtying a clean book). */
 export function maybeAiWildRequest(
   state: GameState,
   seatIndex: number,
   messages: ChatMessage[],
-  bookRank: string,
+  proposal: WildBookProposal,
+  options?: { partnerOwned?: boolean; clean?: boolean },
 ): ChatMessage | null {
   const player = state.players[seatIndex]
   if (player.profile.isHuman) return null
@@ -282,30 +309,41 @@ export function maybeAiWildRequest(
   const partnerIdx = partnerSeat(seatIndex, state.playerCount as PlayerCount)
   if (!state.players[partnerIdx].profile.isHuman) return null
   if (pendingPartnerWildRequest(messages, partnerIdx, seatIndex)) return null
-  if (hasPartnerWildApproval(messages, seatIndex, partnerIdx)) return null
+  if (hasPartnerWildApproval(messages, seatIndex, partnerIdx, proposal)) return null
 
   return createWildRequestSignal(
     seatIndex,
     player.profile.name,
     player.profile.avatar,
-    bookRank,
+    proposal,
+    wildAskText(proposal.rank, options),
   )
 }
 
-export function shouldDeferWildOnCleanBook(
+/** True when AI should pause and ask before playing this wild add. */
+export function shouldAskBeforeWildAdd(
   state: GameState,
   aiSeatIndex: number,
   messages: ChatMessage[],
-  bookId: string,
+  book: Book,
+  cardIds: string[],
+  hand: Card[],
 ): boolean {
-  const player = state.players[aiSeatIndex]
-  const team = getTeam(state, player.profile.teamId)
-  const book = team.books.find((b) => b.id === bookId)
-  if (!book || bookWildCount(book) > 0) return false
-
   const partnerIdx = partnerSeat(aiSeatIndex, state.playerCount as PlayerCount)
-  if (!state.players[partnerIdx].profile.isHuman) return false
+  if (!state.players[partnerIdx]?.profile.isHuman) return false
 
-  if (hasPartnerWildApproval(messages, aiSeatIndex, partnerIdx)) return false
+  const cards = hand.filter((c) => cardIds.includes(c.id))
+  if (!needsHumanWildConsent(book, cards, partnerIdx)) return false
+
+  const proposal = buildWildProposal(book, cardIds)
+  if (hasPartnerWildApproval(messages, aiSeatIndex, partnerIdx, proposal)) return false
+  if (awaitingPartnerWildResponse(messages, aiSeatIndex, partnerIdx)) return true
   return true
+}
+
+export function selectionHasWild(hand: Card[], cardIds: string[]): boolean {
+  return cardIds.some((id) => {
+    const card = hand.find((c) => c.id === id)
+    return card != null && isWildCard(card)
+  })
 }

@@ -5,6 +5,8 @@ import {
   createApproveGoOutSignal,
   createDenyGoOutSignal,
   createReadyGoOutSignal,
+  createWildApproveSignal,
+  createWildDenySignal,
   canInitiateGoOutSignal,
   pendingPartnerGoOutRequest,
   pendingPartnerWildRequest,
@@ -95,6 +97,28 @@ export function GameChat({
     )
   }
 
+  function sendWildResponse(approve: boolean) {
+    if (!viewerIsHuman || !wildRequest) return
+    playSound('chat')
+    const proposal = wildRequest.wildProposal
+    onSend(
+      approve
+        ? createWildApproveSignal(
+            viewer.profile.seatIndex,
+            viewer.profile.name,
+            viewer.profile.avatar,
+            proposal,
+          )
+        : createWildDenySignal(
+            viewer.profile.seatIndex,
+            viewer.profile.name,
+            viewer.profile.avatar,
+            proposal,
+          ),
+      game,
+    )
+  }
+
   return (
     <>
       <button
@@ -145,8 +169,8 @@ export function GameChat({
               <div>
                 <p className="font-display text-sm font-semibold text-ink">Table chat</p>
                 <p className="mt-0.5 text-[10px] leading-relaxed text-ink-muted">
-                  While playing your foot with books set, ask if you can go out. Your partner&apos;s
-                  reply is advice — you make the final call.
+                  Ask about going out, or answer when your AI partner wants to play a wild on your
+                  books or go out. Tap Yes or No below.
                 </p>
               </div>
               <button
@@ -207,25 +231,60 @@ export function GameChat({
               </div>
             )}
 
-            {wildRequest && viewerIsHuman && aiPartner && (
-              <div className="table-chat-partner-prompt">
-                <p className="text-[11px] font-semibold text-ink">
-                  {partner.profile.avatar} {partner.profile.name} asked about a wild card
-                </p>
-                <p className="mt-1 text-[10px] text-ink-muted">
-                  Use the partner prompt on screen to reply.
-                </p>
-              </div>
-            )}
-
             {partnerRequest && viewerIsHuman && aiPartner && (
               <div className="table-chat-partner-prompt">
                 <p className="text-[11px] font-semibold text-ink">
                   {partner.profile.avatar} {partner.profile.name} wants to go out
                 </p>
                 <p className="mt-1 text-[10px] text-ink-muted">
-                  Use the partner prompt on screen to reply.
+                  Yes lets them go out now. No keeps them playing this round.
                 </p>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => sendPartnerResponse(true)}
+                    className="btn-success flex-1 py-2 text-[11px]"
+                  >
+                    Yes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => sendPartnerResponse(false)}
+                    className="btn-secondary flex-1 py-2 text-[11px]"
+                  >
+                    No
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {wildRequest && viewerIsHuman && aiPartner && (
+              <div className="table-chat-partner-prompt">
+                <p className="text-[11px] font-semibold text-ink">
+                  {partner.profile.avatar} {partner.profile.name} wants to add a wild
+                  {wildRequest.wildProposal?.rank
+                    ? ` to the ${wildRequest.wildProposal.rank}s`
+                    : ''}
+                </p>
+                <p className="mt-1 text-[10px] text-ink-muted">
+                  Yes lets them play it. No makes them leave that book alone for now.
+                </p>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => sendWildResponse(true)}
+                    className="btn-success flex-1 py-2 text-[11px]"
+                  >
+                    Yes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => sendWildResponse(false)}
+                    className="btn-secondary flex-1 py-2 text-[11px]"
+                  >
+                    No
+                  </button>
+                </div>
               </div>
             )}
 

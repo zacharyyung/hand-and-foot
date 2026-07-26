@@ -721,6 +721,14 @@ export function GameView({
       if (result.chatMessage) {
         onChatSend(result.chatMessage, result.state)
       }
+      // Pause mid-turn while the human partner answers wild / go-out yes/no.
+      if (result.awaitingPartner) {
+        if (result.state !== game) {
+          onGameChange(result.state, { recordHistory: false })
+        }
+        setAiThinking(false)
+        return
+      }
       onGameChange(result.state)
       setAiThinking(false)
     }, resumeDelay)

@@ -2,6 +2,7 @@ import type { PlayerCount } from './teams'
 import { partnerSeat, teamIdForSeat } from './teams'
 import type { GameState, PlayerState } from './deal'
 import { teamHasCleanAndDirtyBooks } from './books'
+import type { Rank } from './cards'
 
 export type ChatMessageType =
   | 'ready_go_out'
@@ -12,6 +13,13 @@ export type ChatMessageType =
   | 'wild_approve'
   | 'wild_deny'
 
+/** Proposed wild add the AI wants partner consent for. */
+export interface WildBookProposal {
+  bookId: string
+  rank: Rank
+  cardIds: string[]
+}
+
 export interface ChatMessage {
   id: string
   senderSeatIndex: number
@@ -20,11 +28,24 @@ export interface ChatMessage {
   text: string
   timestamp: number
   type: ChatMessageType
+  wildProposal?: WildBookProposal
 }
 
 export const READY_GO_OUT_SIGNAL_TEXT = 'I can go out!'
 export const APPROVE_GO_OUT_TEXT = 'Yes — you can go out!'
 export const DENY_GO_OUT_TEXT = "No — don't go out."
+export const APPROVE_WILD_TEXT = 'Yes — play the wild.'
+export const DENY_WILD_TEXT = "No — don't play that wild."
+
+export function wildAskText(
+  rank: Rank,
+  options?: { partnerOwned?: boolean; clean?: boolean },
+): string {
+  const rankLabel = rank === 'Joker' ? 'joker' : rank
+  const whose = options?.partnerOwned ? 'your' : 'our'
+  const cleanNote = options?.clean ? " It's clean right now." : ''
+  return `Can I add a wild to ${whose} ${rankLabel}s book?${cleanNote}`
+}
 
 export function isGoOutRequest(type: ChatMessageType): boolean {
   return type === 'ready_go_out'
@@ -123,6 +144,10 @@ export function isAllowedChatMessage(
     )
   }
 
+  if (message.type === 'wild_request') {
+    return canAiSendWildRequest(state, message.senderSeatIndex, existingMessages)
+  }
+
   if (message.type === 'wild_approve' || message.type === 'wild_deny') {
     return canRespondToPartnerWildRequest(
       existingMessages,
@@ -132,6 +157,21 @@ export function isAllowedChatMessage(
   }
 
   return false
+}
+
+/** AI may ask its human partner before playing a wild onto their book. */
+export function canAiSendWildRequest(
+  state: GameState,
+  seatIndex: number,
+  messages: ChatMessage[],
+): boolean {
+  if (state.phase !== 'playing' || state.currentPlayerIndex !== seatIndex) return false
+  if (state.turnPhase !== 'play') return false
+  const player = state.players[seatIndex]
+  if (player.profile.isHuman) return false
+  const partnerIdx = partnerSeat(seatIndex, state.playerCount as PlayerCount)
+  if (!state.players[partnerIdx]?.profile.isHuman) return false
+  return pendingPartnerWildRequest(messages, partnerIdx, seatIndex) === null
 }
 
 export function isGoOutResponse(type: ChatMessageType): boolean {
@@ -210,21 +250,34 @@ export function createPartnerReplySignal(
   }
 }
 
+function sameWildProposal(
+  a: WildBookProposal | undefined,
+  b: WildBookProposal | undefined,
+): boolean {
+  if (!a || !b) return false
+  if (a.bookId !== b.bookId) return false
+  if (a.cardIds.length !== b.cardIds.length) return false
+  const aIds = [...a.cardIds].sort()
+  const bIds = [...b.cardIds].sort()
+  return aIds.every((id, i) => id === bIds[i])
+}
+
 export function createWildRequestSignal(
   senderSeatIndex: number,
   senderName: string,
   senderAvatar: string,
-  bookRank: string,
+  proposal: WildBookProposal,
+  text?: string,
 ): ChatMessage {
-  const rankLabel = bookRank === 'Joker' ? 'joker' : bookRank
   return {
     id: `chat-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     senderSeatIndex,
     senderName,
     senderAvatar,
-    text: `Can I add a wild to our ${rankLabel}s book? It's clean right now.`,
+    text: text ?? wildAskText(proposal.rank),
     timestamp: Date.now(),
     type: 'wild_request',
+    wildProposal: proposal,
   }
 }
 
@@ -232,15 +285,18 @@ export function createWildApproveSignal(
   senderSeatIndex: number,
   senderName: string,
   senderAvatar: string,
+  proposal?: WildBookProposal,
+  text: string = APPROVE_WILD_TEXT,
 ): ChatMessage {
   return {
     id: `chat-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     senderSeatIndex,
     senderName,
     senderAvatar,
-    text: 'Yes — go ahead with the wild.',
+    text,
     timestamp: Date.now(),
     type: 'wild_approve',
+    wildProposal: proposal,
   }
 }
 
@@ -248,15 +304,18 @@ export function createWildDenySignal(
   senderSeatIndex: number,
   senderName: string,
   senderAvatar: string,
+  proposal?: WildBookProposal,
+  text: string = DENY_WILD_TEXT,
 ): ChatMessage {
   return {
     id: `chat-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     senderSeatIndex,
     senderName,
     senderAvatar,
-    text: 'No — keep that book clean for now.',
+    text,
     timestamp: Date.now(),
     type: 'wild_deny',
+    wildProposal: proposal,
   }
 }
 
@@ -269,7 +328,23 @@ function latestWildRequestFrom(messages: ChatMessage[], senderSeat: number): Cha
   return latest
 }
 
-/** AI partner asked to wild a clean book — waiting for human reply. */
+function wildResponseAfter(
+  messages: ChatMessage[],
+  responderSeat: number,
+  afterTimestamp: number,
+): ChatMessage | null {
+  let latest: ChatMessage | null = null
+  for (const msg of messages) {
+    if (msg.senderSeatIndex !== responderSeat) continue
+    if (msg.type !== 'wild_approve' && msg.type !== 'wild_deny') continue
+    // Allow equal timestamps — ask + reply can be created in the same ms in tests/UI.
+    if (msg.timestamp < afterTimestamp) continue
+    if (!latest || msg.timestamp > latest.timestamp) latest = msg
+  }
+  return latest
+}
+
+/** AI partner asked to play a wild — waiting for human reply. */
 export function pendingPartnerWildRequest(
   messages: ChatMessage[],
   responderSeat: number,
@@ -282,9 +357,18 @@ export function pendingPartnerWildRequest(
     (m) =>
       m.senderSeatIndex === responderSeat &&
       (m.type === 'wild_approve' || m.type === 'wild_deny') &&
-      m.timestamp > request.timestamp,
+      m.timestamp >= request.timestamp,
   )
   return responded ? null : request
+}
+
+/** AI asked to play a wild and is still waiting on its human partner. */
+export function awaitingPartnerWildResponse(
+  messages: ChatMessage[],
+  aiSeatIndex: number,
+  humanPartnerSeat: number,
+): boolean {
+  return pendingPartnerWildRequest(messages, humanPartnerSeat, aiSeatIndex) !== null
 }
 
 export function canRespondToPartnerWildRequest(
@@ -300,15 +384,63 @@ export function hasPartnerWildApproval(
   messages: ChatMessage[],
   aiPartnerSeat: number,
   responderSeat: number,
+  proposal?: WildBookProposal,
 ): boolean {
+  if (proposal) {
+    let latestAsk: ChatMessage | null = null
+    for (const msg of messages) {
+      if (msg.type !== 'wild_request' || msg.senderSeatIndex !== aiPartnerSeat) continue
+      if (!sameWildProposal(msg.wildProposal, proposal)) continue
+      if (!latestAsk || msg.timestamp > latestAsk.timestamp) latestAsk = msg
+    }
+    if (!latestAsk) return false
+    return wildResponseAfter(messages, responderSeat, latestAsk.timestamp)?.type === 'wild_approve'
+  }
+
   const request = latestWildRequestFrom(messages, aiPartnerSeat)
   if (!request) return false
-  return messages.some(
-    (m) =>
-      m.senderSeatIndex === responderSeat &&
-      m.type === 'wild_approve' &&
-      m.timestamp > request.timestamp,
-  )
+  return wildResponseAfter(messages, responderSeat, request.timestamp)?.type === 'wild_approve'
+}
+
+/** Human denied a wild add for this book (or the latest ask). */
+export function partnerDeniedWildBook(
+  messages: ChatMessage[],
+  aiSeatIndex: number,
+  humanPartnerSeat: number,
+  bookId?: string,
+): boolean {
+  if (bookId) {
+    for (const msg of messages) {
+      if (msg.type !== 'wild_request' || msg.senderSeatIndex !== aiSeatIndex) continue
+      if (msg.wildProposal?.bookId !== bookId) continue
+      if (wildResponseAfter(messages, humanPartnerSeat, msg.timestamp)?.type === 'wild_deny') {
+        return true
+      }
+    }
+    return false
+  }
+
+  const request = latestWildRequestFrom(messages, aiSeatIndex)
+  if (!request) return false
+  return wildResponseAfter(messages, humanPartnerSeat, request.timestamp)?.type === 'wild_deny'
+}
+
+/** Book ids the human has denied for wild adds this chat history. */
+export function deniedWildBookIds(
+  messages: ChatMessage[],
+  aiSeatIndex: number,
+  humanPartnerSeat: number,
+): Set<string> {
+  const denied = new Set<string>()
+  for (const msg of messages) {
+    if (msg.type !== 'wild_request' || msg.senderSeatIndex !== aiSeatIndex) continue
+    const bookId = msg.wildProposal?.bookId
+    if (!bookId) continue
+    if (wildResponseAfter(messages, humanPartnerSeat, msg.timestamp)?.type === 'wild_deny') {
+      denied.add(bookId)
+    }
+  }
+  return denied
 }
 
 /** Infer yes/no from a partner's free-form reply (for AI clearance). */
@@ -479,11 +611,25 @@ export function shouldAiAttemptGoOut(
   const team = state.teams.find((t) => t.id === player.profile.teamId)
   if (!team || !teamReadyToGoOut(state, team.id)) return false
 
+  const playerCount = state.playerCount as PlayerCount
+  const partnerIdx = partnerSeat(seatIndex, playerCount)
+  const partnerIsHuman = state.players[partnerIdx]?.profile.isHuman === true
+
   if (hasPartnerGoOutApproval(state, seatIndex, messages)) return true
+
+  if (partnerIsHuman) {
+    // Wait for the human's yes/no before discarding the last card.
+    if (awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx)) return false
+    if (!latestReadyGoOutFrom(messages, seatIndex)) return false
+    if (partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)) {
+      return opponentsHoldManyCards(state, seatIndex)
+    }
+    return false
+  }
 
   if (opponentsHoldManyCards(state, seatIndex)) return true
 
-  if (partnerAdvisedAgainstGoOut(messages, seatIndex, state.playerCount as PlayerCount)) {
+  if (partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)) {
     return opponentsHoldManyCards(state, seatIndex)
   }
 
@@ -565,5 +711,8 @@ export function signalLabel(type: ChatMessageType): string {
   if (type === 'ready_go_out') return READY_GO_OUT_SIGNAL_TEXT
   if (type === 'approve_go_out') return APPROVE_GO_OUT_TEXT
   if (type === 'deny_go_out') return DENY_GO_OUT_TEXT
+  if (type === 'wild_request') return 'Ask to play a wild'
+  if (type === 'wild_approve') return APPROVE_WILD_TEXT
+  if (type === 'wild_deny') return DENY_WILD_TEXT
   return 'Partner reply'
 }
