@@ -1,7 +1,7 @@
 import type { PlayerCount } from './teams'
 import { partnerSeat, teamIdForSeat } from './teams'
 import type { GameState, PlayerState } from './deal'
-import { teamHasCleanAndDirtyBooks } from './books'
+import { isCleanBook, teamHasCleanAndDirtyBooks, type Book } from './books'
 
 export type ChatMessageType =
   | 'ready_go_out'
@@ -20,6 +20,8 @@ export interface ChatMessage {
   text: string
   timestamp: number
   type: ChatMessageType
+  /** Target book when AI asks to dirty a clean book with a wild. */
+  bookId?: string
 }
 
 export const READY_GO_OUT_SIGNAL_TEXT = 'I can go out!'
@@ -215,6 +217,7 @@ export function createWildRequestSignal(
   senderName: string,
   senderAvatar: string,
   bookRank: string,
+  bookId: string,
 ): ChatMessage {
   const rankLabel = bookRank === 'Joker' ? 'joker' : bookRank
   return {
@@ -225,6 +228,7 @@ export function createWildRequestSignal(
     text: `Can I add a wild to our ${rankLabel}s book? It's clean right now.`,
     timestamp: Date.now(),
     type: 'wild_request',
+    bookId,
   }
 }
 
@@ -285,6 +289,26 @@ export function pendingPartnerWildRequest(
       m.timestamp > request.timestamp,
   )
   return responded ? null : request
+}
+
+/** Resolve which team book an AI wild request targets (for inline consent UI). */
+export function wildRequestTargetBook(
+  request: ChatMessage,
+  books: Book[],
+): Book | null {
+  if (request.bookId) {
+    const byId = books.find((b) => b.id === request.bookId)
+    if (byId) return byId
+  }
+
+  const match = request.text.match(/our (.+?)s book/i)
+  if (!match) return null
+  const rankLabel = match[1]!.trim().toLowerCase()
+  const rank = rankLabel === 'joker' ? 'Joker' : rankLabel.toUpperCase()
+
+  const cleanMatches = books.filter((b) => b.rank === rank && isCleanBook(b))
+  if (cleanMatches.length === 0) return null
+  return [...cleanMatches].sort((a, b) => b.cards.length - a.cards.length)[0]!
 }
 
 export function canRespondToPartnerWildRequest(

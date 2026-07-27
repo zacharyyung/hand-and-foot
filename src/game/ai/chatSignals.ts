@@ -275,6 +275,7 @@ export function maybeAiWildRequest(
   seatIndex: number,
   messages: ChatMessage[],
   bookRank: string,
+  bookId: string,
 ): ChatMessage | null {
   const player = state.players[seatIndex]
   if (player.profile.isHuman) return null
@@ -289,6 +290,7 @@ export function maybeAiWildRequest(
     player.profile.name,
     player.profile.avatar,
     bookRank,
+    bookId,
   )
 }
 
