@@ -56,8 +56,17 @@ import { AiDebugPanel } from './AiDebugPanel'
 import { useGameShellLayout } from './useGameShellLayout'
 import { TEAM_COLORS, partnerSeat, type PlayerCount } from '../game/teams'
 import type { ChatMessage } from '../game/chat'
-import { getPartnerGoOutHint, pendingPartnerGoOutRequest } from '../game/chat'
+import {
+  createWildApproveSignal,
+  createWildDenySignal,
+  getPartnerGoOutHint,
+  pendingPartnerGoOutRequest,
+  pendingPartnerWildRequest,
+  wildRequestTargetBook,
+} from '../game/chat'
 import { aiPartnerGoOutReplySeats, maybeAiPartnerGoOutResponse } from '../game/ai/chatSignals'
+import { partnerVoiceService, speakPartnerAck } from '../partnerVoice'
+import type { DirtyBookConsent } from './DirtyBookConsentPrompt'
 
 interface GameViewProps {
   game: GameState
@@ -231,6 +240,38 @@ export function GameView({
   const current = getCurrentPlayer(game)
   const isMyTurn = game.currentPlayerIndex === viewerSeat
   const team = getTeam(game, viewer.profile.teamId)
+  const partnerIdx = partnerSeat(viewerSeat, game.playerCount as PlayerCount)
+  const partner = game.players[partnerIdx]
+  const wildRequest =
+    viewer.profile.isHuman && !partner.profile.isHuman
+      ? pendingPartnerWildRequest(chatMessages, viewerSeat, partnerIdx)
+      : null
+  const wildTargetBook = wildRequest ? wildRequestTargetBook(wildRequest, team.books) : null
+
+  function respondWildConsent(approve: boolean) {
+    unlockAudio()
+    partnerVoiceService.unlock()
+    playSound('chat')
+    onChatSend(
+      approve
+        ? createWildApproveSignal(viewerSeat, viewer.profile.name, viewer.profile.avatar)
+        : createWildDenySignal(viewerSeat, viewer.profile.name, viewer.profile.avatar),
+      game,
+    )
+    speakPartnerAck(approve)
+  }
+
+  const dirtyBookConsent: DirtyBookConsent | null =
+    wildRequest && wildTargetBook
+      ? {
+          bookId: wildTargetBook.id,
+          partnerName: partner.profile.name,
+          partnerAvatar: partner.profile.avatar,
+          onApprove: () => respondWildConsent(true),
+          onDeny: () => respondWildConsent(false),
+        }
+      : null
+
   const requiredMeld = meldThreshold(team.score)
   const needsStagedMeld = !team.meldThresholdMet
   const handKey = viewer.hand.map((c) => c.id).sort().join(',')
@@ -1317,6 +1358,7 @@ export function GameView({
             mobile={mobileLayout}
             getCardMotion={getCardMotion}
             isCardInFlight={isCardInFlight}
+            dirtyBookConsent={dirtyBookConsent}
           />
           <CardFlightLayer flights={flights} onSettle={handleSettleFlight} mobile={mobileLayout} />
         </div>

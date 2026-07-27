@@ -257,7 +257,13 @@ export function runAiTurn(
           const wildResult = addToBook(current, loneWild.bookId, [loneWild.cardId])
           if (!wildResult.error) current = wildResult.state
         } else if (shouldDeferWildOnCleanBook(current, current.currentPlayerIndex, messages, loneWild.bookId)) {
-          const wildReq = maybeAiWildRequest(current, current.currentPlayerIndex, messages, book!.rank)
+          const wildReq = maybeAiWildRequest(
+            current,
+            current.currentPlayerIndex,
+            messages,
+            book!.rank,
+            loneWild.bookId,
+          )
           if (wildReq && !chatMessage) {
             debug?.step('chat', 'Asking partner before dirtying clean book.')
             chatMessage = wildReq

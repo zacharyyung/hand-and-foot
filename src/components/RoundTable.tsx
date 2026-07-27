@@ -10,6 +10,7 @@ import {
 import { CardPile } from './CardPile'
 import { SeatPanel } from './SeatPanel'
 import { TableBookZone } from './TeamBooks'
+import type { DirtyBookConsent } from './DirtyBookConsentPrompt'
 import type { PlayerCount } from '../game/teams'
 
 interface RoundTableProps {
@@ -20,6 +21,7 @@ interface RoundTableProps {
   mobile?: boolean
   getCardMotion?: (cardId: string) => CardMotionKind | undefined
   isCardInFlight?: (cardId: string) => boolean
+  dirtyBookConsent?: DirtyBookConsent | null
 }
 
 export function RoundTable({
@@ -30,6 +32,7 @@ export function RoundTable({
   mobile = false,
   getCardMotion,
   isCardInFlight,
+  dirtyBookConsent = null,
 }: RoundTableProps) {
   const viewerSeat = getViewerSeat(game.players)
   const myTeamId = game.players[viewerSeat].profile.teamId
@@ -65,6 +68,7 @@ export function RoundTable({
               mobile={mobile}
               getCardMotion={getCardMotion}
               isCardHidden={isCardInFlight}
+              dirtyBookConsent={dirtyBookConsent}
             />
           )
         })}

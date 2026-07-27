@@ -213,7 +213,7 @@ export function GameChat({
                   {partner.profile.avatar} {partner.profile.name} asked about a wild card
                 </p>
                 <p className="mt-1 text-[10px] text-ink-muted">
-                  Use the partner prompt on screen to reply.
+                  Reply using the prompt next to the book on the table.
                 </p>
               </div>
             )}

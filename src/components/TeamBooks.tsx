@@ -7,6 +7,7 @@ import { BookMini } from './BookMini'
 import { cardFanLayout } from './cardFanLayout'
 import type { CompassSide } from '../game/tableLayout'
 import { TEAM_COLORS } from '../game/teams'
+import { DirtyBookConsentPrompt, type DirtyBookConsent } from './DirtyBookConsentPrompt'
 
 interface TeamBooksProps {
   books: Book[]
@@ -18,6 +19,7 @@ interface TeamBooksProps {
   label?: string
   getCardMotion?: (cardId: string) => CardMotionKind | undefined
   isCardHidden?: (cardId: string) => boolean
+  dirtyBookConsent?: DirtyBookConsent | null
 }
 
 function WildCountBadge({ count }: { count: number }) {
@@ -67,27 +69,37 @@ function BookDisplay({
   getCardMotion,
   isCardHidden,
   mobile = false,
+  dirtyBookConsent = null,
 }: {
   book: Book
   getCardMotion?: (cardId: string) => CardMotionKind | undefined
   isCardHidden?: (cardId: string) => boolean
   mobile?: boolean
+  dirtyBookConsent?: DirtyBookConsent | null
 }) {
   const completed = book.cards.length >= 7
   const clean = isCleanBook(book)
   const wilds = bookWildCount(book)
+  const showConsent = dirtyBookConsent?.bookId === book.id
 
   if (mobile) {
     return (
-      <BookMini
-        cards={book.cards}
-        bookId={book.id}
-        completed={completed}
-        clean={clean}
-        wildCount={wilds}
-        getCardMotion={getCardMotion}
-        isCardHidden={isCardHidden}
-      />
+      <div
+        className={`relative shrink-0 ${showConsent ? 'z-30 rounded-lg ring-2 ring-amber-400/55 ring-offset-1 ring-offset-transparent' : ''}`}
+      >
+        <BookMini
+          cards={book.cards}
+          bookId={book.id}
+          completed={completed}
+          clean={clean}
+          wildCount={wilds}
+          getCardMotion={getCardMotion}
+          isCardHidden={isCardHidden}
+        />
+        {showConsent && dirtyBookConsent && (
+          <DirtyBookConsentPrompt book={book} consent={dirtyBookConsent} mobile />
+        )}
+      </div>
     )
   }
 
@@ -98,7 +110,9 @@ function BookDisplay({
 
   return (
     <div
-      className={`relative shrink-0 pb-2 ${completed ? 'animate-book-settle' : ''}`}
+      className={`relative shrink-0 pb-2 ${completed ? 'animate-book-settle' : ''} ${
+        showConsent ? 'z-30 rounded-lg ring-2 ring-amber-400/55 ring-offset-2 ring-offset-transparent' : ''
+      }`}
       title={`${book.rank}s · ${book.cards.length} cards${clean ? ' · clean' : wilds > 0 ? ' · dirty' : ''}`}
     >
       {completed && (
@@ -132,6 +146,9 @@ function BookDisplay({
       <p className="mt-1 text-center font-sans text-[10px] font-medium tabular-nums text-ink-muted">
         {book.rank}
       </p>
+      {showConsent && dirtyBookConsent && (
+        <DirtyBookConsentPrompt book={book} consent={dirtyBookConsent} />
+      )}
     </div>
   )
 }
@@ -145,6 +162,7 @@ export function TeamBooks({
   label,
   getCardMotion,
   isCardHidden,
+  dirtyBookConsent = null,
 }: TeamBooksProps) {
   const teamBooks = sortBooks(books.filter((b) => b.teamId === teamId))
   const color = TEAM_COLORS[teamId]
@@ -169,6 +187,7 @@ export function TeamBooks({
             mobile={mobile}
             getCardMotion={getCardMotion}
             isCardHidden={isCardHidden}
+            dirtyBookConsent={dirtyBookConsent}
           />
         ))}
       </>
@@ -191,6 +210,7 @@ export function TeamBooks({
             mobile={mobile}
             getCardMotion={getCardMotion}
             isCardHidden={isCardHidden}
+            dirtyBookConsent={dirtyBookConsent}
           />
         ))}
       </div>
@@ -209,6 +229,7 @@ export function TableBookZone({
   mobile = false,
   getCardMotion,
   isCardHidden,
+  dirtyBookConsent = null,
 }: {
   books: Book[]
   teamId: number
@@ -218,6 +239,7 @@ export function TableBookZone({
   mobile?: boolean
   getCardMotion?: (cardId: string) => CardMotionKind | undefined
   isCardHidden?: (cardId: string) => boolean
+  dirtyBookConsent?: DirtyBookConsent | null
 }) {
   const playerBooks = books.filter((b) => b.teamId === teamId)
   if (playerBooks.length === 0) return null
@@ -238,6 +260,7 @@ export function TableBookZone({
           mobile={mobile}
           getCardMotion={getCardMotion}
           isCardHidden={isCardHidden}
+          dirtyBookConsent={dirtyBookConsent}
         />
       </div>
     </div>
