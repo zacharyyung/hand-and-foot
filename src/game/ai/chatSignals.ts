@@ -12,10 +12,12 @@ import {
   createReadyGoOutSignal,
   createWildRequestSignal,
   DENY_GO_OUT_TEXT,
-  hasPartnerWildApproval,
+  hasPartnerWildApprovalForBook,
   pendingPartnerGoOutRequest,
   pendingPartnerWildRequest,
+  priorWildAskTexts,
   teamCanGoOut,
+  wasPartnerWildDeniedForBook,
   type ChatMessage,
 } from '../chat'
 import type { PlayerCount } from '../teams'
@@ -283,7 +285,8 @@ export function maybeAiWildRequest(
   const partnerIdx = partnerSeat(seatIndex, state.playerCount as PlayerCount)
   if (!state.players[partnerIdx].profile.isHuman) return null
   if (pendingPartnerWildRequest(messages, partnerIdx, seatIndex)) return null
-  if (hasPartnerWildApproval(messages, seatIndex, partnerIdx)) return null
+  if (hasPartnerWildApprovalForBook(messages, seatIndex, partnerIdx, bookId)) return null
+  if (wasPartnerWildDeniedForBook(messages, seatIndex, partnerIdx, bookId)) return null
 
   return createWildRequestSignal(
     seatIndex,
@@ -291,6 +294,7 @@ export function maybeAiWildRequest(
     player.profile.avatar,
     bookRank,
     bookId,
+    priorWildAskTexts(messages, seatIndex),
   )
 }
 
@@ -308,6 +312,7 @@ export function shouldDeferWildOnCleanBook(
   const partnerIdx = partnerSeat(aiSeatIndex, state.playerCount as PlayerCount)
   if (!state.players[partnerIdx].profile.isHuman) return false
 
-  if (hasPartnerWildApproval(messages, aiSeatIndex, partnerIdx)) return false
+  if (hasPartnerWildApprovalForBook(messages, aiSeatIndex, partnerIdx, bookId)) return false
+  if (wasPartnerWildDeniedForBook(messages, aiSeatIndex, partnerIdx, bookId)) return false
   return true
 }

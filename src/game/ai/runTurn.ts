@@ -14,7 +14,10 @@ import type { ChatMessage } from '../chat'
 import type { Card } from '../cards'
 import { cardLabel } from '../cards'
 import { bookWildCount } from '../books'
-import { hasPartnerWildApproval } from '../chat'
+import {
+  hasPartnerWildApprovalForBook,
+  pendingPartnerWildRequest,
+} from '../chat'
 import { partnerSeat, type PlayerCount } from '../teams'
 import { findAddToBookActions } from './decisions'
 import { AiDebugCollector } from './debugTrace'
@@ -239,6 +242,15 @@ export function runAiTurn(
     const goingOut = canPlayerGoOut(current, messages)
     if (goingOut) debug?.step('discard', 'Can go out this turn.')
 
+    const partnerIdx = partnerSeat(current.currentPlayerIndex, current.playerCount as PlayerCount)
+    const partnerIsHuman = current.players[partnerIdx].profile.isHuman
+
+    /* Pause mid-turn while the human decides on a dirty-book ask. */
+    if (partnerIsHuman && pendingPartnerWildRequest(messages, partnerIdx, current.currentPlayerIndex)) {
+      debug?.step('chat', 'Waiting for partner wild consent.')
+      return { state: current, chatMessage, debugTrace: debug?.trace }
+    }
+
     const loneWild = pickLoneWildAdd(
       pub.myHand,
       pub.myTeamBooks,
@@ -247,16 +259,28 @@ export function runAiTurn(
     if (loneWild && !goingOut) {
       const team = getTeam(current, player.profile.teamId)
       const book = team.books.find((b) => b.id === loneWild.bookId)
-      const partnerIdx = partnerSeat(current.currentPlayerIndex, current.playerCount as PlayerCount)
-      const partnerIsHuman = current.players[partnerIdx].profile.isHuman
       const isCleanBook = book != null && bookWildCount(book) === 0
 
       if (partnerIsHuman && isCleanBook) {
-        if (hasPartnerWildApproval(messages, current.currentPlayerIndex, partnerIdx)) {
+        if (
+          hasPartnerWildApprovalForBook(
+            messages,
+            current.currentPlayerIndex,
+            partnerIdx,
+            loneWild.bookId,
+          )
+        ) {
           debug?.step('wild', `Adding wild to book ${loneWild.bookId.slice(0, 8)} (partner approved).`)
           const wildResult = addToBook(current, loneWild.bookId, [loneWild.cardId])
           if (!wildResult.error) current = wildResult.state
-        } else if (shouldDeferWildOnCleanBook(current, current.currentPlayerIndex, messages, loneWild.bookId)) {
+        } else if (
+          shouldDeferWildOnCleanBook(
+            current,
+            current.currentPlayerIndex,
+            messages,
+            loneWild.bookId,
+          )
+        ) {
           const wildReq = maybeAiWildRequest(
             current,
             current.currentPlayerIndex,
@@ -265,9 +289,10 @@ export function runAiTurn(
             loneWild.bookId,
           )
           if (wildReq && !chatMessage) {
-            debug?.step('chat', 'Asking partner before dirtying clean book.')
+            debug?.step('chat', 'Asking partner before dirtying clean book — pausing turn.')
             chatMessage = wildReq
-            messages = [...messages, wildReq]
+            /* Don't discard yet — human answers first, then this turn resumes. */
+            return { state: current, chatMessage, debugTrace: debug?.trace }
           }
         }
       } else {

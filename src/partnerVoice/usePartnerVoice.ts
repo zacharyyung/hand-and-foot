@@ -5,8 +5,6 @@ import { partnerSeat, type PlayerCount } from '../game/teams'
 import { getViewerSeat } from '../game/tableLayout'
 import { partnerVoiceService } from './PartnerVoiceService'
 
-import { PARTNER_ACK_APPROVE, PARTNER_ACK_DENY } from './types'
-
 const PARTNER_SPEECH_TYPES = new Set(['approve_go_out', 'deny_go_out'])
 
 /** Speak AI partner chat lines directed at the human viewer. */
@@ -41,9 +39,4 @@ export function usePartnerVoice(game: GameState | null, chatMessages: ChatMessag
 
     prevCountRef.current = chatMessages.length
   }, [chatMessages, game])
-}
-
-export function speakPartnerAck(approve: boolean): void {
-  const lines = approve ? PARTNER_ACK_APPROVE : PARTNER_ACK_DENY
-  partnerVoiceService.speak(lines[Math.floor(Math.random() * lines.length)]!)
 }
