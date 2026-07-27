@@ -65,7 +65,7 @@ import {
   wildRequestTargetBook,
 } from '../game/chat'
 import { aiPartnerGoOutReplySeats, maybeAiPartnerGoOutResponse } from '../game/ai/chatSignals'
-import { partnerVoiceService, speakPartnerAck } from '../partnerVoice'
+import { partnerVoiceService } from '../partnerVoice'
 import type { DirtyBookConsent } from './DirtyBookConsentPrompt'
 
 interface GameViewProps {
@@ -92,6 +92,8 @@ const AI_PARTNER_REPLY_DELAY_MS = 900
 
 function shortStatus(opts: {
   aiThinking: boolean
+  waitingOnYou?: boolean
+  waitingPartnerName?: string
   currentName: string
   currentAvatar: string
   isMyTurn: boolean
@@ -100,6 +102,11 @@ function shortStatus(opts: {
   goingOut: boolean
   hasFoot: boolean
 }): string {
+  if (opts.waitingOnYou) {
+    return opts.waitingPartnerName
+      ? `${opts.waitingPartnerName} — your call`
+      : 'Your call'
+  }
   if (opts.aiThinking) return `${opts.currentName}…`
   if (!opts.isMyTurn) return `${opts.currentAvatar} ${opts.currentName}`
   if (opts.turnPhase === 'draw') {
@@ -249,8 +256,7 @@ export function GameView({
   const wildTargetBook = wildRequest ? wildRequestTargetBook(wildRequest, team.books) : null
 
   function respondWildConsent(approve: boolean) {
-    unlockAudio()
-    partnerVoiceService.unlock()
+    partnerVoiceService.stop()
     playSound('chat')
     onChatSend(
       approve
@@ -258,7 +264,6 @@ export function GameView({
         : createWildDenySignal(viewerSeat, viewer.profile.name, viewer.profile.avatar),
       game,
     )
-    speakPartnerAck(approve)
   }
 
   const dirtyBookConsent: DirtyBookConsent | null =
@@ -267,6 +272,7 @@ export function GameView({
           bookId: wildTargetBook.id,
           partnerName: partner.profile.name,
           partnerAvatar: partner.profile.avatar,
+          askText: wildRequest.text,
           onApprove: () => respondWildConsent(true),
           onDeny: () => respondWildConsent(false),
         }
@@ -735,6 +741,15 @@ export function GameView({
 
   useEffect(() => {
     if (game.phase !== 'playing' || current.profile.isHuman) {
+      setAiThinking(false)
+      return
+    }
+
+    const playerCount = game.playerCount as PlayerCount
+    const aiSeat = game.currentPlayerIndex
+    const humanPartnerSeat = partnerSeat(aiSeat, playerCount)
+    /* Stay paused on the AI's turn until the human answers the dirty-book ask. */
+    if (pendingPartnerWildRequest(chatMessages, humanPartnerSeat, aiSeat)) {
       setAiThinking(false)
       return
     }
@@ -1271,6 +1286,8 @@ export function GameView({
 
   const statusText = shortStatus({
     aiThinking,
+    waitingOnYou: Boolean(wildRequest) && game.currentPlayerIndex === partnerIdx,
+    waitingPartnerName: partner.profile.name,
     currentName: current.profile.name,
     currentAvatar: current.profile.avatar,
     isMyTurn,

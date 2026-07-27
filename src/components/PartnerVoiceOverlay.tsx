@@ -9,7 +9,7 @@ import {
 } from '../game/chat'
 import { partnerSeat, TEAM_COLORS, type PlayerCount } from '../game/teams'
 import { playSound, unlockAudio } from '../game/audio'
-import { partnerVoiceService, speakPartnerAck } from '../partnerVoice'
+import { partnerVoiceService } from '../partnerVoice'
 
 interface PartnerVoiceOverlayProps {
   game: GameState
@@ -56,8 +56,7 @@ export function PartnerVoiceOverlay({
   const teamColor = TEAM_COLORS[partner.profile.teamId]
 
   function respondGoOut(approve: boolean) {
-    unlockAudio()
-    partnerVoiceService.unlock()
+    partnerVoiceService.stop()
     playSound('chat')
     onSend(
       approve
@@ -65,7 +64,6 @@ export function PartnerVoiceOverlay({
         : createDenyGoOutSignal(viewerSeat, viewer.profile.name, viewer.profile.avatar),
       game,
     )
-    speakPartnerAck(approve)
   }
 
   return (

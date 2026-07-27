@@ -218,18 +218,54 @@ export function createWildRequestSignal(
   senderAvatar: string,
   bookRank: string,
   bookId: string,
+  priorAskTexts: string[] = [],
 ): ChatMessage {
-  const rankLabel = bookRank === 'Joker' ? 'joker' : bookRank
   return {
     id: `chat-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     senderSeatIndex,
     senderName,
     senderAvatar,
-    text: `Can I add a wild to our ${rankLabel}s book? It's clean right now.`,
+    text: pickWildRequestText(bookRank, bookId, priorAskTexts),
     timestamp: Date.now(),
     type: 'wild_request',
     bookId,
   }
+}
+
+/** Spoken / chat label for a book rank ("10", "ace", "jack", …). */
+export function wildBookRankLabel(bookRank: string): string {
+  if (bookRank === 'Joker') return 'joker'
+  if (bookRank === 'A') return 'ace'
+  if (bookRank === 'K') return 'king'
+  if (bookRank === 'Q') return 'queen'
+  if (bookRank === 'J') return 'jack'
+  return bookRank
+}
+
+const WILD_REQUEST_LINES: Array<(label: string) => string> = [
+  (label) => `How about the ${label} book?`,
+  (label) => `Mind if I wild the ${label}s?`,
+  (label) => `What do you think — wild on the ${label}s?`,
+  (label) => `Can I put a wild on our ${label} book?`,
+  (label) => `I'd like to dirty the ${label}s. Okay?`,
+  (label) => `Wild into the ${label}s?`,
+  (label) => `Could use a wild on the ${label} book — alright?`,
+  (label) => `Thinking the ${label}s. Want me to wild it?`,
+]
+
+function pickWildRequestText(
+  bookRank: string,
+  bookId: string,
+  priorAskTexts: string[],
+): string {
+  const label = wildBookRankLabel(bookRank)
+  const candidates = WILD_REQUEST_LINES.map((line) => line(label))
+  const unused = candidates.filter((text) => !priorAskTexts.includes(text))
+  const pool = unused.length > 0 ? unused : candidates
+  let hash = 0
+  for (let i = 0; i < bookId.length; i++) hash = (hash * 31 + bookId.charCodeAt(i)) | 0
+  hash = (hash + priorAskTexts.length * 17) | 0
+  return pool[Math.abs(hash) % pool.length]!
 }
 
 export function createWildApproveSignal(
@@ -242,7 +278,7 @@ export function createWildApproveSignal(
     senderSeatIndex,
     senderName,
     senderAvatar,
-    text: 'Yes — go ahead with the wild.',
+    text: 'Yes — go ahead.',
     timestamp: Date.now(),
     type: 'wild_approve',
   }
@@ -258,16 +294,21 @@ export function createWildDenySignal(
     senderSeatIndex,
     senderName,
     senderAvatar,
-    text: 'No — keep that book clean for now.',
+    text: 'No — keep it clean.',
     timestamp: Date.now(),
     type: 'wild_deny',
   }
 }
 
-function latestWildRequestFrom(messages: ChatMessage[], senderSeat: number): ChatMessage | null {
+function latestWildRequestFrom(
+  messages: ChatMessage[],
+  senderSeat: number,
+  bookId?: string,
+): ChatMessage | null {
   let latest: ChatMessage | null = null
   for (const msg of messages) {
     if (msg.senderSeatIndex !== senderSeat || msg.type !== 'wild_request') continue
+    if (bookId != null && msg.bookId !== bookId) continue
     if (!latest || msg.timestamp > latest.timestamp) latest = msg
   }
   return latest
@@ -301,10 +342,25 @@ export function wildRequestTargetBook(
     if (byId) return byId
   }
 
-  const match = request.text.match(/our (.+?)s book/i)
+  const match =
+    request.text.match(/the (.+?) book/i) ??
+    request.text.match(/the (.+?)s\b/i) ??
+    request.text.match(/our (.+?) book/i) ??
+    request.text.match(/our (.+?)s\b/i)
   if (!match) return null
   const rankLabel = match[1]!.trim().toLowerCase()
-  const rank = rankLabel === 'joker' ? 'Joker' : rankLabel.toUpperCase()
+  const rank =
+    rankLabel === 'joker'
+      ? 'Joker'
+      : rankLabel === 'ace'
+        ? 'A'
+        : rankLabel === 'king'
+          ? 'K'
+          : rankLabel === 'queen'
+            ? 'Q'
+            : rankLabel === 'jack'
+              ? 'J'
+              : rankLabel.toUpperCase()
 
   const cleanMatches = books.filter((b) => b.rank === rank && isCleanBook(b))
   if (cleanMatches.length === 0) return null
@@ -320,19 +376,73 @@ export function canRespondToPartnerWildRequest(
   return pendingPartnerWildRequest(messages, responderSeat, partnerIdx) !== null
 }
 
+function responseToWildRequest(
+  messages: ChatMessage[],
+  request: ChatMessage,
+  responderSeat: number,
+): 'approve' | 'deny' | null {
+  let response: ChatMessage | null = null
+  for (const m of messages) {
+    if (m.senderSeatIndex !== responderSeat) continue
+    if (m.type !== 'wild_approve' && m.type !== 'wild_deny') continue
+    if (m.timestamp <= request.timestamp) continue
+    if (!response || m.timestamp > response.timestamp) response = m
+  }
+  if (!response) return null
+  return response.type === 'wild_approve' ? 'approve' : 'deny'
+}
+
+/** Partner approved dirtying this specific book (not a blanket yes for every clean book). */
+export function hasPartnerWildApprovalForBook(
+  messages: ChatMessage[],
+  aiPartnerSeat: number,
+  responderSeat: number,
+  bookId: string,
+): boolean {
+  const request = latestWildRequestFrom(messages, aiPartnerSeat, bookId)
+  if (!request) return false
+  return responseToWildRequest(messages, request, responderSeat) === 'approve'
+}
+
+/** Partner already said no to wilding this book — don't keep asking. */
+export function wasPartnerWildDeniedForBook(
+  messages: ChatMessage[],
+  aiPartnerSeat: number,
+  responderSeat: number,
+  bookId: string,
+): boolean {
+  const request = latestWildRequestFrom(messages, aiPartnerSeat, bookId)
+  if (!request) return false
+  return responseToWildRequest(messages, request, responderSeat) === 'deny'
+}
+
+/** @deprecated Prefer hasPartnerWildApprovalForBook — kept for older call sites. */
 export function hasPartnerWildApproval(
   messages: ChatMessage[],
   aiPartnerSeat: number,
   responderSeat: number,
 ): boolean {
   const request = latestWildRequestFrom(messages, aiPartnerSeat)
-  if (!request) return false
-  return messages.some(
-    (m) =>
-      m.senderSeatIndex === responderSeat &&
-      m.type === 'wild_approve' &&
-      m.timestamp > request.timestamp,
+  if (!request?.bookId) {
+    if (!request) return false
+    return responseToWildRequest(messages, request, responderSeat) === 'approve'
+  }
+  return hasPartnerWildApprovalForBook(
+    messages,
+    aiPartnerSeat,
+    responderSeat,
+    request.bookId,
   )
+}
+
+/** Prior wild-ask lines from this AI (for natural variation). */
+export function priorWildAskTexts(
+  messages: ChatMessage[],
+  aiPartnerSeat: number,
+): string[] {
+  return messages
+    .filter((m) => m.senderSeatIndex === aiPartnerSeat && m.type === 'wild_request')
+    .map((m) => m.text)
 }
 
 /** Infer yes/no from a partner's free-form reply (for AI clearance). */
