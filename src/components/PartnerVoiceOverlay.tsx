@@ -94,7 +94,8 @@ export function PartnerVoiceOverlay({
         </p>
 
         <p className="mb-3 text-[10px] leading-relaxed text-ink-muted">
-          Their answer is advice — you still choose whether to go out.
+          Yes clears them to go out. No tells them to wait — they won&apos;t ask again this round.
+          You can still tell them &ldquo;You should go out!&rdquo; later in table chat.
         </p>
 
         <div className="flex gap-2">

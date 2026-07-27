@@ -6,10 +6,13 @@ import {
   createDenyGoOutSignal,
   createReadyGoOutSignal,
   canInitiateGoOutSignal,
+  canProactivelyApprovePartnerGoOut,
   pendingPartnerGoOutRequest,
   pendingPartnerWildRequest,
   READY_GO_OUT_SIGNAL_TEXT,
+  PROACTIVE_GO_OUT_APPROVE_TEXT,
   awaitingPartnerGoOutResponse,
+  latestPartnerGoOutAdvice,
 } from '../game/chat'
 import { partnerSeat, TEAM_COLORS, type PlayerCount } from '../game/teams'
 import { playSound } from '../game/audio'
@@ -51,6 +54,12 @@ export function GameChat({
     awaitingPartnerGoOutResponse(messages, viewerSeat, partnerIdx)
   const waitingForAiReview =
     waitingForPartnerReply && !partner.profile.isHuman
+  const canTellPartnerToGoOut =
+    viewerIsHuman && canProactivelyApprovePartnerGoOut(game, viewerSeat, messages)
+  const partnerClearedToGoOut =
+    viewerIsHuman && latestPartnerGoOutAdvice(messages, viewerSeat) === 'approve'
+  const partnerToldToWait =
+    viewerIsHuman && latestPartnerGoOutAdvice(messages, viewerSeat) === 'deny'
 
   useEffect(() => {
     const el = listRef.current
@@ -91,6 +100,20 @@ export function GameChat({
             viewer.profile.name,
             viewer.profile.avatar,
           ),
+      game,
+    )
+  }
+
+  function sendProactiveGoOutApprove() {
+    if (!viewerIsHuman || !canTellPartnerToGoOut) return
+    playSound('chat')
+    onSend(
+      createApproveGoOutSignal(
+        viewer.profile.seatIndex,
+        viewer.profile.name,
+        viewer.profile.avatar,
+        PROACTIVE_GO_OUT_APPROVE_TEXT,
+      ),
       game,
     )
   }
@@ -145,8 +168,9 @@ export function GameChat({
               <div>
                 <p className="font-display text-sm font-semibold text-ink">Table chat</p>
                 <p className="mt-0.5 text-[10px] leading-relaxed text-ink-muted">
-                  While playing your foot with books set, ask if you can go out. Your partner&apos;s
-                  reply is advice — you make the final call.
+                  Ask if you can go out, or tell your partner they should. Saying no to their ask
+                  stops them from asking again — you can still clear them later with &ldquo;You
+                  should go out!&rdquo;
                 </p>
               </div>
               <button
@@ -186,7 +210,7 @@ export function GameChat({
                   {partner.profile.avatar} {partner.profile.name} says they can go out!
                 </p>
                 <p className="mt-1 text-[10px] text-ink-muted">
-                  Only you can reply — yes encourages going out, no suggests waiting.
+                  Only you can reply — yes clears them to go out, no stops them from asking again.
                 </p>
                 <div className="mt-2 flex gap-2">
                   <button
@@ -233,7 +257,8 @@ export function GameChat({
               {messages.length === 0 ? (
                 <p className="py-4 text-center text-[11px] leading-relaxed text-ink-faint">
                   Playing your foot with books set? Tap &ldquo;I can go out!&rdquo; to check with
-                  your partner — their answer is advice, not a requirement.
+                  your partner. If they ask first, say no to stop them asking again — or tell them
+                  &ldquo;You should go out!&rdquo; when you want them to close.
                 </p>
               ) : (
                 messages.map((msg) => {
@@ -298,6 +323,30 @@ export function GameChat({
                   Partner: {partner.profile.avatar} {partner.profile.name}
                 </p>
 
+                {canTellPartnerToGoOut && (
+                  <button
+                    type="button"
+                    onClick={sendProactiveGoOutApprove}
+                    className="btn-success w-full py-2 text-[11px]"
+                  >
+                    {PROACTIVE_GO_OUT_APPROVE_TEXT}
+                  </button>
+                )}
+
+                {partnerClearedToGoOut && !partnerRequest && (
+                  <p className="rounded-lg bg-emerald-500/12 px-2.5 py-2 text-center text-[10px] leading-relaxed text-emerald-200/90 ring-1 ring-emerald-400/25">
+                    You cleared {partner.profile.name} to go out — they won&apos;t ask again.
+                  </p>
+                )}
+
+                {partnerToldToWait && !partnerRequest && (
+                  <p className="rounded-lg bg-black/25 px-2.5 py-2 text-center text-[10px] leading-relaxed text-ink-muted">
+                    {canTellPartnerToGoOut
+                      ? `You told ${partner.profile.name} not to go out — they won't ask again. Tap above when you're ready for them to go out.`
+                      : `You told ${partner.profile.name} not to go out — they won't ask again. When you're ready, you can tell them they should go out.`}
+                  </p>
+                )}
+
                 {canSignalGoOut ? (
                   <button
                     type="button"
@@ -320,14 +369,14 @@ export function GameChat({
                       ? ' You can still reply to your partner above.'
                       : ''}
                   </p>
-                ) : (
+                ) : !canTellPartnerToGoOut && !partnerClearedToGoOut && !partnerToldToWait ? (
                   <p className="rounded-lg bg-black/25 px-2.5 py-2 text-center text-[10px] leading-relaxed text-ink-muted">
                     Wait for your turn to say you can go out.
                     {partnerRequest
                       ? ' You can still reply to your partner above.'
                       : ''}
                   </p>
-                )}
+                ) : null}
               </div>
             )}
 

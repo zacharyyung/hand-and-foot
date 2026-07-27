@@ -26,6 +26,7 @@ export interface ChatMessage {
 
 export const READY_GO_OUT_SIGNAL_TEXT = 'I can go out!'
 export const APPROVE_GO_OUT_TEXT = 'Yes — you can go out!'
+export const PROACTIVE_GO_OUT_APPROVE_TEXT = 'You should go out!'
 export const DENY_GO_OUT_TEXT = "No — don't go out."
 
 export function isGoOutRequest(type: ChatMessageType): boolean {
@@ -56,17 +57,37 @@ function teamReadyToGoOut(state: GameState, teamId: number): boolean {
   return teamHasCleanAndDirtyBooks(team.books)
 }
 
-function partnerDeniedGoOut(
+/** Latest yes/no advice from this seat about their partner going out. */
+export function latestPartnerGoOutAdvice(
   messages: ChatMessage[],
-  partnerIdx: number,
-  afterTimestamp: number,
-): boolean {
-  const response = partnerResponseAfter(messages, partnerIdx, afterTimestamp)
-  if (response?.type === 'deny_go_out') return true
-  if (response?.type === 'partner_reply') {
-    return parsePartnerReplyIntent(response.text) === 'deny'
+  advisorSeat: number,
+): 'approve' | 'deny' | null {
+  let latest: ChatMessage | null = null
+  for (const msg of messages) {
+    if (msg.senderSeatIndex !== advisorSeat) continue
+    if (!isGoOutResponse(msg.type)) continue
+    if (!latest || msg.timestamp > latest.timestamp) latest = msg
   }
-  return false
+  if (!latest) return null
+  if (latest.type === 'approve_go_out') return 'approve'
+  if (latest.type === 'deny_go_out') return 'deny'
+  if (latest.type === 'partner_reply') {
+    const intent = parsePartnerReplyIntent(latest.text)
+    return intent === 'neutral' ? null : intent
+  }
+  return null
+}
+
+/** Partner already said no to going out — don't keep asking (like wild deny). */
+export function wasPartnerGoOutDenied(
+  messages: ChatMessage[],
+  requesterSeat: number,
+  responderSeat: number,
+): boolean {
+  const request = latestReadyGoOutFrom(messages, requesterSeat)
+  if (!request) return false
+  if (awaitingPartnerGoOutResponse(messages, requesterSeat, responderSeat)) return false
+  return latestPartnerGoOutAdvice(messages, responderSeat) === 'deny'
 }
 
 /** Partner said no to the latest go-out ask (advisory — does not block going out). */
@@ -75,25 +96,13 @@ export function unresolvedPartnerDenial(
   requesterSeat: number,
   playerCount: PlayerCount,
 ): ChatMessage | null {
+  const partnerIdx = partnerSeat(requesterSeat, playerCount)
+  if (!wasPartnerGoOutDenied(messages, requesterSeat, partnerIdx)) return null
+
   const latest = latestReadyGoOutFrom(messages, requesterSeat)
   if (!latest) return null
 
-  const partnerIdx = partnerSeat(requesterSeat, playerCount)
-  if (awaitingPartnerGoOutResponse(messages, requesterSeat, partnerIdx)) return null
-
-  const response = partnerResponseAfter(messages, partnerIdx, latest.timestamp)
-  if (!response || !isGoOutResponse(response.type)) return null
-  if (!partnerDeniedGoOut(messages, partnerIdx, latest.timestamp)) {
-    return null
-  }
-
-  const laterAsk = messages.some(
-    (m) =>
-      m.type === 'ready_go_out' &&
-      m.senderSeatIndex === requesterSeat &&
-      m.timestamp > response.timestamp,
-  )
-  return laterAsk ? null : response
+  return partnerResponseAfter(messages, partnerIdx, latest.timestamp)
 }
 
 /** Only the partner of a pending go-out request may reply yes/no. */
@@ -104,6 +113,26 @@ export function canRespondToPartnerGoOutRequest(
 ): boolean {
   const partnerIdx = partnerSeat(responderSeat, playerCount)
   return pendingPartnerGoOutRequest(messages, responderSeat, partnerIdx) !== null
+}
+
+/**
+ * Tell your partner they should go out without waiting for them to ask.
+ * Shown when the team is ready and partner is in foot — and you have not already cleared them.
+ */
+export function canProactivelyApprovePartnerGoOut(
+  state: GameState,
+  responderSeat: number,
+  messages: ChatMessage[],
+): boolean {
+  if (state.phase !== 'playing') return false
+  const playerCount = state.playerCount as PlayerCount
+  const partnerIdx = partnerSeat(responderSeat, playerCount)
+  if (pendingPartnerGoOutRequest(messages, responderSeat, partnerIdx)) return false
+  if (latestPartnerGoOutAdvice(messages, responderSeat) === 'approve') return false
+
+  const partner = state.players[partnerIdx]
+  if (!partner.isPlayingFoot) return false
+  return teamReadyToGoOut(state, partner.profile.teamId)
 }
 
 export function isAllowedChatMessage(
@@ -117,7 +146,19 @@ export function isAllowedChatMessage(
     return canInitiateGoOutSignal(state, message.senderSeatIndex)
   }
 
-  if (isGoOutResponse(message.type)) {
+  if (message.type === 'approve_go_out') {
+    const playerCount = state.playerCount as PlayerCount
+    return (
+      canRespondToPartnerGoOutRequest(
+        existingMessages,
+        message.senderSeatIndex,
+        playerCount,
+      ) ||
+      canProactivelyApprovePartnerGoOut(state, message.senderSeatIndex, existingMessages)
+    )
+  }
+
+  if (message.type === 'deny_go_out' || message.type === 'partner_reply') {
     return canRespondToPartnerGoOutRequest(
       existingMessages,
       message.senderSeatIndex,
@@ -578,13 +619,18 @@ function partnerApprovedGoOut(
   return false
 }
 
-/** Partner replied yes to the latest go-out ask. */
+/**
+ * Partner cleared going out — either replied yes to an ask, or proactively said
+ * "You should go out!" (standing approval until a later deny).
+ */
 export function hasPartnerGoOutApproval(
   state: GameState,
   seatIndex: number,
   messages: ChatMessage[],
 ): boolean {
   const partnerIdx = partnerSeat(seatIndex, state.playerCount as PlayerCount)
+  if (latestPartnerGoOutAdvice(messages, partnerIdx) === 'approve') return true
+
   const myReady = latestReadyGoOutFrom(messages, seatIndex)
   if (!myReady) return false
   return partnerApprovedGoOut(messages, partnerIdx, myReady.timestamp)

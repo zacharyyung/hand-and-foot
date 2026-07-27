@@ -144,6 +144,11 @@ export function InstructionsOverlay({ open, onClose }: InstructionsOverlayProps)
               advice — especially if they still hold high-value cards or red threes. You may still
               go out if all requirements are met and you think it is the right move.
             </p>
+            <p className="mt-2">
+              When your AI partner asks to go out, saying <strong>No</strong> stops them from
+              asking again. Use <strong>You should go out!</strong> in table chat whenever you want
+              to clear them to go out (even if they have not asked).
+            </p>
           </section>
 
           <section>
