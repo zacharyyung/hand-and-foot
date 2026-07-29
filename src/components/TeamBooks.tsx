@@ -16,6 +16,8 @@ interface TeamBooksProps {
   compact?: boolean
   /** Compact mini-card books instead of full fans (phone layouts). */
   mobile?: boolean
+  /** Felt seat side — used to place the wild-consent popup beside the book. */
+  side?: CompassSide
   label?: string
   getCardMotion?: (cardId: string) => CardMotionKind | undefined
   isCardHidden?: (cardId: string) => boolean
@@ -69,12 +71,14 @@ function BookDisplay({
   getCardMotion,
   isCardHidden,
   mobile = false,
+  side,
   dirtyBookConsent = null,
 }: {
   book: Book
   getCardMotion?: (cardId: string) => CardMotionKind | undefined
   isCardHidden?: (cardId: string) => boolean
   mobile?: boolean
+  side?: CompassSide
   dirtyBookConsent?: DirtyBookConsent | null
 }) {
   const completed = book.cards.length >= 7
@@ -85,7 +89,12 @@ function BookDisplay({
   if (mobile) {
     return (
       <div
-        className={`relative shrink-0 ${showConsent ? 'z-30 rounded-lg ring-2 ring-amber-400/55 ring-offset-1 ring-offset-transparent' : ''}`}
+        data-book-consent-anchor={showConsent ? book.id : undefined}
+        className={`relative shrink-0 ${
+          showConsent
+            ? 'z-40 rounded-lg ring-2 ring-amber-400/70 ring-offset-1 ring-offset-transparent'
+            : ''
+        }`}
       >
         <BookMini
           cards={book.cards}
@@ -97,7 +106,12 @@ function BookDisplay({
           isCardHidden={isCardHidden}
         />
         {showConsent && dirtyBookConsent && (
-          <DirtyBookConsentPrompt book={book} consent={dirtyBookConsent} mobile />
+          <DirtyBookConsentPrompt
+            book={book}
+            consent={dirtyBookConsent}
+            side={side}
+            mobile
+          />
         )}
       </div>
     )
@@ -110,8 +124,11 @@ function BookDisplay({
 
   return (
     <div
+      data-book-consent-anchor={showConsent ? book.id : undefined}
       className={`relative shrink-0 pb-2 ${completed ? 'animate-book-settle' : ''} ${
-        showConsent ? 'z-30 rounded-lg ring-2 ring-amber-400/55 ring-offset-2 ring-offset-transparent' : ''
+        showConsent
+          ? 'z-40 rounded-lg ring-2 ring-amber-400/70 ring-offset-2 ring-offset-transparent'
+          : ''
       }`}
       title={`${book.rank}s · ${book.cards.length} cards${clean ? ' · clean' : wilds > 0 ? ' · dirty' : ''}`}
     >
@@ -147,7 +164,11 @@ function BookDisplay({
         {book.rank}
       </p>
       {showConsent && dirtyBookConsent && (
-        <DirtyBookConsentPrompt book={book} consent={dirtyBookConsent} />
+        <DirtyBookConsentPrompt
+          book={book}
+          consent={dirtyBookConsent}
+          side={side}
+        />
       )}
     </div>
   )
@@ -159,6 +180,7 @@ export function TeamBooks({
   highlightTeamId,
   compact = false,
   mobile = false,
+  side,
   label,
   getCardMotion,
   isCardHidden,
@@ -185,6 +207,7 @@ export function TeamBooks({
             key={book.id}
             book={book}
             mobile={mobile}
+            side={side}
             getCardMotion={getCardMotion}
             isCardHidden={isCardHidden}
             dirtyBookConsent={dirtyBookConsent}
@@ -208,6 +231,7 @@ export function TeamBooks({
             key={book.id}
             book={book}
             mobile={mobile}
+            side={side}
             getCardMotion={getCardMotion}
             isCardHidden={isCardHidden}
             dirtyBookConsent={dirtyBookConsent}
@@ -246,9 +270,13 @@ export function TableBookZone({
 
   const zoneClass = tableBookZoneClass(side, mobile)
 
+  const hasConsentTarget =
+    dirtyBookConsent != null &&
+    playerBooks.some((book) => book.id === dirtyBookConsent.bookId)
+
   return (
     <div
-      className={`pointer-events-none absolute z-[15] ${zoneClass}`}
+      className={`pointer-events-none absolute ${hasConsentTarget ? 'z-40' : 'z-[15]'} ${zoneClass}`}
       data-flight-anchor={`books-${seatIndex}`}
     >
       <div className={tableBookFlexClass(side, mobile)}>
@@ -258,6 +286,7 @@ export function TableBookZone({
           highlightTeamId={myTeamId}
           compact
           mobile={mobile}
+          side={side}
           getCardMotion={getCardMotion}
           isCardHidden={isCardHidden}
           dirtyBookConsent={dirtyBookConsent}

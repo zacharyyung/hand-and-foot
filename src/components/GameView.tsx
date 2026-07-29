@@ -94,6 +94,7 @@ function shortStatus(opts: {
   aiThinking: boolean
   waitingOnYou?: boolean
   waitingPartnerName?: string
+  waitingBookRank?: string
   currentName: string
   currentAvatar: string
   isMyTurn: boolean
@@ -103,6 +104,9 @@ function shortStatus(opts: {
   hasFoot: boolean
 }): string {
   if (opts.waitingOnYou) {
+    if (opts.waitingPartnerName && opts.waitingBookRank) {
+      return `${opts.waitingPartnerName} — wild ${opts.waitingBookRank}s?`
+    }
     return opts.waitingPartnerName
       ? `${opts.waitingPartnerName} — your call`
       : 'Your call'
@@ -1288,6 +1292,7 @@ export function GameView({
     aiThinking,
     waitingOnYou: Boolean(wildRequest) && game.currentPlayerIndex === partnerIdx,
     waitingPartnerName: partner.profile.name,
+    waitingBookRank: wildTargetBook?.rank,
     currentName: current.profile.name,
     currentAvatar: current.profile.avatar,
     isMyTurn,
