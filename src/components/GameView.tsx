@@ -31,6 +31,7 @@ import {
   getWildPlayBlockReason,
   needsAddBookPicker,
   shouldWarnDiscardToBook,
+  shouldWarnDirtyCleanBook,
   bookWildCount,
   cardsForBookFan,
   type Book,
@@ -151,6 +152,11 @@ export function GameView({
     cardId: string
     cardName: string
     bookRank: string
+  } | null>(null)
+  const [dirtyBookWarning, setDirtyBookWarning] = useState<{
+    bookId: string
+    bookRank: string
+    cardIds: string[]
   } | null>(null)
   const [selectedAddBookId, setSelectedAddBookId] = useState<string | null>(null)
 
@@ -638,6 +644,7 @@ export function GameView({
     setSelectedIds([])
     setError(null)
     setDiscardWarning(null)
+    setDirtyBookWarning(null)
     setSelectedAddBookId(null)
   }, [game.currentPlayerIndex, game.turnPhase])
 
@@ -649,6 +656,18 @@ export function GameView({
       return null
     })
   }, [selectedIds])
+
+  // Drop the dirty-book prompt once the selection or target book changes.
+  useEffect(() => {
+    setDirtyBookWarning((current) => {
+      if (!current) return null
+      if (!matchedAddBook || matchedAddBook.id !== current.bookId) return null
+      if (selectedIds.length !== current.cardIds.length) return null
+      const selected = new Set(selectedIds)
+      if (current.cardIds.some((id) => !selected.has(id))) return null
+      return current
+    })
+  }, [selectedIds, matchedAddBook])
 
   useEffect(() => {
     if (!showAddBookPicker) {
@@ -879,19 +898,34 @@ export function GameView({
       return
     }
     const cards = viewer.hand.filter((c) => selectedIds.includes(c.id))
+
+    const dirtyWarn = shouldWarnDirtyCleanBook(matchedAddBook, cards)
+    if (dirtyWarn) {
+      setDirtyBookWarning({
+        bookId: matchedAddBook.id,
+        bookRank: dirtyWarn.bookRank,
+        cardIds: [...selectedIds],
+      })
+      setDiscardWarning(null)
+      setError(null)
+      return
+    }
+
+    performAddToBook(matchedAddBook, cards, selectedIds)
+  }
+
+  function performAddToBook(book: Book, cards: Card[], cardIds: string[]) {
     const fanCards = cardsForBookFan(cards)
-    const result = addToBook(game, matchedAddBook.id, selectedIds)
+    const result = addToBook(game, book.id, cardIds)
     if (result.error) {
       setError(result.error)
       playSound('invalid')
       return
     }
-    const updatedBook = getTeam(result.state, team.id).books.find(
-      (b) => b.id === matchedAddBook.id,
-    )
+    const updatedBook = getTeam(result.state, team.id).books.find((b) => b.id === book.id)
     queueHandToTargetFlight(
       fanCards,
-      bookFlightAnchor(matchedAddBook.id),
+      bookFlightAnchor(book.id),
       updatedBook
         ? {
             totalCards: updatedBook.cards.length,
@@ -902,9 +936,19 @@ export function GameView({
     )
     setSelectedIds([])
     setSelectedAddBookId(null)
+    setDirtyBookWarning(null)
     setError(null)
     playSound('place')
     onGameChange(result.state, { recordHistory: true })
+  }
+
+  function handleConfirmDirtyBook() {
+    if (!dirtyBookWarning || !matchedAddBook) return
+    if (matchedAddBook.id !== dirtyBookWarning.bookId) return
+    const cards = viewer.hand.filter((c) => dirtyBookWarning.cardIds.includes(c.id))
+    if (cards.length !== dirtyBookWarning.cardIds.length) return
+    unlockAudio()
+    performAddToBook(matchedAddBook, cards, dirtyBookWarning.cardIds)
   }
 
   function performDiscard(cardId: string) {
@@ -921,6 +965,7 @@ export function GameView({
     setSelectedIds([])
     setError(null)
     setDiscardWarning(null)
+    setDirtyBookWarning(null)
     if (goingOut) playSound('goOut')
     else if (goToFootDiscard) playSound('goToFoot')
     else playSound('discard')
@@ -954,6 +999,7 @@ export function GameView({
           cardName: warning.cardName,
           bookRank: warning.bookRank,
         })
+        setDirtyBookWarning(null)
         setError(null)
         return
       }
@@ -1496,7 +1542,10 @@ export function GameView({
               <GameMessageBar
                 error={error}
                 hint={playerHint}
-                discardWarning={!error ? discardWarning : null}
+                dirtyBookWarning={!error ? dirtyBookWarning : null}
+                onDismissDirtyBookWarning={() => setDirtyBookWarning(null)}
+                onConfirmDirtyBook={handleConfirmDirtyBook}
+                discardWarning={!error && !dirtyBookWarning ? discardWarning : null}
                 onDismissDiscardWarning={() => setDiscardWarning(null)}
                 onConfirmDiscard={handleConfirmDiscard}
               />
