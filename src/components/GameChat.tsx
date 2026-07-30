@@ -58,9 +58,12 @@ export function GameChat({
   }, [messages, open])
 
   useEffect(() => {
-    // AI partner wild/go-out asks use dedicated on-table prompts — don't open
-    // chat (and its full-screen dimmer) over the board.
-    if (aiPartner && (wildRequest || partnerRequest)) return
+    // AI partner wild/go-out asks use the on-table book popup / compact go-out
+    // sheet — never the old centered modal with chat dimmer behind it.
+    if (aiPartner && (wildRequest || partnerRequest)) {
+      setOpen(false)
+      return
+    }
     if ((pendingDecision || waitingForPartnerReply) && viewerIsHuman) {
       setOpen(true)
     }
