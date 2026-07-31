@@ -1,28 +1,31 @@
 import type { GameState } from '../deal'
 import { getTeam } from '../actions'
-import { getGoOutBlockReason } from '../books'
+import { getGoOutBlockReason, isCleanBook, type Book } from '../books'
 import { buildAiPublicState } from './publicState'
-import { isRedThree } from '../cards'
+import { isRedThree, type Card } from '../cards'
 import { heldCardPenalty } from '../scoring'
 import {
   APPROVE_GO_OUT_TEXT,
   awaitingPartnerGoOutResponse,
+  awaitingPartnerWildResponse,
   createApproveGoOutSignal,
   createDenyGoOutSignal,
   createReadyGoOutSignal,
   createWildRequestSignal,
   DENY_GO_OUT_TEXT,
+  hasPartnerGoOutApproval,
   hasPartnerWildApprovalForBook,
   pendingPartnerGoOutRequest,
   pendingPartnerWildRequest,
   priorWildAskTexts,
   teamCanGoOut,
+  wasPartnerGoOutDenied,
   wasPartnerWildDeniedForBook,
   type ChatMessage,
 } from '../chat'
 import type { PlayerCount } from '../teams'
 import { partnerSeat } from '../teams'
-import { bookWildCount } from '../books'
+import { countWildsInCards } from '../books'
 
 export interface PartnerGoOutRecommendation {
   approve: boolean
@@ -194,6 +197,10 @@ export function maybeAiChatSignal(
 
   const partnerIdx = partnerSeat(seatIndex, state.playerCount as PlayerCount)
   if (awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx)) return null
+  /* Partner already said no — don't keep asking. */
+  if (wasPartnerGoOutDenied(messages, seatIndex, partnerIdx)) return null
+  /* Already cleared — no need to ask again. */
+  if (hasPartnerGoOutApproval(state, seatIndex, messages)) return null
 
   const pub = buildAiPublicState(state, seatIndex)
   if (!pub.isPlayingFoot) return null
@@ -298,6 +305,46 @@ export function maybeAiWildRequest(
   )
 }
 
+/** Whether this wild add needs a yes/no from the human partner. */
+export function needsHumanWildConsent(
+  book: Book,
+  cards: Card[],
+  humanPartnerSeat: number,
+): boolean {
+  if (countWildsInCards(cards) === 0) return false
+  if (book.startedBySeatIndex === humanPartnerSeat) return true
+  /* Dirtying a clean book is a team-scoring decision — always ask. */
+  return isCleanBook(book)
+}
+
+/**
+ * True when the AI should pause and ask (or keep waiting) before adding these
+ * wilds — human-started books and clean books need consent.
+ */
+export function shouldAskBeforeWildAdd(
+  state: GameState,
+  aiSeatIndex: number,
+  messages: ChatMessage[],
+  book: Book,
+  cardIds: string[],
+  hand: Card[],
+): boolean {
+  const partnerIdx = partnerSeat(aiSeatIndex, state.playerCount as PlayerCount)
+  if (!state.players[partnerIdx]?.profile.isHuman) return false
+
+  const cards = hand.filter((c) => cardIds.includes(c.id))
+  if (!needsHumanWildConsent(book, cards, partnerIdx)) return false
+
+  if (hasPartnerWildApprovalForBook(messages, aiSeatIndex, partnerIdx, book.id)) {
+    return false
+  }
+  if (wasPartnerWildDeniedForBook(messages, aiSeatIndex, partnerIdx, book.id)) {
+    return false
+  }
+  if (awaitingPartnerWildResponse(messages, aiSeatIndex, partnerIdx)) return true
+  return true
+}
+
 export function shouldDeferWildOnCleanBook(
   state: GameState,
   aiSeatIndex: number,
@@ -307,7 +354,7 @@ export function shouldDeferWildOnCleanBook(
   const player = state.players[aiSeatIndex]
   const team = getTeam(state, player.profile.teamId)
   const book = team.books.find((b) => b.id === bookId)
-  if (!book || bookWildCount(book) > 0) return false
+  if (!book || !isCleanBook(book)) return false
 
   const partnerIdx = partnerSeat(aiSeatIndex, state.playerCount as PlayerCount)
   if (!state.players[partnerIdx].profile.isHuman) return false

@@ -94,7 +94,7 @@ export function PartnerVoiceOverlay({
         </p>
 
         <p className="mb-3 text-[10px] leading-relaxed text-ink-muted">
-          Their answer is advice — you still choose whether to go out.
+          Yes lets them discard to go out. No keeps them playing this round.
         </p>
 
         <div className="flex gap-2">

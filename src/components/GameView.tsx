@@ -57,6 +57,7 @@ import { useGameShellLayout } from './useGameShellLayout'
 import { TEAM_COLORS, partnerSeat, type PlayerCount } from '../game/teams'
 import type { ChatMessage } from '../game/chat'
 import {
+  awaitingPartnerGoOutResponse,
   createWildApproveSignal,
   createWildDenySignal,
   getPartnerGoOutHint,
@@ -748,8 +749,12 @@ export function GameView({
     const playerCount = game.playerCount as PlayerCount
     const aiSeat = game.currentPlayerIndex
     const humanPartnerSeat = partnerSeat(aiSeat, playerCount)
-    /* Stay paused on the AI's turn until the human answers the dirty-book ask. */
+    /* Stay paused on the AI's turn until the human answers wild / go-out yes/no. */
     if (pendingPartnerWildRequest(chatMessages, humanPartnerSeat, aiSeat)) {
+      setAiThinking(false)
+      return
+    }
+    if (awaitingPartnerGoOutResponse(chatMessages, aiSeat, humanPartnerSeat)) {
       setAiThinking(false)
       return
     }
@@ -776,6 +781,14 @@ export function GameView({
       }
       if (result.chatMessage) {
         onChatSend(result.chatMessage, result.state)
+      }
+      /* Pause mid-turn while the human partner answers wild / go-out yes/no. */
+      if (result.awaitingPartner) {
+        if (result.state !== game) {
+          onGameChange(result.state, { recordHistory: false })
+        }
+        setAiThinking(false)
+        return
       }
       onGameChange(result.state)
       setAiThinking(false)
@@ -1284,9 +1297,16 @@ export function GameView({
     setHandOrder([...newDisplayOrder, ...staged])
   }
 
+  const goOutRequestPending =
+    viewer.profile.isHuman && !partner.profile.isHuman
+      ? pendingPartnerGoOutRequest(chatMessages, viewerSeat, partnerIdx)
+      : null
+
   const statusText = shortStatus({
     aiThinking,
-    waitingOnYou: Boolean(wildRequest) && game.currentPlayerIndex === partnerIdx,
+    waitingOnYou:
+      (Boolean(wildRequest) || Boolean(goOutRequestPending)) &&
+      game.currentPlayerIndex === partnerIdx,
     waitingPartnerName: partner.profile.name,
     currentName: current.profile.name,
     currentAvatar: current.profile.avatar,

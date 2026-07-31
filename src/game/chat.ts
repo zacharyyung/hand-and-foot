@@ -69,6 +69,18 @@ function partnerDeniedGoOut(
   return false
 }
 
+/** Partner already said no to going out — don't keep asking (like wild deny). */
+export function wasPartnerGoOutDenied(
+  messages: ChatMessage[],
+  requesterSeat: number,
+  responderSeat: number,
+): boolean {
+  const request = latestReadyGoOutFrom(messages, requesterSeat)
+  if (!request) return false
+  if (awaitingPartnerGoOutResponse(messages, requesterSeat, responderSeat)) return false
+  return partnerDeniedGoOut(messages, responderSeat, request.timestamp)
+}
+
 /** Partner said no to the latest go-out ask (advisory — does not block going out). */
 export function unresolvedPartnerDenial(
   messages: ChatMessage[],
@@ -125,6 +137,10 @@ export function isAllowedChatMessage(
     )
   }
 
+  if (message.type === 'wild_request') {
+    return canAiSendWildRequest(state, message.senderSeatIndex, existingMessages)
+  }
+
   if (message.type === 'wild_approve' || message.type === 'wild_deny') {
     return canRespondToPartnerWildRequest(
       existingMessages,
@@ -134,6 +150,21 @@ export function isAllowedChatMessage(
   }
 
   return false
+}
+
+/** AI may ask its human partner before playing a wild onto a clean / partner book. */
+export function canAiSendWildRequest(
+  state: GameState,
+  seatIndex: number,
+  messages: ChatMessage[],
+): boolean {
+  if (state.phase !== 'playing' || state.currentPlayerIndex !== seatIndex) return false
+  if (state.turnPhase !== 'play') return false
+  const player = state.players[seatIndex]
+  if (player.profile.isHuman) return false
+  const partnerIdx = partnerSeat(seatIndex, state.playerCount as PlayerCount)
+  if (!state.players[partnerIdx]?.profile.isHuman) return false
+  return pendingPartnerWildRequest(messages, partnerIdx, seatIndex) === null
 }
 
 export function isGoOutResponse(type: ChatMessageType): boolean {
@@ -327,9 +358,36 @@ export function pendingPartnerWildRequest(
     (m) =>
       m.senderSeatIndex === responderSeat &&
       (m.type === 'wild_approve' || m.type === 'wild_deny') &&
-      m.timestamp > request.timestamp,
+      m.timestamp >= request.timestamp,
   )
   return responded ? null : request
+}
+
+/** AI asked to play a wild and is still waiting on its human partner. */
+export function awaitingPartnerWildResponse(
+  messages: ChatMessage[],
+  aiSeatIndex: number,
+  humanPartnerSeat: number,
+): boolean {
+  return pendingPartnerWildRequest(messages, humanPartnerSeat, aiSeatIndex) !== null
+}
+
+/** Book ids the human has denied for wild adds this chat history. */
+export function deniedWildBookIds(
+  messages: ChatMessage[],
+  aiSeatIndex: number,
+  humanPartnerSeat: number,
+): Set<string> {
+  const denied = new Set<string>()
+  for (const msg of messages) {
+    if (msg.type !== 'wild_request' || msg.senderSeatIndex !== aiSeatIndex) continue
+    const bookId = msg.bookId
+    if (!bookId) continue
+    if (wasPartnerWildDeniedForBook(messages, aiSeatIndex, humanPartnerSeat, bookId)) {
+      denied.add(bookId)
+    }
+  }
+  return denied
 }
 
 /** Resolve which team book an AI wild request targets (for inline consent UI). */
@@ -613,11 +671,25 @@ export function shouldAiAttemptGoOut(
   const team = state.teams.find((t) => t.id === player.profile.teamId)
   if (!team || !teamReadyToGoOut(state, team.id)) return false
 
+  const playerCount = state.playerCount as PlayerCount
+  const partnerIdx = partnerSeat(seatIndex, playerCount)
+  const partnerIsHuman = state.players[partnerIdx]?.profile.isHuman === true
+
   if (hasPartnerGoOutApproval(state, seatIndex, messages)) return true
+
+  if (partnerIsHuman) {
+    /* Wait for the human's yes/no before discarding the last card. */
+    if (awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx)) return false
+    if (!latestReadyGoOutFrom(messages, seatIndex)) return false
+    if (partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)) {
+      return opponentsHoldManyCards(state, seatIndex)
+    }
+    return false
+  }
 
   if (opponentsHoldManyCards(state, seatIndex)) return true
 
-  if (partnerAdvisedAgainstGoOut(messages, seatIndex, state.playerCount as PlayerCount)) {
+  if (partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)) {
     return opponentsHoldManyCards(state, seatIndex)
   }
 
@@ -699,5 +771,8 @@ export function signalLabel(type: ChatMessageType): string {
   if (type === 'ready_go_out') return READY_GO_OUT_SIGNAL_TEXT
   if (type === 'approve_go_out') return APPROVE_GO_OUT_TEXT
   if (type === 'deny_go_out') return DENY_GO_OUT_TEXT
+  if (type === 'wild_request') return 'Ask to play a wild'
+  if (type === 'wild_approve') return 'Yes — go ahead.'
+  if (type === 'wild_deny') return 'No — keep it clean.'
   return 'Partner reply'
 }
