@@ -100,7 +100,7 @@ export function DirtyBookConsentPrompt({
 
   const popup = coords ? (
     <div
-      className={`dirty-book-consent pointer-events-auto fixed z-[80] animate-fade-up rounded-xl border border-amber-400/40 bg-gradient-to-b from-[#1a2e24]/98 to-[#0d1812]/99 px-2.5 py-2 shadow-xl backdrop-blur-sm ${
+      className={`dirty-book-consent pointer-events-auto fixed z-[80] animate-fade-up rounded-xl border border-amber-500/50 bg-cream px-2.5 py-2 shadow-xl ${
         mobile ? 'w-[9.25rem]' : 'w-[9.5rem]'
       }`}
       style={{ top: coords.top, left: coords.left, width: POPUP_WIDTH }}
@@ -108,21 +108,21 @@ export function DirtyBookConsentPrompt({
       aria-label={`Partner wants to add a wild to ${book.rank}s book`}
     >
       <div
-        className={`absolute top-1/2 h-2.5 w-2.5 -translate-y-1/2 rotate-45 border-amber-400/40 bg-[#15261e] ${
+        className={`absolute top-1/2 h-2.5 w-2.5 -translate-y-1/2 rotate-45 border-amber-500/50 bg-cream ${
           coords.place === 'right'
             ? '-left-1.5 border-b-0 border-r-0 border-l border-t'
             : '-right-1.5 border-l-0 border-t-0 border-b border-r'
         }`}
         aria-hidden
       />
-      <p className="text-[10px] font-semibold leading-snug text-amber-100">
+      <p className="text-[10px] font-semibold leading-snug text-black">
         <span aria-hidden>{consent.partnerAvatar} </span>
         Wild {book.rank}s?
       </p>
-      <p className="mt-0.5 text-[9px] leading-snug text-ink-muted">
+      <p className="mt-0.5 text-[9px] leading-snug text-black/60">
         {countLabel} · {statusLabel}
       </p>
-      <p className="mt-1 line-clamp-2 text-[8px] leading-tight text-ink-faint">
+      <p className="mt-1 line-clamp-2 text-[8px] leading-tight text-black">
         {consent.askText}
       </p>
       <div className="mt-2 flex gap-1.5">
@@ -136,7 +136,7 @@ export function DirtyBookConsentPrompt({
         <button
           type="button"
           onClick={consent.onDeny}
-          className="btn-secondary min-h-0 flex-1 px-1.5 py-1.5 text-[10px] leading-none"
+          className="min-h-0 flex-1 rounded-lg bg-black/10 px-1.5 py-1.5 text-[10px] font-semibold leading-none text-black transition hover:bg-black/15"
         >
           No
         </button>
