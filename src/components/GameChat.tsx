@@ -58,10 +58,20 @@ export function GameChat({
   }, [messages, open])
 
   useEffect(() => {
+    // AI partner wild/go-out asks use dedicated on-table prompts — don't open
+    // chat (and its full-screen dimmer) over the board.
+    if (aiPartner && (wildRequest || partnerRequest)) return
     if ((pendingDecision || waitingForPartnerReply) && viewerIsHuman) {
       setOpen(true)
     }
-  }, [pendingDecision, waitingForPartnerReply, viewerIsHuman])
+  }, [
+    pendingDecision,
+    waitingForPartnerReply,
+    viewerIsHuman,
+    aiPartner,
+    wildRequest,
+    partnerRequest,
+  ])
 
   function sendReadyGoOut() {
     if (!viewerIsHuman || !canSignalGoOut) return

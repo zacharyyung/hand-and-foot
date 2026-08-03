@@ -94,6 +94,8 @@ function shortStatus(opts: {
   aiThinking: boolean
   waitingOnYou?: boolean
   waitingPartnerName?: string
+  waitingBookRank?: string
+  waitingGoOut?: boolean
   currentName: string
   currentAvatar: string
   isMyTurn: boolean
@@ -103,6 +105,12 @@ function shortStatus(opts: {
   hasFoot: boolean
 }): string {
   if (opts.waitingOnYou) {
+    if (opts.waitingPartnerName && opts.waitingBookRank) {
+      return `${opts.waitingPartnerName} — wild ${opts.waitingBookRank}s?`
+    }
+    if (opts.waitingGoOut && opts.waitingPartnerName) {
+      return `${opts.waitingPartnerName} — go out?`
+    }
     return opts.waitingPartnerName
       ? `${opts.waitingPartnerName} — your call`
       : 'Your call'
@@ -1284,10 +1292,19 @@ export function GameView({
     setHandOrder([...newDisplayOrder, ...staged])
   }
 
+  const goOutRequest =
+    viewer.profile.isHuman && !partner.profile.isHuman
+      ? pendingPartnerGoOutRequest(chatMessages, viewerSeat, partnerIdx)
+      : null
+
   const statusText = shortStatus({
     aiThinking,
-    waitingOnYou: Boolean(wildRequest) && game.currentPlayerIndex === partnerIdx,
+    waitingOnYou:
+      (Boolean(wildRequest) && game.currentPlayerIndex === partnerIdx) ||
+      Boolean(goOutRequest),
     waitingPartnerName: partner.profile.name,
+    waitingBookRank: wildTargetBook?.rank,
+    waitingGoOut: Boolean(goOutRequest),
     currentName: current.profile.name,
     currentAvatar: current.profile.avatar,
     isMyTurn,

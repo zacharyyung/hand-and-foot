@@ -18,7 +18,10 @@ interface PartnerVoiceOverlayProps {
   onSend: (message: ChatMessage, validationState?: GameState) => void
 }
 
-/** Full-screen partner prompt for go-out asks. Wild/dirty consent uses inline book prompts. */
+/**
+ * Compact go-out Yes/No prompt — keeps the table visible (no full-screen dimmer).
+ * Wild/dirty consent uses the inline book popup instead.
+ */
 export function PartnerVoiceOverlay({
   game,
   viewerSeat,
@@ -67,53 +70,50 @@ export function PartnerVoiceOverlay({
   }
 
   return (
-    <>
-      <div className="fixed inset-0 z-50 bg-black/55 backdrop-blur-[2px]" aria-hidden />
-      <div
-        className="partner-voice-overlay animate-fade-up fixed left-1/2 top-1/2 z-50 w-[min(22rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-white/12 bg-gradient-to-b from-[#0f3a26]/98 to-[#081c12]/99 p-5 shadow-2xl"
-        role="dialog"
-        aria-label="Partner decision"
-      >
-        <div className="mb-3 flex items-center gap-3">
-          <div
-            className="flex h-11 w-11 items-center justify-center rounded-full text-xl ring-2"
-            style={{ boxShadow: `0 0 0 2px ${teamColor}55` }}
-          >
-            {partner.profile.avatar}
-          </div>
-          <div>
-            <p className="font-display text-base font-semibold text-ink">
-              {partner.profile.name} wants to go out
-            </p>
-            <p className="text-[10px] uppercase tracking-wider text-ink-faint">Your AI partner</p>
-          </div>
+    <div
+      className="partner-voice-overlay animate-fade-up pointer-events-auto fixed bottom-[max(5.5rem,env(safe-area-inset-bottom))] left-1/2 z-50 w-[min(20rem,calc(100vw-1.5rem))] -translate-x-1/2 rounded-2xl border border-white/12 bg-gradient-to-b from-[#0f3a26]/96 to-[#081c12]/98 p-3.5 shadow-2xl backdrop-blur-sm sm:bottom-8"
+      role="dialog"
+      aria-label="Partner wants to go out"
+    >
+      <div className="mb-2.5 flex items-center gap-2.5">
+        <div
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg ring-2"
+          style={{ boxShadow: `0 0 0 2px ${teamColor}55` }}
+        >
+          {partner.profile.avatar}
         </div>
-
-        <p className="mb-4 rounded-xl bg-black/25 px-3 py-2.5 text-sm leading-relaxed text-ink-soft">
-          &ldquo;{goOutRequest.text}&rdquo;
-        </p>
-
-        <p className="mb-3 text-[10px] leading-relaxed text-ink-muted">
-          Their answer is advice — you still choose whether to go out.
-        </p>
-
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => respondGoOut(true)}
-            className="btn-success flex-1 py-2.5 text-sm"
-          >
-            Yes
-          </button>
-          <button
-            type="button"
-            onClick={() => respondGoOut(false)}
-            className="btn-secondary flex-1 py-2.5 text-sm"
-          >
-            No
-          </button>
+        <div className="min-w-0">
+          <p className="font-display text-sm font-semibold leading-tight text-ink">
+            {partner.profile.name} wants to go out
+          </p>
+          <p className="text-[10px] uppercase tracking-wider text-ink-faint">Your AI partner</p>
         </div>
       </div>
-    </>
+
+      <p className="mb-2 line-clamp-3 rounded-xl bg-black/25 px-2.5 py-2 text-[12px] leading-snug text-ink-soft">
+        &ldquo;{goOutRequest.text}&rdquo;
+      </p>
+
+      <p className="mb-2.5 text-[10px] leading-relaxed text-ink-muted">
+        Advice only — you still choose whether to go out.
+      </p>
+
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => respondGoOut(true)}
+          className="btn-success flex-1 py-2 text-sm"
+        >
+          Yes
+        </button>
+        <button
+          type="button"
+          onClick={() => respondGoOut(false)}
+          className="btn-secondary flex-1 py-2 text-sm"
+        >
+          No
+        </button>
+      </div>
+    </div>
   )
 }

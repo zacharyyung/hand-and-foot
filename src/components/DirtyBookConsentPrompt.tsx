@@ -1,5 +1,8 @@
+import { useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { Book } from '../game/books'
 import { isCleanBook } from '../game/books'
+import type { CompassSide } from '../game/tableLayout'
 
 export interface DirtyBookConsent {
   bookId: string
@@ -13,50 +16,138 @@ export interface DirtyBookConsent {
 interface DirtyBookConsentPromptProps {
   book: Book
   consent: DirtyBookConsent
+  /** Seat side of the book zone — used to prefer an inward popup placement. */
+  side?: CompassSide
   mobile?: boolean
 }
 
-/** Small yes/no prompt anchored to a book so the player can see card count. */
+const POPUP_WIDTH = 148
+const POPUP_GAP = 8
+const VIEWPORT_PAD = 8
+
+type PopupCoords = { top: number; left: number; place: 'right' | 'left' }
+
+function preferRight(side?: CompassSide): boolean {
+  return side !== 'east' && side !== 'ne' && side !== 'se'
+}
+
+function computePopupCoords(
+  anchor: DOMRect,
+  side: CompassSide | undefined,
+): PopupCoords {
+  const preferRightSide = preferRight(side)
+  const spaceRight = window.innerWidth - anchor.right - VIEWPORT_PAD
+  const spaceLeft = anchor.left - VIEWPORT_PAD
+
+  let place: 'right' | 'left'
+  if (preferRightSide) {
+    place = spaceRight >= POPUP_WIDTH || spaceRight >= spaceLeft ? 'right' : 'left'
+  } else {
+    place = spaceLeft >= POPUP_WIDTH || spaceLeft >= spaceRight ? 'left' : 'right'
+  }
+
+  const rawLeft =
+    place === 'right' ? anchor.right + POPUP_GAP : anchor.left - POPUP_GAP - POPUP_WIDTH
+  const left = Math.max(
+    VIEWPORT_PAD,
+    Math.min(rawLeft, window.innerWidth - POPUP_WIDTH - VIEWPORT_PAD),
+  )
+
+  // Keep the popup near the book face, not covering the count badges under it.
+  const estimatedHeight = 96
+  const rawTop = anchor.top + Math.max(0, (anchor.height - estimatedHeight) / 2)
+  const top = Math.max(
+    VIEWPORT_PAD,
+    Math.min(rawTop, window.innerHeight - estimatedHeight - VIEWPORT_PAD),
+  )
+
+  return { top, left, place }
+}
+
+/** Small yes/no popup anchored beside a book so the player can see card counts. */
 export function DirtyBookConsentPrompt({
   book,
   consent,
+  side,
   mobile = false,
 }: DirtyBookConsentPromptProps) {
   const completed = book.cards.length >= 7
   const clean = isCleanBook(book)
   const countLabel = `${book.cards.length} card${book.cards.length === 1 ? '' : 's'}`
   const statusLabel = completed ? (clean ? 'clean' : 'dirty') : clean ? 'clean' : 'dirty'
+  const hostRef = useRef<HTMLSpanElement>(null)
+  const [coords, setCoords] = useState<PopupCoords | null>(null)
 
-  return (
+  useLayoutEffect(() => {
+    const host = hostRef.current
+    if (!host) return
+
+    function update() {
+      const bookEl = host?.closest('[data-book-consent-anchor]') as HTMLElement | null
+      const rect = (bookEl ?? host)?.getBoundingClientRect()
+      if (!rect || rect.width === 0) return
+      setCoords(computePopupCoords(rect, side))
+    }
+
+    update()
+    window.addEventListener('resize', update)
+    window.addEventListener('scroll', update, true)
+    return () => {
+      window.removeEventListener('resize', update)
+      window.removeEventListener('scroll', update, true)
+    }
+  }, [side, book.id, book.cards.length])
+
+  const popup = coords ? (
     <div
-      className={`dirty-book-consent pointer-events-auto absolute left-1/2 z-30 w-[max(7.5rem,110%)] -translate-x-1/2 animate-fade-up rounded-lg border border-amber-400/35 bg-gradient-to-b from-[#1a2e24]/98 to-[#0d1812]/99 px-2 py-1.5 shadow-lg backdrop-blur-sm ${
-        mobile ? 'top-[calc(100%+0.2rem)]' : 'top-[calc(100%+0.35rem)]'
+      className={`dirty-book-consent pointer-events-auto fixed z-[80] animate-fade-up rounded-xl border border-amber-400/40 bg-gradient-to-b from-[#1a2e24]/98 to-[#0d1812]/99 px-2.5 py-2 shadow-xl backdrop-blur-sm ${
+        mobile ? 'w-[9.25rem]' : 'w-[9.5rem]'
       }`}
+      style={{ top: coords.top, left: coords.left, width: POPUP_WIDTH }}
       role="dialog"
       aria-label={`Partner wants to add a wild to ${book.rank}s book`}
     >
-      <p className="text-[9px] font-semibold leading-snug text-amber-100">
-        <span aria-hidden>{consent.partnerAvatar}</span> {consent.askText}
+      <div
+        className={`absolute top-1/2 h-2.5 w-2.5 -translate-y-1/2 rotate-45 border-amber-400/40 bg-[#15261e] ${
+          coords.place === 'right'
+            ? '-left-1.5 border-b-0 border-r-0 border-l border-t'
+            : '-right-1.5 border-l-0 border-t-0 border-b border-r'
+        }`}
+        aria-hidden
+      />
+      <p className="text-[10px] font-semibold leading-snug text-amber-100">
+        <span aria-hidden>{consent.partnerAvatar} </span>
+        Wild {book.rank}s?
       </p>
-      <p className="mt-0.5 text-[8px] leading-tight text-ink-muted">
-        {book.rank}s · {countLabel} · {statusLabel}
+      <p className="mt-0.5 text-[9px] leading-snug text-ink-muted">
+        {countLabel} · {statusLabel}
       </p>
-      <div className="mt-1.5 flex gap-1">
+      <p className="mt-1 line-clamp-2 text-[8px] leading-tight text-ink-faint">
+        {consent.askText}
+      </p>
+      <div className="mt-2 flex gap-1.5">
         <button
           type="button"
           onClick={consent.onApprove}
-          className="btn-success min-h-0 flex-1 px-1.5 py-1 text-[9px] leading-none"
+          className="btn-success min-h-0 flex-1 px-1.5 py-1.5 text-[10px] leading-none"
         >
           Yes
         </button>
         <button
           type="button"
           onClick={consent.onDeny}
-          className="btn-secondary min-h-0 flex-1 px-1.5 py-1 text-[9px] leading-none"
+          className="btn-secondary min-h-0 flex-1 px-1.5 py-1.5 text-[10px] leading-none"
         >
           No
         </button>
       </div>
     </div>
+  ) : null
+
+  return (
+    <>
+      <span ref={hostRef} className="pointer-events-none absolute inset-0" aria-hidden />
+      {popup && createPortal(popup, document.body)}
+    </>
   )
 }
