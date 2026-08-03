@@ -579,11 +579,11 @@
   }
 
   /* Ornate serif index — italic Fraunces, not the jack's upright J.
-     Keep a little left inset so the italic stem isn't clipped by overflow. */
+     Keep a left inset so the italic stem isn't clipped by overflow. */
   .playing-card-joker-mark {
     position: absolute;
     top: 0.08rem;
-    left: 0.3rem;
+    left: 0.4rem;
     z-index: 2;
     font-style: italic;
     font-weight: 700;
