@@ -90,18 +90,6 @@ export function wasPartnerGoOutDenied(
   return latestPartnerGoOutAdvice(messages, responderSeat) === 'deny'
 }
 
-/** Partner already said no to going out — don't keep asking (like wild deny). */
-export function wasPartnerGoOutDenied(
-  messages: ChatMessage[],
-  requesterSeat: number,
-  responderSeat: number,
-): boolean {
-  const request = latestReadyGoOutFrom(messages, requesterSeat)
-  if (!request) return false
-  if (awaitingPartnerGoOutResponse(messages, requesterSeat, responderSeat)) return false
-  return partnerDeniedGoOut(messages, responderSeat, request.timestamp)
-}
-
 /** Partner said no to the latest go-out ask (advisory — does not block going out). */
 export function unresolvedPartnerDenial(
   messages: ChatMessage[],
