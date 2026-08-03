@@ -14,8 +14,11 @@ interface HandCardsProps {
   onReorder: (order: string[]) => void
   selectedIds: string[]
   onToggle: (cardId: string) => void
-  /** Long-press: select/unselect all cards of the same class (caller decides). */
-  onSelectRank?: (cardId: string) => void
+  /**
+   * Long-press: select all of a class, or clear when that class is already fully selected.
+   * Return value drives select vs deselect sound feedback.
+   */
+  onSelectRank?: (cardId: string) => 'selected' | 'cleared' | void
   canSelect?: boolean
   canDrag?: boolean
   /** Spread cards with gaps, centered — for the player hand dock. */
@@ -29,7 +32,7 @@ interface HandCardsProps {
 
 /** Snappy card motion — keep in sync with cardFlight / cardMotion. */
 const CARD_MS = 220
-/** Hold this long (while pressed) to select/unselect every card of that class. */
+/** Hold this long (while pressed) to select all of a class, or clear when fully selected. */
 const LONG_PRESS_MS = 500
 /** Finger/mouse jitter allowance before the hold is cancelled. */
 const LONG_PRESS_MOVE_PX = 20
@@ -222,9 +225,8 @@ export function HandCards({
     longPressTimerRef.current = null
     pointerStartRef.current = null
     setHoldingCardId(null)
-    const clearing = selectedIds.includes(cardId)
-    onSelectRank(cardId)
-    playSound(clearing ? 'deselect' : 'select')
+    const result = onSelectRank(cardId)
+    playSound(result === 'cleared' ? 'deselect' : 'select')
     if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
       navigator.vibrate(14)
     }
@@ -466,7 +468,7 @@ export function HandCards({
                 aria-hidden={inFlight}
                 title={
                   onSelectRank && canSelect
-                    ? 'Tap to select · hold to select all of this kind · hold a selected card to clear'
+                    ? 'Tap to select · hold to select all of this kind · hold again when all are selected to clear'
                     : undefined
                 }
                 {...pressHandlers(card.id)}

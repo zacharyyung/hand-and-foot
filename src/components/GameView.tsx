@@ -794,31 +794,38 @@ export function GameView({
   }
 
   /**
-   * Long-press: select every natural card of that class (wilds stay individual).
-   * Hold again on an already-selected card to clear the whole selection.
-   * Red threes are their own class, separate from black threes.
+   * Long-press toggles a natural select-class:
+   * - if any of that class are missing from the selection → select all of them
+   * - if every card of that class is already selected → clear the whole selection
+   * Wilds stay individual. Red threes are their own class, separate from black threes.
    */
-  function selectAllOfRank(cardId: string) {
+  function selectAllOfRank(cardId: string): 'selected' | 'cleared' | undefined {
     if (!isMyTurn || game.turnPhase === 'draw') return
     setError(null)
     setDiscardWarning(null)
     const card = handForDisplay.find((c) => c.id === cardId)
     if (!card) return
 
-    // Press-and-hold on a selected card unselects everything.
-    if (selectedIds.includes(cardId)) {
-      setSelectedIds([])
-      return
-    }
-
     if (isWildCard(card)) {
-      setSelectedIds((prev) => [...prev, cardId])
-      return
+      if (selectedIds.includes(cardId)) {
+        setSelectedIds([])
+        return 'cleared'
+      }
+      setSelectedIds((prev) => (prev.includes(cardId) ? prev : [...prev, cardId]))
+      return 'selected'
     }
 
     const sameClassIds = handForDisplay
       .filter((c) => sameNaturalSelectClass(card, c))
       .map((c) => c.id)
+
+    const allOfClassSelected =
+      sameClassIds.length > 0 && sameClassIds.every((id) => selectedIds.includes(id))
+
+    if (allOfClassSelected) {
+      setSelectedIds([])
+      return 'cleared'
+    }
 
     setSelectedIds((prev) => {
       const keptWilds = prev.filter((id) => {
@@ -827,6 +834,7 @@ export function GameView({
       })
       return [...new Set([...keptWilds, ...sameClassIds])]
     })
+    return 'selected'
   }
 
   function applyHandSort(cards: typeof viewer.hand, playSoundEffect = true) {
