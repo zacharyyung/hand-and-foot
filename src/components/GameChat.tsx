@@ -60,10 +60,23 @@ export function GameChat({
   }, [messages, open])
 
   useEffect(() => {
+    // AI partner wild/go-out asks use the on-table book popup / compact go-out
+    // sheet — never the old centered modal with chat dimmer behind it.
+    if (aiPartner && (wildRequest || partnerRequest)) {
+      setOpen(false)
+      return
+    }
     if ((pendingDecision || waitingForPartnerReply) && viewerIsHuman) {
       setOpen(true)
     }
-  }, [pendingDecision, waitingForPartnerReply, viewerIsHuman])
+  }, [
+    pendingDecision,
+    waitingForPartnerReply,
+    viewerIsHuman,
+    aiPartner,
+    wildRequest,
+    partnerRequest,
+  ])
 
   function sendReadyGoOut() {
     if (!viewerIsHuman || !canSignalGoOut) return
