@@ -1,6 +1,6 @@
 import { parseElevenLabsError } from '../parseElevenLabsError'
 import { buildCacheKey, getCachedAudio, setCachedAudio } from '../audioCache'
-import { playArrayBuffer, playBlob, stopPlayback } from '../audioPlayback'
+import { playArrayBuffer, stopPlayback } from '../audioPlayback'
 import type { NarrationProvider, SpeakOptions } from '../types'
 
 export interface ProviderStatus {
@@ -103,6 +103,7 @@ export class ElevenLabsProvider implements NarrationProvider {
     const buffer = await response.arrayBuffer()
     providerStatus = { ...providerStatus, lastUsed: 'elevenlabs', lastError: null }
     void setCachedAudio(cacheKey, buffer)
-    await playBlob(new Blob([buffer], { type: 'audio/mpeg' }), options.volume)
+    // Always Web Audio — HTMLAudioElement.play() after fetch is blocked on mobile Safari.
+    await playArrayBuffer(buffer, options.volume)
   }
 }

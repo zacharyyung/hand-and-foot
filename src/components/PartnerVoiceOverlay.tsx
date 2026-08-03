@@ -59,6 +59,8 @@ export function PartnerVoiceOverlay({
   const teamColor = TEAM_COLORS[partner.profile.teamId]
 
   function respondGoOut(approve: boolean) {
+    unlockAudio()
+    partnerVoiceService.unlock()
     partnerVoiceService.stop()
     playSound('chat')
     onSend(

@@ -11,15 +11,34 @@ function getAudioContext(): AudioContext | null {
     if (!AC) return null
     audioCtx = new AC()
   }
-  if (audioCtx.state === 'suspended') {
-    void audioCtx.resume()
-  }
   return audioCtx
 }
 
+async function ensureRunning(ctx: AudioContext): Promise<boolean> {
+  if (ctx.state === 'running') return true
+  try {
+    await ctx.resume()
+  } catch {
+    return false
+  }
+  return (ctx.state as AudioContextState) === 'running'
+}
+
+/** Unlock partner-voice Web Audio on a real user gesture (iOS Safari autoplay). */
 export function unlockNarrationAudio(): void {
   const ctx = getAudioContext()
-  if (ctx?.state === 'suspended') void ctx.resume()
+  if (!ctx) return
+  void ensureRunning(ctx)
+  // A tiny silent buffer during the gesture fully unlocks Web Audio on iOS.
+  try {
+    const buffer = ctx.createBuffer(1, 1, ctx.sampleRate)
+    const source = ctx.createBufferSource()
+    source.buffer = buffer
+    source.connect(ctx.destination)
+    source.start(0)
+  } catch {
+    /* ignore unlock priming failures */
+  }
 }
 
 export function stopPlayback(): void {
@@ -41,51 +60,41 @@ export function stopPlayback(): void {
   }
 }
 
-export function playArrayBuffer(data: ArrayBuffer, volume: number): Promise<void> {
+/**
+ * Play TTS via Web Audio. Prefer this over HTMLAudioElement — mobile Safari
+ * blocks MediaElement.play() after an async network fetch even when SFX work.
+ */
+export async function playArrayBuffer(data: ArrayBuffer, volume: number): Promise<void> {
   const ctx = getAudioContext()
-  if (!ctx) return Promise.resolve()
+  if (!ctx) return
 
   stopPlayback()
 
-  return ctx
-    .decodeAudioData(data.slice(0))
-    .then((buffer) =>
-      new Promise<void>((resolve) => {
-        const source = ctx.createBufferSource()
-        const gain = ctx.createGain()
-        source.buffer = buffer
-        gain.gain.value = volume
-        source.connect(gain)
-        gain.connect(ctx.destination)
-        source.onended = () => {
-          if (currentSource === source) currentSource = null
-          resolve()
-        }
-        currentSource = source
-        source.start(0)
-      }),
-    )
-    .catch(() => undefined)
+  if (!(await ensureRunning(ctx))) return
+
+  try {
+    const buffer = await ctx.decodeAudioData(data.slice(0))
+    await new Promise<void>((resolve) => {
+      const source = ctx.createBufferSource()
+      const gain = ctx.createGain()
+      source.buffer = buffer
+      gain.gain.value = volume
+      source.connect(gain)
+      gain.connect(ctx.destination)
+      source.onended = () => {
+        if (currentSource === source) currentSource = null
+        resolve()
+      }
+      currentSource = source
+      source.start(0)
+    })
+  } catch {
+    /* decode / play failures should not interrupt gameplay */
+  }
 }
 
-export function playBlob(blob: Blob, volume: number): Promise<void> {
-  stopPlayback()
-
-  return new Promise((resolve) => {
-    const url = URL.createObjectURL(blob)
-    const audio = new Audio(url)
-    audio.volume = volume
-    currentElement = audio
-    audio.onended = () => {
-      URL.revokeObjectURL(url)
-      if (currentElement === audio) currentElement = null
-      resolve()
-    }
-    audio.onerror = () => {
-      URL.revokeObjectURL(url)
-      if (currentElement === audio) currentElement = null
-      resolve()
-    }
-    void audio.play().catch(() => resolve())
-  })
+/** Decode blob audio and play through Web Audio (same mobile-safe path). */
+export async function playBlob(blob: Blob, volume: number): Promise<void> {
+  const data = await blob.arrayBuffer()
+  await playArrayBuffer(data, volume)
 }
