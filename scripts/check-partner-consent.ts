@@ -14,8 +14,10 @@ import {
   hasPartnerGoOutApproval,
   hasPartnerWildApprovalForBook,
   isAllowedChatMessage,
+  partnerDeniedLatestWildAsk,
   pendingPartnerWildRequest,
   shouldAiAttemptGoOut,
+  wasPartnerWildDeniedForBook,
   type ChatMessage,
 } from '../src/game/chat'
 import { needsHumanWildConsent } from '../src/game/ai/chatSignals'
@@ -66,6 +68,21 @@ const aiCleanBook: Book = {
   ],
 }
 
+const aiCleanBookQ: Book = {
+  id: 'book-ai-clean-q',
+  rank: 'Q',
+  teamId: 0,
+  startedBySeatIndex: 2,
+  cards: [
+    card('q1', 'Q'),
+    card('q2', 'Q', 'diamonds'),
+    card('q3', 'Q', 'clubs'),
+    card('q4', 'Q', 'spades'),
+    card('q5', 'Q'),
+    card('q6', 'Q', 'diamonds'),
+  ],
+}
+
 const wild = card('j1', 'Joker', 'joker')
 
 assert(
@@ -93,7 +110,7 @@ assert(
 assert(awaitingPartnerWildResponse(messages, 2, 0), 'AI awaits wild response')
 
 const approve = {
-  ...createWildApproveSignal(0, 'You', '🧑'),
+  ...createWildApproveSignal(0, 'You', '🧑', aiCleanBook.id),
   timestamp: ask.timestamp + 1,
 }
 assert(
@@ -102,12 +119,94 @@ assert(
 )
 
 const deny = {
-  ...createWildDenySignal(0, 'You', '🧑'),
+  ...createWildDenySignal(0, 'You', '🧑', aiCleanBook.id),
   timestamp: ask.timestamp + 1,
 }
 assert(
   deniedWildBookIds([...messages, deny], 2, 0).has(aiCleanBook.id),
   'denied book id tracked',
+)
+assert(
+  wasPartnerWildDeniedForBook([...messages, deny], 2, 0, aiCleanBook.id),
+  'deny sticks for that book',
+)
+assert(
+  partnerDeniedLatestWildAsk([...messages, deny], 2, 0),
+  'latest ask denied helper',
+)
+
+/* No on book A, then Yes on book B must not rewrite A's denial. */
+const askK = { ...createWildRequestSignal(2, 'AI', '🤖', 'K', aiCleanBook.id), timestamp: 100 }
+const denyK = {
+  ...createWildDenySignal(0, 'You', '🧑', aiCleanBook.id),
+  timestamp: 101,
+}
+const askQ = {
+  ...createWildRequestSignal(2, 'AI', '🤖', 'Q', aiCleanBookQ.id),
+  timestamp: 102,
+}
+const approveQ = {
+  ...createWildApproveSignal(0, 'You', '🧑', aiCleanBookQ.id),
+  timestamp: 103,
+}
+const multiBook: ChatMessage[] = [askK, denyK, askQ, approveQ]
+assert(
+  wasPartnerWildDeniedForBook(multiBook, 2, 0, aiCleanBook.id),
+  'No on K stays after Yes on Q',
+)
+assert(
+  !hasPartnerWildApprovalForBook(multiBook, 2, 0, aiCleanBook.id),
+  'Yes on Q does not approve K',
+)
+assert(
+  hasPartnerWildApprovalForBook(multiBook, 2, 0, aiCleanBookQ.id),
+  'Yes on Q approves Q',
+)
+assert(
+  !wasPartnerWildDeniedForBook(multiBook, 2, 0, aiCleanBookQ.id),
+  'Q is not denied',
+)
+assert(
+  deniedWildBookIds(multiBook, 2, 0).has(aiCleanBook.id),
+  'denied set still includes K',
+)
+assert(
+  !deniedWildBookIds(multiBook, 2, 0).has(aiCleanBookQ.id),
+  'denied set does not include Q',
+)
+
+/* Legacy replies without bookId must not leak across later asks. */
+const legacyAskK = {
+  ...createWildRequestSignal(2, 'AI', '🤖', 'K', aiCleanBook.id),
+  timestamp: 200,
+}
+const legacyDeny = {
+  ...createWildDenySignal(0, 'You', '🧑', aiCleanBook.id),
+  bookId: undefined,
+  timestamp: 201,
+}
+const legacyAskQ = {
+  ...createWildRequestSignal(2, 'AI', '🤖', 'Q', aiCleanBookQ.id),
+  timestamp: 202,
+}
+const legacyApprove = {
+  ...createWildApproveSignal(0, 'You', '🧑', aiCleanBookQ.id),
+  bookId: undefined,
+  timestamp: 203,
+}
+const legacyThread: ChatMessage[] = [
+  legacyAskK,
+  legacyDeny as ChatMessage,
+  legacyAskQ,
+  legacyApprove as ChatMessage,
+]
+assert(
+  wasPartnerWildDeniedForBook(legacyThread, 2, 0, aiCleanBook.id),
+  'legacy No on K survives later Yes',
+)
+assert(
+  hasPartnerWildApprovalForBook(legacyThread, 2, 0, aiCleanBookQ.id),
+  'legacy Yes still binds to later ask Q',
 )
 
 function stubState(overrides?: Partial<GameState>): GameState {
@@ -119,7 +218,7 @@ function stubState(overrides?: Partial<GameState>): GameState {
       isHuman: true,
       teamId: 0,
     },
-    hand: [card('q1', 'Q')],
+    hand: [card('qh1', 'Q')],
     foot: [],
     isPlayingFoot: true,
     footOnHold: false,
@@ -133,7 +232,7 @@ function stubState(overrides?: Partial<GameState>): GameState {
       teamId: 0,
       aiDifficulty: 'normal',
     },
-    hand: [card('q2', 'Q')],
+    hand: [card('qh2', 'Q')],
     foot: [],
     isPlayingFoot: true,
     footOnHold: false,
@@ -167,7 +266,7 @@ function stubState(overrides?: Partial<GameState>): GameState {
       {
         id: 0,
         score: 0,
-        books: [humanBook, aiCleanBook],
+        books: [humanBook, aiCleanBook, aiCleanBookQ],
         meldThresholdMet: true,
       },
       {
