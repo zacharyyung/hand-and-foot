@@ -566,15 +566,33 @@
     color: #fce8ef;
   }
 
-  /* Same wine wild chrome as twos; white hat keeps it distinct from jacks. */
+  /* Same wine wild chrome as twos; hat + fancy corner J mark the joker. */
   .playing-card-joker {
     overflow: hidden;
   }
 
   .playing-card-face-joker {
+    position: relative;
     align-items: center;
     justify-content: center;
     padding: 0.18rem;
+  }
+
+  /* Ornate serif index — italic Fraunces, not the jack's upright J. */
+  .playing-card-joker-mark {
+    position: absolute;
+    top: 0.08rem;
+    left: 0.12rem;
+    z-index: 2;
+    font-style: italic;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -0.04em;
+    color: #fffef8;
+    text-shadow:
+      0 0 1px rgba(255, 248, 230, 0.35),
+      0 1px 2px rgba(0, 0, 0, 0.4);
+    font-variation-settings: 'SOFT' 50, 'WONK' 1;
   }
 
   .playing-card-joker-hat {

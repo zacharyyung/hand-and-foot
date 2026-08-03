@@ -26,8 +26,9 @@ function suitGlyph(suit: CardType['suit']): string {
 }
 
 /**
- * Minimal joker icon: white three-point jester hat on a black card face.
- * Distinct from the jack's "J" at every size.
+ * Minimal joker icon: white three-point jester hat on the wild face.
+ * Paired with a fancy corner "J" so the card reads as a joker at a glance
+ * (wine chrome + hat keep it distinct from a jack).
  */
 function JokerHatIcon({ className = '' }: { className?: string }) {
   return (
@@ -66,9 +67,24 @@ function JokerHatIcon({ className = '' }: { className?: string }) {
   )
 }
 
-function JokerFace() {
+function JokerFace({ tier }: { tier: CardTier }) {
+  const markClass =
+    tier === 'micro'
+      ? 'text-[11px]'
+      : tier === 'tiny'
+        ? 'text-[13px]'
+        : tier === 'small'
+          ? 'text-[14px]'
+          : 'text-[15px]'
+
   return (
     <div className="playing-card-face-inner playing-card-face-joker">
+      <span
+        className={`playing-card-joker-mark font-display ${markClass}`}
+        aria-hidden
+      >
+        J
+      </span>
       <JokerHatIcon className="playing-card-joker-hat" />
     </div>
   )
@@ -342,7 +358,7 @@ export function Card({
         className={`playing-card playing-card-wild playing-card-joker ${sizeClass} ${liftClass} ${className}`}
         aria-label={cardLabel(card)}
       >
-        <JokerFace />
+        <JokerFace tier={tier} />
       </div>
     )
   }
