@@ -10,6 +10,7 @@ import {
   pendingPartnerWildRequest,
   READY_GO_OUT_SIGNAL_TEXT,
   awaitingPartnerGoOutResponse,
+  teamCanGoOut,
 } from '../game/chat'
 import { partnerSeat, TEAM_COLORS, type PlayerCount } from '../game/teams'
 import { playSound } from '../game/audio'
@@ -41,6 +42,7 @@ export function GameChat({
   const viewerIsHuman = viewer.profile.isHuman
   const isMyTurn = game.currentPlayerIndex === viewerSeat
   const canSignalGoOut = canInitiateGoOutSignal(game, viewerSeat)
+  const booksReadyToGoOut = teamCanGoOut(game, viewer.profile.teamId)
 
   const partnerRequest = pendingPartnerGoOutRequest(messages, viewerSeat, partnerIdx)
   const wildRequest = pendingPartnerWildRequest(messages, viewerSeat, partnerIdx)
@@ -306,9 +308,17 @@ export function GameChat({
                   >
                     {READY_GO_OUT_SIGNAL_TEXT}
                   </button>
-                ) : isMyTurn && viewer.isPlayingFoot && !canSignalGoOut ? (
+                ) : isMyTurn && viewer.isPlayingFoot && !booksReadyToGoOut ? (
                   <p className="rounded-lg bg-black/25 px-2.5 py-2 text-center text-[10px] leading-relaxed text-ink-muted">
-                    Finish your books before asking to go out while playing your foot.
+                    Finish your books before asking to go out while playing your foot —
+                    need 1 clean and 1 dirty completed book (7+).
+                    {partnerRequest
+                      ? ' You can still reply to your partner above.'
+                      : ''}
+                  </p>
+                ) : isMyTurn && viewer.isPlayingFoot && game.turnPhase !== 'play' ? (
+                  <p className="rounded-lg bg-black/25 px-2.5 py-2 text-center text-[10px] leading-relaxed text-ink-muted">
+                    Draw first — then you can ask your partner about going out.
                     {partnerRequest
                       ? ' You can still reply to your partner above.'
                       : ''}

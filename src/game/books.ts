@@ -269,23 +269,17 @@ export function selectionIncludesWild(hand: Card[], selectedIds: string[]): bool
   return hand.some((c) => selectedIds.includes(c.id) && isWildCard(c))
 }
 
-/** Pick the team book selected cards can be added to, if any. */
-export function findBookForSelectedCards(
-  hand: Card[],
-  selectedIds: string[],
-  books: Book[],
-  booksWithWildAddedThisTurn: string[] = [],
+/**
+ * Prefer a natural-rank match, then an already-dirty book, then the largest book.
+ * Used for lone-wild adds so the UI does not default onto a clean book.
+ */
+export function pickPreferredAddBook(
+  matches: Book[],
+  selected: Card[] = [],
 ): Book | null {
-  const matches = findAllBooksForSelectedCards(
-    hand,
-    selectedIds,
-    books,
-    booksWithWildAddedThisTurn,
-  )
   if (matches.length === 0) return null
   if (matches.length === 1) return matches[0]
 
-  const selected = hand.filter((c) => selectedIds.includes(c.id))
   const naturals = selected.filter((c) => !isWildCard(c) && !isRedThree(c))
   if (naturals.length > 0) {
     const rank = naturals[0].rank
@@ -299,6 +293,23 @@ export function findBookForSelectedCards(
   }
 
   return [...matches].sort((a, b) => b.cards.length - a.cards.length)[0]
+}
+
+/** Pick the team book selected cards can be added to, if any. */
+export function findBookForSelectedCards(
+  hand: Card[],
+  selectedIds: string[],
+  books: Book[],
+  booksWithWildAddedThisTurn: string[] = [],
+): Book | null {
+  const matches = findAllBooksForSelectedCards(
+    hand,
+    selectedIds,
+    books,
+    booksWithWildAddedThisTurn,
+  )
+  const selected = hand.filter((c) => selectedIds.includes(c.id))
+  return pickPreferredAddBook(matches, selected)
 }
 
 /** Whether discarding this card should prompt — it legally fits a team book. */
