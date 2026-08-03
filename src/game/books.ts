@@ -318,6 +318,16 @@ export function shouldWarnDiscardToBook(
   return { cardName: cardLabel(card), bookRank: book.rank }
 }
 
+/** Warn before a wild dirties an existing clean book (loses the clean-book bonus). */
+export function shouldWarnDirtyCleanBook(
+  book: Book,
+  cards: Card[],
+): { bookRank: Rank } | null {
+  if (!isCleanBook(book)) return null
+  if (countWildsInCards(cards) === 0) return null
+  return { bookRank: book.rank }
+}
+
 /** Going out requires completed books (7+ cards) — one clean and one dirty. */
 export function teamHasCleanAndDirtyBooks(books: Book[]): boolean {
   const completed = books.filter((b) => b.cards.length >= 7)
