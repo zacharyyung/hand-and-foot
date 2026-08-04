@@ -117,10 +117,11 @@ export function DirtyBookConsentPrompt({
       />
       <p className="text-[10px] font-semibold leading-snug text-amber-100">
         <span aria-hidden>{consent.partnerAvatar} </span>
-        Wild {book.rank}s?
+        Add a wild to {book.rank}s?
       </p>
       <p className="mt-0.5 text-[9px] leading-snug text-ink-muted">
-        {countLabel} · {statusLabel}
+        {countLabel} · still {statusLabel}
+        {clean ? ' — not placed yet' : ''}
       </p>
       <p className="mt-1 line-clamp-2 text-[8px] leading-tight text-ink-faint">
         {consent.askText}

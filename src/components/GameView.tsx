@@ -272,12 +272,24 @@ export function GameView({
   const wildTargetBook = wildRequest ? wildRequestTargetBook(wildRequest, team.books) : null
 
   function respondWildConsent(approve: boolean) {
+    const bookId = wildRequest?.bookId ?? wildTargetBook?.id
+    if (!bookId) return
     partnerVoiceService.stop()
     playSound('chat')
     onChatSend(
       approve
-        ? createWildApproveSignal(viewerSeat, viewer.profile.name, viewer.profile.avatar)
-        : createWildDenySignal(viewerSeat, viewer.profile.name, viewer.profile.avatar),
+        ? createWildApproveSignal(
+            viewerSeat,
+            viewer.profile.name,
+            viewer.profile.avatar,
+            bookId,
+          )
+        : createWildDenySignal(
+            viewerSeat,
+            viewer.profile.name,
+            viewer.profile.avatar,
+            bookId,
+          ),
       game,
     )
   }

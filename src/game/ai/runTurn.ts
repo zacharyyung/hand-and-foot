@@ -15,6 +15,7 @@ import type { GameState } from '../deal'
 import type { ChatMessage } from '../chat'
 import type { Card } from '../cards'
 import { cardLabel } from '../cards'
+import { countWildsInCards } from '../books'
 import {
   awaitingPartnerGoOutResponse,
   awaitingPartnerWildResponse,
@@ -24,6 +25,8 @@ import {
   hasPartnerWildApprovalForBook,
   opponentsHoldManyCards,
   partnerAdvisedAgainstGoOut,
+  partnerDeniedLatestWildAsk,
+  wasPartnerWildDeniedForBook,
 } from '../chat'
 import { partnerSeat, type PlayerCount } from '../teams'
 import { findAddToBookActions } from './decisions'
@@ -108,6 +111,15 @@ export function runAiTurn(
   const deniedWildBooks = partnerIsHuman
     ? deniedWildBookIds(messages, seatIndex, partnerIdx)
     : new Set<string>()
+  /*
+   * Mid-turn resume after No: stop asking about other books this turn.
+   * New turns start in `draw`, so the AI can ask again next turn (except
+   * books already denied, which stay blocked).
+   */
+  const stopFurtherWildAsks =
+    partnerIsHuman &&
+    state.turnPhase === 'play' &&
+    partnerDeniedLatestWildAsk(messages, seatIndex, partnerIdx)
 
   const maxPlays = difficulty === 'expert' ? 14 : 10
   debug?.step(
@@ -183,7 +195,12 @@ export function runAiTurn(
         pub.isPlayingFoot,
         current.booksWithWildAddedThisTurn,
         team.meldThresholdMet,
-      ).filter((a) => !deniedWildBooks.has(a.bookId))
+      ).filter((a) => {
+        if (!deniedWildBooks.has(a.bookId)) return true
+        /* Denial blocks wilds only — naturals onto that book are fine. */
+        const cards = pub.myHand.filter((c) => a.cardIds.includes(c.id))
+        return countWildsInCards(cards) === 0
+      })
       debug?.step('add', `${addActions.length} add action(s) available.`)
       const triedAdds = new Set<string>()
 
@@ -216,6 +233,17 @@ export function runAiTurn(
         const book = pub.myTeamBooks.find((b) => b.id === bestAdd.bookId)
         if (!book) continue
 
+        const addCards = pub.myHand.filter((c) => bestAdd.cardIds.includes(c.id))
+        const addHasWilds = countWildsInCards(addCards) > 0
+        if (
+          partnerIsHuman &&
+          addHasWilds &&
+          wasPartnerWildDeniedForBook(messages, seatIndex, partnerIdx, book.id)
+        ) {
+          debug?.step('add', `Skip wild on ${book.rank}s — partner already said no.`)
+          continue
+        }
+
         if (
           partnerIsHuman &&
           shouldAskBeforeWildAdd(
@@ -231,6 +259,12 @@ export function runAiTurn(
             hasPartnerWildApprovalForBook(messages, seatIndex, partnerIdx, book.id)
           ) {
             /* Approved — fall through and play. */
+          } else if (stopFurtherWildAsks) {
+            debug?.step(
+              'add',
+              `Skip wild ask on ${book.rank}s — partner said no earlier this turn.`,
+            )
+            continue
           } else {
             const wildReq = maybeAiWildRequest(
               current,
@@ -244,6 +278,7 @@ export function runAiTurn(
                 'chat',
                 `Asking partner before wild on ${book.rank}s (${labelCards(pub.myHand, bestAdd.cardIds)}).`,
               )
+              /* Wild stays in hand / off the book until Yes — return without addToBook. */
               return {
                 state: current,
                 chatMessage: wildReq,
@@ -261,6 +296,22 @@ export function runAiTurn(
             /* Denied or unable to ask — skip this add. */
             continue
           }
+        }
+
+        /*
+         * Hard stop: never dirty a clean book without an explicit Yes.
+         * Covers any hole where shouldAskBeforeWildAdd returned false incorrectly.
+         */
+        if (
+          partnerIsHuman &&
+          needsHumanWildConsent(book, addCards, partnerIdx) &&
+          !hasPartnerWildApprovalForBook(messages, seatIndex, partnerIdx, book.id)
+        ) {
+          debug?.step(
+            'add',
+            `Blocked wild on ${book.rank}s — no partner Yes yet.`,
+          )
+          continue
         }
 
         debug?.step(
@@ -382,11 +433,20 @@ export function runAiTurn(
       )
       if (book && partnerIsHuman) {
         const cards = pub.myHand.filter((c) => c.id === loneWild.cardId)
-        if (needsHumanWildConsent(book, cards, partnerIdx)) {
+        if (
+          wasPartnerWildDeniedForBook(messages, seatIndex, partnerIdx, book.id)
+        ) {
+          debug?.step('wild', `Skip lone wild on ${book.rank}s — partner said no.`)
+        } else if (needsHumanWildConsent(book, cards, partnerIdx)) {
           if (hasPartnerWildApprovalForBook(messages, seatIndex, partnerIdx, book.id)) {
             debug?.step('wild', `Adding wild to ${book.rank}s (partner approved).`)
             const wildResult = addToBook(current, loneWild.bookId, [loneWild.cardId])
             if (!wildResult.error) current = wildResult.state
+          } else if (stopFurtherWildAsks) {
+            debug?.step(
+              'wild',
+              `Skip lone wild ask on ${book.rank}s — partner said no earlier this turn.`,
+            )
           } else {
             const wildReq = maybeAiWildRequest(
               current,
