@@ -332,6 +332,7 @@ export function createWildApproveSignal(
   senderSeatIndex: number,
   senderName: string,
   senderAvatar: string,
+  bookId: string,
 ): ChatMessage {
   return {
     id: `chat-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
@@ -341,6 +342,7 @@ export function createWildApproveSignal(
     text: 'Yes — go ahead.',
     timestamp: Date.now(),
     type: 'wild_approve',
+    bookId,
   }
 }
 
@@ -348,6 +350,7 @@ export function createWildDenySignal(
   senderSeatIndex: number,
   senderName: string,
   senderAvatar: string,
+  bookId: string,
 ): ChatMessage {
   return {
     id: `chat-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
@@ -357,6 +360,7 @@ export function createWildDenySignal(
     text: 'No — keep it clean.',
     timestamp: Date.now(),
     type: 'wild_deny',
+    bookId,
   }
 }
 
@@ -382,14 +386,7 @@ export function pendingPartnerWildRequest(
 ): ChatMessage | null {
   const request = latestWildRequestFrom(messages, aiPartnerSeat)
   if (!request) return null
-
-  const responded = messages.some(
-    (m) =>
-      m.senderSeatIndex === responderSeat &&
-      (m.type === 'wild_approve' || m.type === 'wild_deny') &&
-      m.timestamp >= request.timestamp,
-  )
-  return responded ? null : request
+  return responseToWildRequest(messages, request, responderSeat) ? null : request
 }
 
 /** AI asked to play a wild and is still waiting on its human partner. */
@@ -473,10 +470,43 @@ function responseToWildRequest(
     if (m.senderSeatIndex !== responderSeat) continue
     if (m.type !== 'wild_approve' && m.type !== 'wild_deny') continue
     if (m.timestamp <= request.timestamp) continue
-    if (!response || m.timestamp > response.timestamp) response = m
+
+    /* Prefer book-scoped replies so Yes on book B cannot rewrite No on book A. */
+    if (request.bookId && m.bookId) {
+      if (m.bookId !== request.bookId) continue
+    } else if (request.bookId && !m.bookId) {
+      /* Legacy replies without bookId only count before the next wild ask. */
+      const superseded = messages.some(
+        (r) =>
+          r.type === 'wild_request' &&
+          r.senderSeatIndex === request.senderSeatIndex &&
+          r.timestamp > request.timestamp &&
+          r.timestamp < m.timestamp,
+      )
+      if (superseded) continue
+    }
+
+    /* Earliest matching reply is the direct answer to this ask. */
+    if (!response || m.timestamp < response.timestamp) response = m
   }
   if (!response) return null
   return response.type === 'wild_approve' ? 'approve' : 'deny'
+}
+
+function latestWildVerdictForBook(
+  messages: ChatMessage[],
+  aiPartnerSeat: number,
+  responderSeat: number,
+  bookId: string,
+): 'approve' | 'deny' | null {
+  let verdict: 'approve' | 'deny' | null = null
+  for (const msg of messages) {
+    if (msg.type !== 'wild_request' || msg.senderSeatIndex !== aiPartnerSeat) continue
+    if (msg.bookId !== bookId) continue
+    const response = responseToWildRequest(messages, msg, responderSeat)
+    if (response) verdict = response
+  }
+  return verdict
 }
 
 /** Partner approved dirtying this specific book (not a blanket yes for every clean book). */
@@ -486,9 +516,7 @@ export function hasPartnerWildApprovalForBook(
   responderSeat: number,
   bookId: string,
 ): boolean {
-  const request = latestWildRequestFrom(messages, aiPartnerSeat, bookId)
-  if (!request) return false
-  return responseToWildRequest(messages, request, responderSeat) === 'approve'
+  return latestWildVerdictForBook(messages, aiPartnerSeat, responderSeat, bookId) === 'approve'
 }
 
 /** Partner already said no to wilding this book — don't keep asking. */
@@ -498,7 +526,19 @@ export function wasPartnerWildDeniedForBook(
   responderSeat: number,
   bookId: string,
 ): boolean {
-  const request = latestWildRequestFrom(messages, aiPartnerSeat, bookId)
+  return latestWildVerdictForBook(messages, aiPartnerSeat, responderSeat, bookId) === 'deny'
+}
+
+/**
+ * Human's answer to the AI's latest wild ask was No.
+ * Used to stop fishing other books for the rest of a mid-turn resume.
+ */
+export function partnerDeniedLatestWildAsk(
+  messages: ChatMessage[],
+  aiPartnerSeat: number,
+  responderSeat: number,
+): boolean {
+  const request = latestWildRequestFrom(messages, aiPartnerSeat)
   if (!request) return false
   return responseToWildRequest(messages, request, responderSeat) === 'deny'
 }

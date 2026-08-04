@@ -305,21 +305,24 @@ export function maybeAiWildRequest(
   )
 }
 
-/** Whether this wild add needs a yes/no from the human partner. */
+/**
+ * Whether this wild add needs a yes/no from the human partner.
+ * Only the decision that dirties a clean book (losing the clean bonus) requires
+ * consent — so the wild is never already on that book while the prompt is up.
+ * Already-dirty books do not re-prompt.
+ */
 export function needsHumanWildConsent(
   book: Book,
   cards: Card[],
-  humanPartnerSeat: number,
+  _humanPartnerSeat: number,
 ): boolean {
   if (countWildsInCards(cards) === 0) return false
-  if (book.startedBySeatIndex === humanPartnerSeat) return true
-  /* Dirtying a clean book is a team-scoring decision — always ask. */
   return isCleanBook(book)
 }
 
 /**
  * True when the AI should pause and ask (or keep waiting) before adding these
- * wilds — human-started books and clean books need consent.
+ * wilds — dirtying a clean book needs consent first.
  */
 export function shouldAskBeforeWildAdd(
   state: GameState,
