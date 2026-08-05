@@ -71,6 +71,7 @@ import {
 import { aiPartnerGoOutReplySeats, maybeAiPartnerGoOutResponse } from '../game/ai/chatSignals'
 import { partnerVoiceService } from '../partnerVoice'
 import type { DirtyBookConsent } from './DirtyBookConsentPrompt'
+import type { DirtyBookSelfWarning } from './DirtyBookWarningPrompt'
 
 interface GameViewProps {
   game: GameState
@@ -1031,6 +1032,16 @@ export function GameView({
     performAddToBook(matchedAddBook, cards, dirtyBookWarning.cardIds)
   }
 
+  const dirtyBookSelfWarning: DirtyBookSelfWarning | null =
+    !error && dirtyBookWarning
+      ? {
+          bookId: dirtyBookWarning.bookId,
+          bookRank: dirtyBookWarning.bookRank,
+          onConfirm: handleConfirmDirtyBook,
+          onCancel: () => setDirtyBookWarning(null),
+        }
+      : null
+
   function performDiscard(cardId: string) {
     const card = viewer.hand.find((c) => c.id === cardId)
     const result = discardCard(game, cardId, chatMessages)
@@ -1517,6 +1528,7 @@ export function GameView({
             getCardMotion={getCardMotion}
             isCardInFlight={isCardInFlight}
             dirtyBookConsent={dirtyBookConsent}
+            dirtyBookWarning={dirtyBookSelfWarning}
           />
           <CardFlightLayer flights={flights} onSettle={handleSettleFlight} mobile={mobileLayout} />
         </div>
@@ -1637,9 +1649,6 @@ export function GameView({
               <GameMessageBar
                 error={error}
                 hint={playerHint}
-                dirtyBookWarning={!error ? dirtyBookWarning : null}
-                onDismissDirtyBookWarning={() => setDirtyBookWarning(null)}
-                onConfirmDirtyBook={handleConfirmDirtyBook}
                 discardWarning={!error && !dirtyBookWarning ? discardWarning : null}
                 onDismissDiscardWarning={() => setDiscardWarning(null)}
                 onConfirmDiscard={handleConfirmDiscard}

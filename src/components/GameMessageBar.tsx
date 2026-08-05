@@ -7,11 +7,6 @@ interface GameMessageBarProps {
   } | null
   onDismissDiscardWarning?: () => void
   onConfirmDiscard?: () => void
-  dirtyBookWarning?: {
-    bookRank: string
-  } | null
-  onDismissDirtyBookWarning?: () => void
-  onConfirmDirtyBook?: () => void
 }
 
 export function GameMessageBar({
@@ -20,11 +15,8 @@ export function GameMessageBar({
   discardWarning,
   onDismissDiscardWarning,
   onConfirmDiscard,
-  dirtyBookWarning,
-  onDismissDirtyBookWarning,
-  onConfirmDirtyBook,
 }: GameMessageBarProps) {
-  const hasContent = Boolean(error || hint || discardWarning || dirtyBookWarning)
+  const hasContent = Boolean(error || hint || discardWarning)
   if (!hasContent) return null
 
   return (
@@ -33,42 +25,7 @@ export function GameMessageBar({
         <p className="game-message game-message-error">{error}</p>
       )}
 
-      {!error && dirtyBookWarning && (
-        <div
-          className="game-message game-message-prompt game-message-prompt-contrast mx-auto max-w-md rounded-xl border-2 border-amber-600 px-3 py-2.5 text-left shadow-lg"
-          style={{ background: '#fbf7f0', color: '#000000' }}
-        >
-          <p className="text-[13px] font-bold leading-snug" style={{ color: '#000000' }}>
-            Add a wild to your clean{' '}
-            <span className="font-bold" style={{ color: '#6b450e' }}>
-              {dirtyBookWarning.bookRank}s
-            </span>{' '}
-            book? That makes it dirty.
-          </p>
-          <p className="mt-1 text-[12px] font-bold" style={{ color: '#000000' }}>
-            The wild is not placed until you confirm.
-          </p>
-          <div className="mt-2.5 flex flex-wrap justify-center gap-2">
-            <button
-              type="button"
-              onClick={onDismissDirtyBookWarning}
-              className="rounded-lg px-3 py-1.5 text-xs font-bold"
-              style={{ background: '#e8e0d4', color: '#000000' }}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={onConfirmDirtyBook}
-              className="btn-danger px-3 py-1.5 text-xs font-bold"
-            >
-              Add wild
-            </button>
-          </div>
-        </div>
-      )}
-
-      {!error && !dirtyBookWarning && discardWarning && (
+      {!error && discardWarning && (
         <div className="game-message game-message-prompt">
           <p>
             Discard{' '}
@@ -86,7 +43,7 @@ export function GameMessageBar({
         </div>
       )}
 
-      {!error && !dirtyBookWarning && !discardWarning && hint && (
+      {!error && !discardWarning && hint && (
         <p className="game-message game-message-hint">{hint}</p>
       )}
     </div>

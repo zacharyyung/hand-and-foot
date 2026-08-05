@@ -8,6 +8,10 @@ import { cardFanLayout } from './cardFanLayout'
 import type { CompassSide } from '../game/tableLayout'
 import { TEAM_COLORS } from '../game/teams'
 import { DirtyBookConsentPrompt, type DirtyBookConsent } from './DirtyBookConsentPrompt'
+import {
+  DirtyBookWarningPrompt,
+  type DirtyBookSelfWarning,
+} from './DirtyBookWarningPrompt'
 
 interface TeamBooksProps {
   books: Book[]
@@ -22,6 +26,7 @@ interface TeamBooksProps {
   getCardMotion?: (cardId: string) => CardMotionKind | undefined
   isCardHidden?: (cardId: string) => boolean
   dirtyBookConsent?: DirtyBookConsent | null
+  dirtyBookWarning?: DirtyBookSelfWarning | null
 }
 
 function WildCountBadge({ count }: { count: number }) {
@@ -73,6 +78,7 @@ function BookDisplay({
   mobile = false,
   side,
   dirtyBookConsent = null,
+  dirtyBookWarning = null,
 }: {
   book: Book
   getCardMotion?: (cardId: string) => CardMotionKind | undefined
@@ -80,21 +86,29 @@ function BookDisplay({
   mobile?: boolean
   side?: CompassSide
   dirtyBookConsent?: DirtyBookConsent | null
+  dirtyBookWarning?: DirtyBookSelfWarning | null
 }) {
   const completed = book.cards.length >= 7
   const clean = isCleanBook(book)
   const wilds = bookWildCount(book)
   const showConsent = dirtyBookConsent?.bookId === book.id
+  const showWarning = dirtyBookWarning?.bookId === book.id
+  const showPrompt = showConsent || showWarning
+  const promptRing = showConsent
+    ? mobile
+      ? 'z-40 rounded-lg ring-2 ring-amber-400/70 ring-offset-1 ring-offset-transparent'
+      : 'z-40 rounded-lg ring-2 ring-amber-400/70 ring-offset-2 ring-offset-transparent'
+    : showWarning
+      ? mobile
+        ? 'z-40 rounded-lg ring-1 ring-accent/55 ring-offset-1 ring-offset-transparent'
+        : 'z-40 rounded-lg ring-1 ring-accent/55 ring-offset-2 ring-offset-transparent'
+      : ''
 
   if (mobile) {
     return (
       <div
-        data-book-consent-anchor={showConsent ? book.id : undefined}
-        className={`relative shrink-0 ${
-          showConsent
-            ? 'z-40 rounded-lg ring-2 ring-amber-400/70 ring-offset-1 ring-offset-transparent'
-            : ''
-        }`}
+        data-book-prompt-anchor={showPrompt ? book.id : undefined}
+        className={`relative shrink-0 ${promptRing}`}
       >
         <BookMini
           cards={book.cards}
@@ -113,6 +127,14 @@ function BookDisplay({
             mobile
           />
         )}
+        {showWarning && dirtyBookWarning && (
+          <DirtyBookWarningPrompt
+            book={book}
+            warning={dirtyBookWarning}
+            side={side}
+            mobile
+          />
+        )}
       </div>
     )
   }
@@ -124,12 +146,8 @@ function BookDisplay({
 
   return (
     <div
-      data-book-consent-anchor={showConsent ? book.id : undefined}
-      className={`relative shrink-0 pb-2 ${completed ? 'animate-book-settle' : ''} ${
-        showConsent
-          ? 'z-40 rounded-lg ring-2 ring-amber-400/70 ring-offset-2 ring-offset-transparent'
-          : ''
-      }`}
+      data-book-prompt-anchor={showPrompt ? book.id : undefined}
+      className={`relative shrink-0 pb-2 ${completed ? 'animate-book-settle' : ''} ${promptRing}`}
       title={`${book.rank}s · ${book.cards.length} cards${clean ? ' · clean' : wilds > 0 ? ' · dirty' : ''}`}
     >
       {completed && (
@@ -170,6 +188,13 @@ function BookDisplay({
           side={side}
         />
       )}
+      {showWarning && dirtyBookWarning && (
+        <DirtyBookWarningPrompt
+          book={book}
+          warning={dirtyBookWarning}
+          side={side}
+        />
+      )}
     </div>
   )
 }
@@ -185,6 +210,7 @@ export function TeamBooks({
   getCardMotion,
   isCardHidden,
   dirtyBookConsent = null,
+  dirtyBookWarning = null,
 }: TeamBooksProps) {
   const teamBooks = sortBooks(books.filter((b) => b.teamId === teamId))
   const color = TEAM_COLORS[teamId]
@@ -211,6 +237,7 @@ export function TeamBooks({
             getCardMotion={getCardMotion}
             isCardHidden={isCardHidden}
             dirtyBookConsent={dirtyBookConsent}
+            dirtyBookWarning={dirtyBookWarning}
           />
         ))}
       </>
@@ -235,6 +262,7 @@ export function TeamBooks({
             getCardMotion={getCardMotion}
             isCardHidden={isCardHidden}
             dirtyBookConsent={dirtyBookConsent}
+            dirtyBookWarning={dirtyBookWarning}
           />
         ))}
       </div>
@@ -254,6 +282,7 @@ export function TableBookZone({
   getCardMotion,
   isCardHidden,
   dirtyBookConsent = null,
+  dirtyBookWarning = null,
 }: {
   books: Book[]
   teamId: number
@@ -264,19 +293,22 @@ export function TableBookZone({
   getCardMotion?: (cardId: string) => CardMotionKind | undefined
   isCardHidden?: (cardId: string) => boolean
   dirtyBookConsent?: DirtyBookConsent | null
+  dirtyBookWarning?: DirtyBookSelfWarning | null
 }) {
   const playerBooks = books.filter((b) => b.teamId === teamId)
   if (playerBooks.length === 0) return null
 
   const zoneClass = tableBookZoneClass(side, mobile)
 
-  const hasConsentTarget =
-    dirtyBookConsent != null &&
-    playerBooks.some((book) => book.id === dirtyBookConsent.bookId)
+  const hasPromptTarget =
+    (dirtyBookConsent != null &&
+      playerBooks.some((book) => book.id === dirtyBookConsent.bookId)) ||
+    (dirtyBookWarning != null &&
+      playerBooks.some((book) => book.id === dirtyBookWarning.bookId))
 
   return (
     <div
-      className={`pointer-events-none absolute ${hasConsentTarget ? 'z-40' : 'z-[15]'} ${zoneClass}`}
+      className={`pointer-events-none absolute ${hasPromptTarget ? 'z-40' : 'z-[15]'} ${zoneClass}`}
       data-flight-anchor={`books-${seatIndex}`}
     >
       <div className={tableBookFlexClass(side, mobile)}>
@@ -290,6 +322,7 @@ export function TableBookZone({
           getCardMotion={getCardMotion}
           isCardHidden={isCardHidden}
           dirtyBookConsent={dirtyBookConsent}
+          dirtyBookWarning={dirtyBookWarning}
         />
       </div>
     </div>

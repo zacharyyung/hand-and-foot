@@ -9,33 +9,31 @@ import {
   type BookPopupCoords,
 } from './bookPopupCoords'
 
-export interface DirtyBookConsent {
+export interface DirtyBookSelfWarning {
   bookId: string
-  partnerName: string
-  partnerAvatar: string
-  askText: string
-  onApprove: () => void
-  onDeny: () => void
+  bookRank: string
+  onConfirm: () => void
+  onCancel: () => void
 }
 
-interface DirtyBookConsentPromptProps {
+interface DirtyBookWarningPromptProps {
   book: Book
-  consent: DirtyBookConsent
+  warning: DirtyBookSelfWarning
   /** Seat side of the book zone — used to prefer an inward popup placement. */
   side?: CompassSide
   mobile?: boolean
 }
 
-const POPUP_WIDTH = 168
-const ESTIMATED_HEIGHT = 128
+const POPUP_WIDTH = 200
+const ESTIMATED_HEIGHT = 118
 
-/** Small yes/no popup anchored beside a book so the player can see card counts. */
-export function DirtyBookConsentPrompt({
+/** Quiet confirm popup beside a clean book when you try to add a wild. */
+export function DirtyBookWarningPrompt({
   book,
-  consent,
+  warning,
   side,
   mobile = false,
-}: DirtyBookConsentPromptProps) {
+}: DirtyBookWarningPromptProps) {
   const completed = book.cards.length >= 7
   const clean = isCleanBook(book)
   const countLabel = `${book.cards.length} card${book.cards.length === 1 ? '' : 's'}`
@@ -73,63 +71,47 @@ export function DirtyBookConsentPrompt({
 
   const popup = (
     <div
-      className={`dirty-book-consent pointer-events-auto fixed z-[80] animate-fade-up rounded-xl border-2 border-amber-600 px-3 py-2.5 shadow-xl ${
-        mobile ? 'w-[10.5rem]' : 'w-[10.5rem]'
+      className={`pointer-events-auto fixed z-[80] animate-fade-up rounded-xl border border-white/12 bg-felt-dark px-3 py-2.5 shadow-xl ${
+        mobile ? 'w-[12.5rem]' : 'w-[12.5rem]'
       }`}
       style={{
         top: coords.top,
         left: coords.left,
         width: POPUP_WIDTH,
-        background: '#fbf7f0',
-        color: '#000000',
       }}
       role="dialog"
-      aria-label={`Partner wants to add a wild to ${book.rank}s book`}
+      aria-label={`Confirm adding a wild to clean ${book.rank}s book`}
     >
       <div
-        className={`absolute top-1/2 h-2.5 w-2.5 -translate-y-1/2 rotate-45 border-amber-600 ${
+        className={`absolute top-1/2 h-2.5 w-2.5 -translate-y-1/2 rotate-45 border-white/12 bg-felt-dark ${
           coords.place === 'right'
             ? '-left-1.5 border-b-0 border-r-0 border-l border-t'
             : '-right-1.5 border-l-0 border-t-0 border-b border-r'
         }`}
-        style={{ background: '#fbf7f0' }}
         aria-hidden
       />
-      <p
-        className="text-[12px] font-bold leading-snug"
-        style={{ color: '#000000' }}
-      >
-        <span aria-hidden>{consent.partnerAvatar} </span>
-        Add a wild to {book.rank}s?
+      <p className="text-[12px] font-medium leading-snug text-ink-soft">
+        Add a wild to your clean{' '}
+        <span className="font-semibold text-accent">{warning.bookRank}s</span> book?
+        That makes it dirty.
       </p>
-      <p
-        className="mt-1 text-[11px] font-bold leading-snug"
-        style={{ color: '#000000' }}
-      >
-        {countLabel} · still {statusLabel}
-        {clean ? ' — wild not placed yet' : ''}
-      </p>
-      <p
-        className="mt-1.5 line-clamp-3 text-[11px] font-bold leading-snug"
-        style={{ color: '#000000' }}
-      >
-        {consent.askText}
+      <p className="mt-1 text-[10px] leading-snug text-ink-muted">
+        {countLabel} · still {statusLabel} — wild not placed yet
       </p>
       <div className="mt-2.5 flex gap-1.5">
         <button
           type="button"
-          onClick={consent.onApprove}
-          className="btn-success min-h-0 flex-1 px-1.5 py-2 text-[11px] font-bold leading-none"
+          onClick={warning.onCancel}
+          className="btn-secondary min-h-0 flex-1 px-1.5 py-1.5 text-[11px] leading-none"
         >
-          Yes
+          Cancel
         </button>
         <button
           type="button"
-          onClick={consent.onDeny}
-          className="min-h-0 flex-1 rounded-lg px-1.5 py-2 text-[11px] font-bold leading-none transition"
-          style={{ background: '#e8e0d4', color: '#000000' }}
+          onClick={warning.onConfirm}
+          className="btn-danger min-h-0 flex-1 px-1.5 py-1.5 text-[11px] leading-none"
         >
-          No
+          Add wild
         </button>
       </div>
     </div>
