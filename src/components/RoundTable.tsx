@@ -11,6 +11,7 @@ import { CardPile } from './CardPile'
 import { SeatPanel } from './SeatPanel'
 import { TableBookZone } from './TeamBooks'
 import type { DirtyBookConsent } from './DirtyBookConsentPrompt'
+import type { DirtyBookSelfWarning } from './DirtyBookWarningPrompt'
 import type { PlayerCount } from '../game/teams'
 
 interface RoundTableProps {
@@ -22,6 +23,7 @@ interface RoundTableProps {
   getCardMotion?: (cardId: string) => CardMotionKind | undefined
   isCardInFlight?: (cardId: string) => boolean
   dirtyBookConsent?: DirtyBookConsent | null
+  dirtyBookWarning?: DirtyBookSelfWarning | null
 }
 
 export function RoundTable({
@@ -33,6 +35,7 @@ export function RoundTable({
   getCardMotion,
   isCardInFlight,
   dirtyBookConsent = null,
+  dirtyBookWarning = null,
 }: RoundTableProps) {
   const viewerSeat = getViewerSeat(game.players)
   const myTeamId = game.players[viewerSeat].profile.teamId
@@ -69,6 +72,7 @@ export function RoundTable({
               getCardMotion={getCardMotion}
               isCardHidden={isCardInFlight}
               dirtyBookConsent={dirtyBookConsent}
+              dirtyBookWarning={dirtyBookWarning}
             />
           )
         })}
