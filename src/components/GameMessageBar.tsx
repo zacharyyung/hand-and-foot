@@ -34,26 +34,35 @@ export function GameMessageBar({
       )}
 
       {!error && dirtyBookWarning && (
-        <div className="game-message game-message-prompt">
-          <p>
+        <div
+          className="game-message game-message-prompt game-message-prompt-contrast mx-auto max-w-md rounded-xl border-2 border-amber-600 px-3 py-2.5 text-left shadow-lg"
+          style={{ background: '#fbf7f0', color: '#111111' }}
+        >
+          <p className="text-[13px] font-bold leading-snug" style={{ color: '#111111' }}>
             Add a wild to your clean{' '}
-            <span className="font-semibold text-accent">{dirtyBookWarning.bookRank}s</span> book?
-            That makes it dirty.
+            <span className="font-bold" style={{ color: '#8a5a12' }}>
+              {dirtyBookWarning.bookRank}s
+            </span>{' '}
+            book? That makes it dirty.
           </p>
-          <div className="mt-2 flex flex-wrap justify-center gap-2">
+          <p className="mt-1 text-[11px] font-semibold" style={{ color: '#1a1a1a' }}>
+            The wild is not placed until you confirm.
+          </p>
+          <div className="mt-2.5 flex flex-wrap justify-center gap-2">
             <button
               type="button"
               onClick={onDismissDirtyBookWarning}
-              className="btn-secondary px-3 py-1 text-xs"
+              className="rounded-lg px-3 py-1.5 text-xs font-bold"
+              style={{ background: '#e8e0d4', color: '#111111' }}
             >
               Cancel
             </button>
             <button
               type="button"
               onClick={onConfirmDirtyBook}
-              className="btn-danger px-3 py-1 text-xs"
+              className="btn-danger px-3 py-1.5 text-xs font-bold"
             >
-              Add wild anyway
+              Add wild
             </button>
           </div>
         </div>

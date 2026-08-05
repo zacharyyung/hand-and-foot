@@ -21,7 +21,7 @@ interface DirtyBookConsentPromptProps {
   mobile?: boolean
 }
 
-const POPUP_WIDTH = 148
+const POPUP_WIDTH = 168
 const POPUP_GAP = 8
 const VIEWPORT_PAD = 8
 
@@ -54,7 +54,7 @@ function computePopupCoords(
   )
 
   // Keep the popup near the book face, not covering the count badges under it.
-  const estimatedHeight = 96
+  const estimatedHeight = 128
   const rawTop = anchor.top + Math.max(0, (anchor.height - estimatedHeight) / 2)
   const top = Math.max(
     VIEWPORT_PAD,
@@ -62,6 +62,21 @@ function computePopupCoords(
   )
 
   return { top, left, place }
+}
+
+function fallbackCoords(side?: CompassSide): PopupCoords {
+  const place = preferRight(side) ? 'right' : 'left'
+  return {
+    top: Math.max(VIEWPORT_PAD, Math.round(window.innerHeight * 0.28)),
+    left: Math.max(
+      VIEWPORT_PAD,
+      Math.min(
+        Math.round((window.innerWidth - POPUP_WIDTH) / 2),
+        window.innerWidth - POPUP_WIDTH - VIEWPORT_PAD,
+      ),
+    ),
+    place,
+  }
 }
 
 /** Small yes/no popup anchored beside a book so the player can see card counts. */
@@ -76,16 +91,22 @@ export function DirtyBookConsentPrompt({
   const countLabel = `${book.cards.length} card${book.cards.length === 1 ? '' : 's'}`
   const statusLabel = completed ? (clean ? 'clean' : 'dirty') : clean ? 'clean' : 'dirty'
   const hostRef = useRef<HTMLSpanElement>(null)
-  const [coords, setCoords] = useState<PopupCoords | null>(null)
+  const [coords, setCoords] = useState<PopupCoords>(() => fallbackCoords(side))
 
   useLayoutEffect(() => {
     const host = hostRef.current
-    if (!host) return
+    if (!host) {
+      setCoords(fallbackCoords(side))
+      return
+    }
 
     function update() {
       const bookEl = host?.closest('[data-book-consent-anchor]') as HTMLElement | null
       const rect = (bookEl ?? host)?.getBoundingClientRect()
-      if (!rect || rect.width === 0) return
+      if (!rect || rect.width === 0) {
+        setCoords(fallbackCoords(side))
+        return
+      }
       setCoords(computePopupCoords(rect, side))
     }
 
@@ -98,57 +119,74 @@ export function DirtyBookConsentPrompt({
     }
   }, [side, book.id, book.cards.length])
 
-  const popup = coords ? (
+  const popup = (
     <div
-      className={`dirty-book-consent pointer-events-auto fixed z-[80] animate-fade-up rounded-xl border border-amber-500/50 bg-cream px-2.5 py-2 shadow-xl ${
-        mobile ? 'w-[9.25rem]' : 'w-[9.5rem]'
+      className={`dirty-book-consent pointer-events-auto fixed z-[80] animate-fade-up rounded-xl border-2 border-amber-600 px-3 py-2.5 shadow-xl ${
+        mobile ? 'w-[10.5rem]' : 'w-[10.5rem]'
       }`}
-      style={{ top: coords.top, left: coords.left, width: POPUP_WIDTH }}
+      style={{
+        top: coords.top,
+        left: coords.left,
+        width: POPUP_WIDTH,
+        background: '#fbf7f0',
+        color: '#111111',
+      }}
       role="dialog"
       aria-label={`Partner wants to add a wild to ${book.rank}s book`}
     >
       <div
-        className={`absolute top-1/2 h-2.5 w-2.5 -translate-y-1/2 rotate-45 border-amber-500/50 bg-cream ${
+        className={`absolute top-1/2 h-2.5 w-2.5 -translate-y-1/2 rotate-45 border-amber-600 ${
           coords.place === 'right'
             ? '-left-1.5 border-b-0 border-r-0 border-l border-t'
             : '-right-1.5 border-l-0 border-t-0 border-b border-r'
         }`}
+        style={{ background: '#fbf7f0' }}
         aria-hidden
       />
-      <p className="text-[10px] font-semibold leading-snug text-black">
+      <p
+        className="text-[12px] font-bold leading-snug"
+        style={{ color: '#111111' }}
+      >
         <span aria-hidden>{consent.partnerAvatar} </span>
         Add a wild to {book.rank}s?
       </p>
-      <p className="mt-0.5 text-[9px] leading-snug text-black/60">
+      <p
+        className="mt-1 text-[11px] font-semibold leading-snug"
+        style={{ color: '#111111' }}
+      >
         {countLabel} · still {statusLabel}
-        {clean ? ' — not placed yet' : ''}
+        {clean ? ' — wild not placed yet' : ''}
       </p>
-      <p className="mt-1 line-clamp-2 text-[8px] leading-tight text-black">
+      <p
+        className="mt-1.5 line-clamp-3 text-[11px] font-medium leading-snug"
+        style={{ color: '#1a1a1a' }}
+      >
         {consent.askText}
       </p>
-      <div className="mt-2 flex gap-1.5">
+      <div className="mt-2.5 flex gap-1.5">
         <button
           type="button"
           onClick={consent.onApprove}
-          className="btn-success min-h-0 flex-1 px-1.5 py-1.5 text-[10px] leading-none"
+          className="btn-success min-h-0 flex-1 px-1.5 py-2 text-[11px] font-bold leading-none"
         >
           Yes
         </button>
         <button
           type="button"
           onClick={consent.onDeny}
-          className="min-h-0 flex-1 rounded-lg bg-black/10 px-1.5 py-1.5 text-[10px] font-semibold leading-none text-black transition hover:bg-black/15"
+          className="min-h-0 flex-1 rounded-lg px-1.5 py-2 text-[11px] font-bold leading-none transition"
+          style={{ background: '#e8e0d4', color: '#111111' }}
         >
           No
         </button>
       </div>
     </div>
-  ) : null
+  )
 
   return (
     <>
       <span ref={hostRef} className="pointer-events-none absolute inset-0" aria-hidden />
-      {popup && createPortal(popup, document.body)}
+      {createPortal(popup, document.body)}
     </>
   )
 }

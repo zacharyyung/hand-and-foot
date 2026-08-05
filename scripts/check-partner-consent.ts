@@ -21,7 +21,7 @@ import {
   type ChatMessage,
 } from '../src/game/chat'
 import { needsHumanWildConsent } from '../src/game/ai/chatSignals'
-import { runAiTurn } from '../src/game/ai/runTurn'
+import { runAiTurn, stripWildAddsSince } from '../src/game/ai/runTurn'
 import { bookWildCount, isCleanBook, type Book } from '../src/game/books'
 import { isWildCard, type Card } from '../src/game/cards'
 import type { GameState, PlayerState } from '../src/game/deal'
@@ -514,6 +514,117 @@ assert(
 assert(
   bookAfterYes.cards.some((c) => c.id === timingWild.id),
   'after Yes the same wild card is on the book',
+)
+
+/* stripWildAddsSince must pull mid-turn wilds off books when pausing to ask. */
+const stripClean: Book = {
+  id: 'book-strip-clean',
+  rank: 'K',
+  teamId: 0,
+  startedBySeatIndex: 2,
+  cards: [
+    card('sk1', 'K'),
+    card('sk2', 'K', 'diamonds'),
+    card('sk3', 'K', 'clubs'),
+    card('sk4', 'K', 'spades'),
+    card('sk5', 'K'),
+    card('sk6', 'K', 'diamonds'),
+  ],
+}
+const stripDirty: Book = {
+  id: 'book-strip-dirty',
+  rank: 'A',
+  teamId: 0,
+  startedBySeatIndex: 2,
+  cards: [
+    card('sa1', 'A'),
+    card('sa2', 'A', 'diamonds'),
+    card('sa3', 'A', 'clubs'),
+    card('sa4', 'A', 'spades'),
+    card('saw', '2', 'hearts'),
+  ],
+}
+const stripWild = card('strip-j', 'Joker', 'joker')
+const stripExtraWild = card('strip-2', '2', 'clubs')
+
+const stripBefore = stubState({
+  teams: [
+    {
+      id: 0,
+      score: 1500,
+      books: [stripClean, stripDirty],
+      meldThresholdMet: true,
+    },
+    {
+      id: 1,
+      score: 1200,
+      books: [],
+      meldThresholdMet: true,
+    },
+  ],
+  players: stubState().players.map((p, i) =>
+    i === 2
+      ? {
+          ...p,
+          hand: [stripWild, stripExtraWild, card('sx1', '4')],
+          foot: [],
+          isPlayingFoot: true,
+        }
+      : p,
+  ),
+})
+
+const stripAfter: GameState = {
+  ...stripBefore,
+  players: stripBefore.players.map((p, i) =>
+    i === 2
+      ? {
+          ...p,
+          hand: p.hand.filter(
+            (c) => c.id !== stripWild.id && c.id !== stripExtraWild.id,
+          ),
+        }
+      : p,
+  ),
+  teams: [
+    {
+      ...stripBefore.teams[0],
+      books: [
+        { ...stripClean, cards: [...stripClean.cards, stripWild] },
+        { ...stripDirty, cards: [...stripDirty.cards, stripExtraWild] },
+      ],
+    },
+    stripBefore.teams[1],
+  ],
+  booksWithWildAddedThisTurn: [stripClean.id, stripDirty.id],
+}
+
+assert(!isCleanBook(bookFromState(stripAfter, stripClean.id)), 'precondition: clean dirtied')
+assert(
+  bookWildCount(bookFromState(stripAfter, stripDirty.id)) === 2,
+  'precondition: dirty gained a wild',
+)
+
+const stripped = stripWildAddsSince(stripBefore, stripAfter, 2)
+assert(
+  isCleanBook(bookFromState(stripped, stripClean.id)),
+  'strip restores the asked clean book',
+)
+assert(
+  bookWildCount(bookFromState(stripped, stripDirty.id)) === 1,
+  'strip removes the same-turn wild from the dirty book too',
+)
+assert(
+  stripped.players[2].hand.some((c) => c.id === stripWild.id),
+  'strip returns the clean-book wild to hand',
+)
+assert(
+  stripped.players[2].hand.some((c) => c.id === stripExtraWild.id),
+  'strip returns the dirty-book wild to hand',
+)
+assert(
+  stripped.booksWithWildAddedThisTurn.length === 0,
+  'strip clears wild-added-this-turn markers',
 )
 
 console.log('check-partner-consent: all assertions passed')
