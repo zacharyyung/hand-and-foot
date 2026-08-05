@@ -71,45 +71,53 @@ export function DirtyBookWarningPrompt({
 
   const popup = (
     <div
-      className={`pointer-events-auto fixed z-[80] animate-fade-up rounded-xl border border-white/12 bg-felt-dark px-3 py-2.5 shadow-xl ${
+      className={`dirty-book-consent pointer-events-auto fixed z-[80] animate-fade-up rounded-xl border-2 border-amber-600 px-3 py-2.5 shadow-xl ${
         mobile ? 'w-[12.5rem]' : 'w-[12.5rem]'
       }`}
       style={{
         top: coords.top,
         left: coords.left,
         width: POPUP_WIDTH,
+        background: '#fbf7f0',
+        color: '#000000',
       }}
       role="dialog"
       aria-label={`Confirm adding a wild to clean ${book.rank}s book`}
     >
       <div
-        className={`absolute top-1/2 h-2.5 w-2.5 -translate-y-1/2 rotate-45 border-white/12 bg-felt-dark ${
+        className={`absolute top-1/2 h-2.5 w-2.5 -translate-y-1/2 rotate-45 border-amber-600 ${
           coords.place === 'right'
             ? '-left-1.5 border-b-0 border-r-0 border-l border-t'
             : '-right-1.5 border-l-0 border-t-0 border-b border-r'
         }`}
+        style={{ background: '#fbf7f0' }}
         aria-hidden
       />
-      <p className="text-[12px] font-medium leading-snug text-ink-soft">
-        Add a wild to your clean{' '}
-        <span className="font-semibold text-accent">{warning.bookRank}s</span> book?
-        That makes it dirty.
+      <p
+        className="text-[12px] font-bold leading-snug"
+        style={{ color: '#000000' }}
+      >
+        Add a wild to your clean {warning.bookRank}s book? That makes it dirty.
       </p>
-      <p className="mt-1 text-[10px] leading-snug text-ink-muted">
+      <p
+        className="mt-1 text-[11px] font-bold leading-snug"
+        style={{ color: '#000000' }}
+      >
         {countLabel} · still {statusLabel} — wild not placed yet
       </p>
       <div className="mt-2.5 flex gap-1.5">
         <button
           type="button"
           onClick={warning.onCancel}
-          className="btn-secondary min-h-0 flex-1 px-1.5 py-1.5 text-[11px] leading-none"
+          className="min-h-0 flex-1 rounded-lg px-1.5 py-2 text-[11px] font-bold leading-none transition"
+          style={{ background: '#e8e0d4', color: '#000000' }}
         >
           Cancel
         </button>
         <button
           type="button"
           onClick={warning.onConfirm}
-          className="btn-danger min-h-0 flex-1 px-1.5 py-1.5 text-[11px] leading-none"
+          className="btn-danger min-h-0 flex-1 px-1.5 py-2 text-[11px] font-bold leading-none"
         >
           Add wild
         </button>
