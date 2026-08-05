@@ -40,6 +40,7 @@ export const NARRATOR_VOICES: NarratorVoice[] = [
     id: 'dealer',
     name: 'Morgan',
     personality: 'dealer',
+    // ElevenLabs Adam — keep as the warm baseline dealer.
     providerVoiceId: 'pNInz6obpgDQGcFmaJgB',
     description: 'Warm, steady dealer at a premium card table.',
     sampleLine:
@@ -49,7 +50,9 @@ export const NARRATOR_VOICES: NarratorVoice[] = [
     id: 'commentator',
     name: 'Alex',
     personality: 'commentator',
-    providerVoiceId: 'ErXwobaYiN019PkySvjV',
+    // ElevenLabs Chris — Antoni (ErXwobaYiN019PkySvjV) now redirects to Adam,
+    // which made Alex sound identical to Morgan.
+    providerVoiceId: 'iP95p4xoKVk53GoZ742B',
     description: 'Energetic play-by-play with a smile in the voice.',
     sampleLine:
       'Cards are on the felt, the stock pile is humming, and this table is ready for a fun round.',
@@ -58,6 +61,7 @@ export const NARRATOR_VOICES: NarratorVoice[] = [
     id: 'storyteller',
     name: 'Eleanor',
     personality: 'storyteller',
+    // ElevenLabs Sarah (formerly Bella on this voice ID).
     providerVoiceId: 'EXAVITQu4vr4xnSDxMaL',
     description: 'Measured storyteller who savors the drama.',
     sampleLine:
