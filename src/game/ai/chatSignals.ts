@@ -1,6 +1,6 @@
 import type { GameState } from '../deal'
 import { getTeam } from '../actions'
-import { getGoOutBlockReason, isCleanBook, type Book } from '../books'
+import { getGoOutBlockReason, isCleanBook, wouldDestroyOnlyCompletedCleanBook, type Book } from '../books'
 import { buildAiPublicState } from './publicState'
 import { isRedThree, type Card } from '../cards'
 import { heldCardPenalty } from '../scoring'
@@ -337,6 +337,10 @@ export function shouldAskBeforeWildAdd(
 
   const cards = hand.filter((c) => cardIds.includes(c.id))
   if (!needsHumanWildConsent(book, cards, partnerIdx)) return false
+
+  const team = getTeam(state, state.players[aiSeatIndex].profile.teamId)
+  /* Do not ask to destroy the only completed clean book — go-out needs it. */
+  if (wouldDestroyOnlyCompletedCleanBook(book, cards, team.books)) return false
 
   if (hasPartnerWildApprovalForBook(messages, aiSeatIndex, partnerIdx, book.id)) {
     return false

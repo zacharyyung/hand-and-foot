@@ -345,6 +345,24 @@ export function teamHasCleanAndDirtyBooks(books: Book[]): boolean {
   return completed.some(isCleanBook) && completed.some(isDirtyBook)
 }
 
+/**
+ * True when adding these cards would dirty the team's only completed (7+) clean
+ * book — destroying go-out eligibility that already required that clean book.
+ */
+export function wouldDestroyOnlyCompletedCleanBook(
+  book: Book,
+  cards: Card[],
+  teamBooks: Book[],
+): boolean {
+  if (!isCleanBook(book)) return false
+  if (countWildsInCards(cards) === 0) return false
+  /* Incomplete clean piles are not yet the go-out clean book. */
+  if (book.cards.length < 7) return false
+  return !teamBooks.some(
+    (b) => b.id !== book.id && b.cards.length >= 7 && isCleanBook(b),
+  )
+}
+
 export function getGoOutBlockReason(
   books: Book[],
   meldThresholdMet: boolean,

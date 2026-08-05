@@ -14,9 +14,13 @@ import {
 import type { GameState } from '../deal'
 import type { ChatMessage } from '../chat'
 import type { Card } from '../cards'
-import { cardLabel } from '../cards'
-import { bookWildCount, countWildsInCards, type Book } from '../books'
-import { isWildCard } from '../cards'
+import { cardLabel, isWildCard } from '../cards'
+import {
+  bookWildCount,
+  countWildsInCards,
+  wouldDestroyOnlyCompletedCleanBook,
+  type Book,
+} from '../books'
 import {
   awaitingPartnerGoOutResponse,
   awaitingPartnerWildResponse,
@@ -419,6 +423,21 @@ export function runAiTurn(
           continue
         }
 
+        /*
+         * Never destroy the only completed clean book — that removes go-out
+         * eligibility (need 1 clean + 1 dirty completed). Partner Yes cannot
+         * override this; dump wilds elsewhere or discard instead.
+         */
+        if (
+          wouldDestroyOnlyCompletedCleanBook(book, addCards, pub.myTeamBooks)
+        ) {
+          debug?.step(
+            'add',
+            `Skip wild on ${book.rank}s — only completed clean book.`,
+          )
+          continue
+        }
+
         debug?.step(
           'add',
           `Adding to ${book.rank} book: ${labelCards(pub.myHand, bestAdd.cardIds)}`,
@@ -608,18 +627,36 @@ export function runAiTurn(
 
     /* Re-check go-out after possible wild play. */
     goingOut = canPlayerGoOut(current, messages)
+    const endPlayer = getCurrentPlayer(current)
+    const endTeam = getTeam(current, endPlayer.profile.teamId)
+    const endCanTeamGoOut = canTeamGoOut(endTeam.books, endTeam.meldThresholdMet)
+
     if (
       partnerIsHuman &&
-      isLastFootCard(getCurrentPlayer(current)) &&
-      canTeamGoOut(
-        getTeam(current, getCurrentPlayer(current).profile.teamId).books,
-        getTeam(current, getCurrentPlayer(current).profile.teamId).meldThresholdMet,
-      ) &&
+      isLastFootCard(endPlayer) &&
+      endCanTeamGoOut &&
       !goingOut &&
       partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount) &&
       !opponentsHoldManyCards(current, seatIndex)
     ) {
       debug?.step('discard', 'Partner denied go-out — ending turn with last card.')
+      const pass = passTurnKeepingLastFootCard(current)
+      return {
+        state: pass.error ? current : pass.state,
+        chatMessage,
+        debugTrace: debug?.trace,
+      }
+    }
+
+    /*
+     * Last foot card but books no longer qualify (e.g. only clean was dirtied
+     * earlier) — pass instead of soft-locking on a failed go-out discard.
+     */
+    if (isLastFootCard(endPlayer) && !endCanTeamGoOut) {
+      debug?.step(
+        'discard',
+        'Cannot go out — missing clean/dirty books; holding last card.',
+      )
       const pass = passTurnKeepingLastFootCard(current)
       return {
         state: pass.error ? current : pass.state,
@@ -645,6 +682,10 @@ export function runAiTurn(
       current = result.state
     } else {
       debug?.step('discard', `Discard failed: ${result.error}`)
+      if (isLastFootCard(getCurrentPlayer(current))) {
+        const pass = passTurnKeepingLastFootCard(current)
+        if (!pass.error) current = pass.state
+      }
     }
   }
 

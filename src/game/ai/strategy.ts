@@ -8,6 +8,7 @@ import {
   countWildsInCards,
   isCleanBook,
   isDirtyBook,
+  wouldDestroyOnlyCompletedCleanBook,
 } from '../books'
 import type { GameState } from '../deal'
 import type { ChatMessage } from '../chat'
@@ -499,6 +500,7 @@ export function hasAlternativeWildTarget(
 /**
  * Wild on a clean book costs a 300-point bonus — only allow when dumping/endgame
  * or completing the team's required dirty book to go out.
+ * Never destroy the only completed clean book (that breaks go-out).
  */
 export function justifyDirtyingCleanBook(
   book: Book,
@@ -511,18 +513,21 @@ export function justifyDirtyingCleanBook(
   if (!isCleanBook(book)) return true
   if (countWildsInCards(cards) === 0) return true
 
+  const books = pub.myTeamBooks
+  /* Hard rule: keep go-out clean book intact unless another completed clean remains. */
+  if (wouldDestroyOnlyCompletedCleanBook(book, cards, books)) return false
+
   const urgency = meldPressure(pub)
   const heldCards = pub.myHand.length + pub.myFootCount
   const alternative = hasAlternativeWildTarget(
     pub.myHand,
-    pub.myTeamBooks,
+    books,
     book.id,
     booksWithWildAddedThisTurn,
   )
 
   if (alternative) return false
 
-  const books = pub.myTeamBooks
   const newSize = book.cards.length + cards.length
   const completes = newSize >= 7
   const otherCompletedClean = books.some(
@@ -542,6 +547,9 @@ export function justifyDirtyingCleanBook(
   if (completesForGoOut && (urgency !== 'low' || book.cards.length === 6)) {
     return true
   }
+
+  /* Urgency dumps are allowed only when another completed clean book remains. */
+  if (!otherCompletedClean) return false
 
   if (
     urgency === 'high' &&
