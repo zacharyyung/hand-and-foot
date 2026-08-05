@@ -90,7 +90,7 @@ export function wasPartnerGoOutDenied(
   return latestPartnerGoOutAdvice(messages, responderSeat) === 'deny'
 }
 
-/** Partner said no to the latest go-out ask (advisory — does not block going out). */
+/** Partner said no to the latest go-out ask — AI partner must wait for clearance. */
 export function unresolvedPartnerDenial(
   messages: ChatMessage[],
   requesterSeat: number,
@@ -656,7 +656,7 @@ export function awaitingPartnerGoOutResponse(
   )
 }
 
-/** Opponents holding many cards — AI may go out even if partner said no. */
+/** Opponents holding many cards — AI–AI teams may go out even if partner said no. */
 export function opponentsHoldManyCards(state: GameState, seatIndex: number): boolean {
   const player = state.players[seatIndex]
   const myTeamId = player.profile.teamId
@@ -752,12 +752,11 @@ export function shouldAiAttemptGoOut(
   if (hasPartnerGoOutApproval(state, seatIndex, messages)) return true
 
   if (partnerIsHuman) {
+    /* Human No is binding until they say "You should go out!" (or Yes). */
+    if (partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)) return false
     /* Wait for the human's yes/no before discarding the last card. */
     if (awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx)) return false
     if (!latestReadyGoOutFrom(messages, seatIndex)) return false
-    if (partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)) {
-      return opponentsHoldManyCards(state, seatIndex)
-    }
     return false
   }
 
@@ -794,7 +793,7 @@ export function getPartnerGoOutHint(
   }
 
   if (partnerAdvisedAgainstGoOut(messages, seatIndex, state.playerCount as PlayerCount)) {
-    return 'Partner suggests waiting, but you may go out if you think it is best.'
+    return 'Partner said not to go out — wait for them to clear you, or discard and keep playing.'
   }
 
   return null

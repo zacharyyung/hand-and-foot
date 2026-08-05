@@ -28,7 +28,6 @@ import {
   deniedWildBookIds,
   hasPartnerGoOutApproval,
   hasPartnerWildApprovalForBook,
-  opponentsHoldManyCards,
   partnerAdvisedAgainstGoOut,
   partnerDeniedLatestWildAsk,
   wasPartnerWildDeniedForBook,
@@ -505,10 +504,7 @@ export function runAiTurn(
       }
 
       if (!hasPartnerGoOutApproval(current, seatIndex, messages)) {
-        if (
-          partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount) &&
-          !opponentsHoldManyCards(current, seatIndex)
-        ) {
+        if (partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)) {
           debug?.step('discard', 'Partner said no to go-out — holding last card.')
           const pass = passTurnKeepingLastFootCard(current)
           return {
@@ -517,19 +513,17 @@ export function runAiTurn(
           }
         }
 
-        if (!partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)) {
-          const signal = createReadyGoOutSignal(
-            seatIndex,
-            currentPlayer.profile.name,
-            currentPlayer.profile.avatar,
-          )
-          debug?.step('chat', 'Asking partner before going out.')
-          return {
-            state: current,
-            chatMessage: signal,
-            awaitingPartner: true,
-            debugTrace: debug?.trace,
-          }
+        const signal = createReadyGoOutSignal(
+          seatIndex,
+          currentPlayer.profile.name,
+          currentPlayer.profile.avatar,
+        )
+        debug?.step('chat', 'Asking partner before going out.')
+        return {
+          state: current,
+          chatMessage: signal,
+          awaitingPartner: true,
+          debugTrace: debug?.trace,
         }
       }
     }
@@ -636,8 +630,7 @@ export function runAiTurn(
       isLastFootCard(endPlayer) &&
       endCanTeamGoOut &&
       !goingOut &&
-      partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount) &&
-      !opponentsHoldManyCards(current, seatIndex)
+      partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)
     ) {
       debug?.step('discard', 'Partner denied go-out — ending turn with last card.')
       const pass = passTurnKeepingLastFootCard(current)

@@ -6,6 +6,7 @@ import {
   awaitingPartnerWildResponse,
   canAiSendWildRequest,
   createApproveGoOutSignal,
+  createDenyGoOutSignal,
   createReadyGoOutSignal,
   createWildApproveSignal,
   createWildDenySignal,
@@ -14,6 +15,8 @@ import {
   hasPartnerGoOutApproval,
   hasPartnerWildApprovalForBook,
   isAllowedChatMessage,
+  opponentsHoldManyCards,
+  partnerAdvisedAgainstGoOut,
   partnerDeniedLatestWildAsk,
   pendingPartnerWildRequest,
   shouldAiAttemptGoOut,
@@ -330,6 +333,56 @@ assert(
 assert(
   shouldAiAttemptGoOut(state, 2, [goOutAsk, goOutYes]),
   'AI goes out after human says yes',
+)
+
+/* Human No must stick even when opponents still hold many cards. */
+assert(
+  opponentsHoldManyCards(state, 2),
+  'precondition: opponents hold many cards (old escape hatch)',
+)
+
+const goOutNo = {
+  ...createDenyGoOutSignal(0, 'You', '🧑'),
+  timestamp: goOutAsk.timestamp + 1,
+}
+assert(
+  partnerAdvisedAgainstGoOut([goOutAsk, goOutNo], 2, 4),
+  'human No is recorded as advice against go-out',
+)
+assert(
+  !shouldAiAttemptGoOut(state, 2, [goOutAsk, goOutNo]),
+  'AI does not go out after human says no (even with many opponent cards)',
+)
+
+const afterNoTurn = runAiTurn(state, [goOutAsk, goOutNo])
+assert(
+  afterNoTurn.state.phase === 'playing',
+  'after No the round continues (AI does not go out)',
+)
+assert(
+  afterNoTurn.state.wentOutTeamId === null,
+  'after No no team has gone out',
+)
+assert(
+  afterNoTurn.state.players[2].hand.length === 1,
+  'after No AI still holds the last foot card',
+)
+assert(
+  afterNoTurn.state.currentPlayerIndex !== 2,
+  'after No AI ends its turn without discarding to go out',
+)
+
+const goOutClear = {
+  ...createApproveGoOutSignal(0, 'You', '🧑', 'You should go out!'),
+  timestamp: goOutNo.timestamp + 1,
+}
+assert(
+  hasPartnerGoOutApproval(state, 2, [goOutAsk, goOutNo, goOutClear]),
+  'You should go out! clears a prior No',
+)
+assert(
+  shouldAiAttemptGoOut(state, 2, [goOutAsk, goOutNo, goOutClear]),
+  'AI goes out after You should go out! clears the No',
 )
 
 /* --- Ask-before-place: wild must not be on the book while the prompt is up --- */
