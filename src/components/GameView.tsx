@@ -35,6 +35,7 @@ import {
   shouldWarnDirtyCleanBook,
   bookWildCount,
   cardsForBookFan,
+  isCleanBook,
   type Book,
 } from '../game/books'
 import { meldContributionFromCards, meldThreshold, sumCardPoints } from '../game/scoring'
@@ -174,6 +175,7 @@ export function GameView({
   const chatRef = useRef(chatMessages)
   chatRef.current = chatMessages
   const handledGoOutReplyKeys = useRef(new Set<string>())
+  const handledStaleWildAskIds = useRef(new Set<string>())
   const stagingFlightIdsRef = useRef<Set<string>>(new Set())
   const stagingBookIdByCardRef = useRef<Map<string, string>>(new Map())
   const meldFlightPendingRef = useRef(false)
@@ -270,6 +272,10 @@ export function GameView({
       ? pendingPartnerWildRequest(chatMessages, viewerSeat, partnerIdx)
       : null
   const wildTargetBook = wildRequest ? wildRequestTargetBook(wildRequest, team.books) : null
+  /* If the ask's book is already dirty, the wild is already down — don't show a
+   * misleading Yes/No. Auto-deny so the AI turn can resume. */
+  const wildAskIsStaleDirty =
+    Boolean(wildRequest && wildTargetBook && !isCleanBook(wildTargetBook))
 
   function respondWildConsent(approve: boolean) {
     const bookId = wildRequest?.bookId ?? wildTargetBook?.id
@@ -294,8 +300,34 @@ export function GameView({
     )
   }
 
+  useEffect(() => {
+    if (!wildAskIsStaleDirty || !wildRequest) return
+    if (handledStaleWildAskIds.current.has(wildRequest.id)) return
+    const bookId = wildRequest.bookId ?? wildTargetBook?.id
+    if (!bookId) return
+    handledStaleWildAskIds.current.add(wildRequest.id)
+    onChatSend(
+      createWildDenySignal(
+        viewerSeat,
+        viewer.profile.name,
+        viewer.profile.avatar,
+        bookId,
+      ),
+      game,
+    )
+  }, [
+    wildAskIsStaleDirty,
+    wildRequest,
+    wildTargetBook?.id,
+    viewerSeat,
+    viewer.profile.name,
+    viewer.profile.avatar,
+    game,
+    onChatSend,
+  ])
+
   const dirtyBookConsent: DirtyBookConsent | null =
-    wildRequest && wildTargetBook
+    wildRequest && wildTargetBook && isCleanBook(wildTargetBook)
       ? {
           bookId: wildTargetBook.id,
           partnerName: partner.profile.name,

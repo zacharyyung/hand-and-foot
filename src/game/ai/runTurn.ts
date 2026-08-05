@@ -15,7 +15,8 @@ import type { GameState } from '../deal'
 import type { ChatMessage } from '../chat'
 import type { Card } from '../cards'
 import { cardLabel } from '../cards'
-import { countWildsInCards } from '../books'
+import { bookWildCount, countWildsInCards, type Book } from '../books'
+import { isWildCard } from '../cards'
 import {
   awaitingPartnerGoOutResponse,
   awaitingPartnerWildResponse,
@@ -71,6 +72,88 @@ function labelCards(hand: Card[], ids: string[]): string {
     .join(' ')
 }
 
+/**
+ * When pausing for a wild Yes/No, strip any wilds placed during this AI turn so
+ * the board does not show a wild already down while the prompt is up.
+ * Natural adds and non-wild new books are kept; wild cards return to the AI hand.
+ */
+export function stripWildAddsSince(
+  before: GameState,
+  after: GameState,
+  seatIndex: number,
+): GameState {
+  const teamId = after.players[seatIndex]?.profile.teamId
+  if (teamId === undefined) return after
+
+  const beforeTeam = getTeam(before, teamId)
+  const afterTeam = getTeam(after, teamId)
+  const beforeBooks = new Map(beforeTeam.books.map((b) => [b.id, b]))
+  const returnedToHand: Card[] = []
+  const nextBooks: Book[] = []
+
+  for (const book of afterTeam.books) {
+    const prior = beforeBooks.get(book.id)
+    if (!prior) {
+      const wilds = book.cards.filter(isWildCard)
+      const naturals = book.cards.filter((c) => !isWildCard(c))
+      if (wilds.length === 0) {
+        nextBooks.push(book)
+        continue
+      }
+      returnedToHand.push(...wilds)
+      if (naturals.length >= 3) {
+        nextBooks.push({ ...book, cards: naturals })
+      } else {
+        returnedToHand.push(...naturals)
+      }
+      continue
+    }
+
+    const priorIds = new Set(prior.cards.map((c) => c.id))
+    const kept: Card[] = []
+    for (const card of book.cards) {
+      if (priorIds.has(card.id)) {
+        kept.push(card)
+        continue
+      }
+      if (isWildCard(card)) {
+        returnedToHand.push(card)
+        continue
+      }
+      kept.push(card)
+    }
+    nextBooks.push({ ...book, cards: kept })
+  }
+
+  if (returnedToHand.length === 0) return after
+
+  const player = after.players[seatIndex]!
+
+  return {
+    ...after,
+    players: after.players.map((p, i) =>
+      i === seatIndex
+        ? { ...player, hand: [...player.hand, ...returnedToHand] }
+        : p,
+    ),
+    teams: after.teams.map((t) =>
+      t.id === teamId
+        ? {
+            ...t,
+            books: nextBooks,
+            meldThresholdMet: beforeTeam.meldThresholdMet || t.meldThresholdMet,
+          }
+        : t,
+    ),
+    booksWithWildAddedThisTurn: after.booksWithWildAddedThisTurn.filter((id) => {
+      const book = nextBooks.find((b) => b.id === id)
+      const prior = beforeBooks.get(id)
+      if (!book || !prior) return false
+      return bookWildCount(book) > bookWildCount(prior)
+    }),
+  }
+}
+
 export function runAiTurn(
   state: GameState,
   chatMessages: ChatMessage[] = [],
@@ -120,6 +203,9 @@ export function runAiTurn(
     partnerIsHuman &&
     state.turnPhase === 'play' &&
     partnerDeniedLatestWildAsk(messages, seatIndex, partnerIdx)
+
+  /* Snapshot after draw — wilds placed later this turn are stripped if we pause to ask. */
+  const baselineForWildAsk = current
 
   const maxPlays = difficulty === 'expert' ? 14 : 10
   debug?.step(
@@ -244,6 +330,23 @@ export function runAiTurn(
           continue
         }
 
+        /*
+         * With a human partner, do not place wilds on already-dirty books in the
+         * same meld pass where we might pause to ask about dirtying a clean book.
+         * Dirty-book wilds still happen later via the lone-wild step after consent.
+         */
+        if (
+          partnerIsHuman &&
+          addHasWilds &&
+          !needsHumanWildConsent(book, addCards, partnerIdx)
+        ) {
+          debug?.step(
+            'add',
+            `Defer dirty-book wild on ${book.rank}s until after consent checks.`,
+          )
+          continue
+        }
+
         if (
           partnerIsHuman &&
           shouldAskBeforeWildAdd(
@@ -278,9 +381,11 @@ export function runAiTurn(
                 'chat',
                 `Asking partner before wild on ${book.rank}s (${labelCards(pub.myHand, bestAdd.cardIds)}).`,
               )
-              /* Wild stays in hand / off the book until Yes — return without addToBook. */
+              /* Wild stays in hand / off the book until Yes — also strip any other
+               * wilds placed earlier this turn so the prompt is not shown next to
+               * a board that already looks dirtied. */
               return {
-                state: current,
+                state: stripWildAddsSince(baselineForWildAsk, current, seatIndex),
                 chatMessage: wildReq,
                 awaitingPartner: true,
                 debugTrace: debug?.trace,
@@ -458,7 +563,7 @@ export function runAiTurn(
             if (wildReq) {
               debug?.step('chat', 'Asking partner before lone wild add.')
               return {
-                state: current,
+                state: stripWildAddsSince(baselineForWildAsk, current, seatIndex),
                 chatMessage: wildReq,
                 awaitingPartner: true,
                 debugTrace: debug?.trace,
