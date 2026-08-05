@@ -129,7 +129,7 @@ export function DirtyBookConsentPrompt({
         left: coords.left,
         width: POPUP_WIDTH,
         background: '#fbf7f0',
-        color: '#111111',
+        color: '#000000',
       }}
       role="dialog"
       aria-label={`Partner wants to add a wild to ${book.rank}s book`}
@@ -145,21 +145,21 @@ export function DirtyBookConsentPrompt({
       />
       <p
         className="text-[12px] font-bold leading-snug"
-        style={{ color: '#111111' }}
+        style={{ color: '#000000' }}
       >
         <span aria-hidden>{consent.partnerAvatar} </span>
         Add a wild to {book.rank}s?
       </p>
       <p
-        className="mt-1 text-[11px] font-semibold leading-snug"
-        style={{ color: '#111111' }}
+        className="mt-1 text-[11px] font-bold leading-snug"
+        style={{ color: '#000000' }}
       >
         {countLabel} · still {statusLabel}
         {clean ? ' — wild not placed yet' : ''}
       </p>
       <p
-        className="mt-1.5 line-clamp-3 text-[11px] font-medium leading-snug"
-        style={{ color: '#1a1a1a' }}
+        className="mt-1.5 line-clamp-3 text-[11px] font-bold leading-snug"
+        style={{ color: '#000000' }}
       >
         {consent.askText}
       </p>
@@ -175,7 +175,7 @@ export function DirtyBookConsentPrompt({
           type="button"
           onClick={consent.onDeny}
           className="min-h-0 flex-1 rounded-lg px-1.5 py-2 text-[11px] font-bold leading-none transition"
-          style={{ background: '#e8e0d4', color: '#111111' }}
+          style={{ background: '#e8e0d4', color: '#000000' }}
         >
           No
         </button>

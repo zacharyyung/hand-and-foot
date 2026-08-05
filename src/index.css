@@ -1070,12 +1070,12 @@
 
   .game-message-prompt-contrast,
   .game-message-prompt-contrast p {
-    color: #111111;
+    color: #000000 !important;
   }
 
   .dirty-book-consent,
   .dirty-book-consent p {
-    color: #111111;
+    color: #000000 !important;
   }
 
 .card-flight-piece {
