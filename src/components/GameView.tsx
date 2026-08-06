@@ -647,7 +647,16 @@ export function GameView({
     isMyTurn && willSkipAndRun(viewer, selectedIds)
   const skipAndRunMeld =
     isMyTurn && willSkipAndRun(viewer, stagedBooks.flatMap((b) => b.cardIds))
-  const skipAndRunActive = skipAndRunMeld || skipAndRunSelected
+  const teamHasOpenBook = team.books.some((book) => book.cards.length < 7)
+  const showStartBook =
+    !needsStagedMeld &&
+    addBookOptions.length === 0 &&
+    !teamHasOpenBook
+  const skipAndRunActive =
+    skipAndRunMeld ||
+    (skipAndRunSelected &&
+      addBookOptions.length === 0 &&
+      !(team.meldThresholdMet && selectedIds.length >= 3))
   const skipAndRunDisabled = skipAndRunMeld
     ? stagedBooks.length === 0 ||
       (needsStagedMeld && stagedPoints < requiredMeld) ||
@@ -1726,15 +1735,17 @@ export function GameView({
                                     {mobileLayout ? 'Put down' : 'Put down staged'}
                                   </button>
                                 )}
-                                <button
-                                  onClick={handleStartBook}
-                                  disabled={
-                                    selectedIds.length < 3 || footMeldBlocked
-                                  }
-                                  className="btn-secondary disabled:opacity-35"
-                                >
-                                  Start book
-                                </button>
+                                {showStartBook && (
+                                  <button
+                                    onClick={handleStartBook}
+                                    disabled={
+                                      selectedIds.length < 3 || footMeldBlocked
+                                    }
+                                    className="btn-secondary disabled:opacity-35"
+                                  >
+                                    Start book
+                                  </button>
+                                )}
                               </>
                             )
                           )}
