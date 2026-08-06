@@ -39,7 +39,9 @@ import {
   buildSetupPlayers,
   createDefaultHumanPlayers,
 } from './components/SetupScreen'
+import { LandscapeModeOverlay } from './components/LandscapeModeOverlay'
 import { InstructionsButton, InstructionsOverlay } from './components/InstructionsOverlay'
+import { useMobileLandscape } from './components/useMobileLandscape'
 import { SoundToggle } from './components/SoundToggle'
 import { TEAM_COLORS } from './game/teams'
 import type { PlayerCount } from './game/teams'
@@ -68,6 +70,7 @@ function App() {
   const [savedSummary, setSavedSummary] = useState<SavedSessionSummary | null>(() =>
     peekSavedSessionSummary(),
   )
+  const mobileLandscape = useMobileLandscape()
 
   useEffect(() => {
     loadMutePreference()
@@ -150,21 +153,6 @@ function App() {
     setUndoResult(null)
     setShowRestartNotice(false)
     setShowUndoPicker(false)
-  }
-
-  function handlePlayerCountChange(count: PlayerCount) {
-    setPlayerCount(count)
-    const humans = Math.max(1, Math.min(humanCount, count))
-    setHumanCount(humans)
-    setHumanPlayers((prev) => {
-      if (prev.length < humans) {
-        return [
-          ...prev,
-          ...createDefaultHumanPlayers(humans).slice(prev.length),
-        ]
-      }
-      return prev.slice(0, humans)
-    })
   }
 
   function handleHumanCountChange(count: number) {
@@ -349,8 +337,6 @@ function App() {
   if (!game) {
     content = (
       <SetupScreen
-        playerCount={playerCount}
-        onPlayerCountChange={handlePlayerCountChange}
         humanCount={humanCount}
         onHumanCountChange={handleHumanCountChange}
         humanPlayers={humanPlayers}
@@ -515,6 +501,8 @@ function App() {
       )}
 
       {content}
+
+      {mobileLandscape && <LandscapeModeOverlay />}
     </div>
   )
 }
