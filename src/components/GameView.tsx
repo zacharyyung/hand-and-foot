@@ -647,11 +647,12 @@ export function GameView({
     isMyTurn && willSkipAndRun(viewer, selectedIds)
   const skipAndRunMeld =
     isMyTurn && willSkipAndRun(viewer, stagedBooks.flatMap((b) => b.cardIds))
-  const teamHasOpenBook = team.books.some((book) => book.cards.length < 7)
+  // After the initial meld, always offer Start book when the selection is not
+  // an add-to-existing-book play. Incomplete books on the table must not block
+  // starting a new rank (e.g. two 8s + a wild while another book is open).
   const showStartBook =
     !needsStagedMeld &&
-    addBookOptions.length === 0 &&
-    !teamHasOpenBook
+    addBookOptions.length === 0
   const skipAndRunActive =
     skipAndRunMeld ||
     (skipAndRunSelected &&
