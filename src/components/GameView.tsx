@@ -647,12 +647,17 @@ export function GameView({
     isMyTurn && willSkipAndRun(viewer, selectedIds)
   const skipAndRunMeld =
     isMyTurn && willSkipAndRun(viewer, stagedBooks.flatMap((b) => b.cardIds))
-  // After the initial meld, always offer Start book when the selection is not
-  // an add-to-existing-book play. Incomplete books on the table must not block
-  // starting a new rank (e.g. two 8s + a wild while another book is open).
-  const showStartBook =
-    !needsStagedMeld &&
-    addBookOptions.length === 0
+  // After the initial meld, always show Start book. Hiding it when other books
+  // are open (or when Add is also available) blocked legal new ranks — e.g.
+  // three 10s, or two 8s + a wild — even though the meld requirement was met.
+  const showStartBook = !needsStagedMeld
+  const startBookCheck =
+    selectedIds.length < 3
+      ? ({ ok: false as const, reason: 'Need at least 3 cards to start a book.' })
+      : canStartBook(
+          viewer.hand.filter((c) => selectedIds.includes(c.id)),
+          team.books,
+        )
   const skipAndRunActive =
     skipAndRunMeld ||
     (skipAndRunSelected &&
@@ -1739,10 +1744,13 @@ export function GameView({
                                 {showStartBook && (
                                   <button
                                     onClick={handleStartBook}
-                                    disabled={
-                                      selectedIds.length < 3 || footMeldBlocked
-                                    }
+                                    disabled={!startBookCheck.ok || footMeldBlocked}
                                     className="btn-secondary disabled:opacity-35"
+                                    title={
+                                      !startBookCheck.ok
+                                        ? startBookCheck.reason
+                                        : 'Start a new book with the selected cards'
+                                    }
                                   >
                                     Start book
                                   </button>
