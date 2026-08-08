@@ -28,6 +28,7 @@ import {
   deniedWildBookIds,
   hasPartnerGoOutApproval,
   hasPartnerWildApprovalForBook,
+  latestReadyGoOutFrom,
   partnerAdvisedAgainstGoOut,
   partnerDeniedLatestWildAsk,
   wasPartnerWildDeniedForBook,
@@ -492,7 +493,7 @@ export function runAiTurn(
       isLastFootCard(currentPlayer) &&
       canTeamGoOut(team.books, team.meldThresholdMet)
 
-    /* Ask human partner before going out — pause until yes/no. */
+    /* Always ask human partner before going out — never discard silently. */
     if (partnerIsHuman && lastFoot) {
       if (awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx)) {
         debug?.step('chat', 'Waiting for partner go-out yes/no.')
@@ -503,7 +504,7 @@ export function runAiTurn(
         }
       }
 
-      if (!hasPartnerGoOutApproval(current, seatIndex, messages)) {
+      if (!latestReadyGoOutFrom(messages, seatIndex)) {
         if (partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)) {
           debug?.step('discard', 'Partner said no to go-out — holding last card.')
           const pass = passTurnKeepingLastFootCard(current)
@@ -519,9 +520,35 @@ export function runAiTurn(
           currentPlayer.profile.avatar,
         )
         debug?.step('chat', 'Asking partner before going out.')
+
+        /*
+         * Standing "You should go out!" still requires a visible ask, then the
+         * AI may finish the turn. Otherwise pause for Yes/No.
+         */
+        if (hasPartnerGoOutApproval(current, seatIndex, messages)) {
+          chatMessage = signal
+          messages = [...messages, signal]
+        } else {
+          return {
+            state: current,
+            chatMessage: signal,
+            awaitingPartner: true,
+            debugTrace: debug?.trace,
+          }
+        }
+      } else if (!hasPartnerGoOutApproval(current, seatIndex, messages)) {
+        if (partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)) {
+          debug?.step('discard', 'Partner said no to go-out — holding last card.')
+          const pass = passTurnKeepingLastFootCard(current)
+          return {
+            state: pass.error ? current : pass.state,
+            debugTrace: debug?.trace,
+          }
+        }
+
+        debug?.step('chat', 'Waiting for partner go-out yes/no.')
         return {
           state: current,
-          chatMessage: signal,
           awaitingPartner: true,
           debugTrace: debug?.trace,
         }
