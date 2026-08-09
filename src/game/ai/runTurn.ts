@@ -504,7 +504,15 @@ export function runAiTurn(
       }
 
       if (!hasPartnerGoOutApproval(current, seatIndex, messages)) {
-        if (partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)) {
+        /*
+         * Mid-turn resume after No: hold the last card and end the turn.
+         * Fresh turns start in `draw`, so the AI can ask again next turn —
+         * saying No does not permanently stop go-out prompts for the round.
+         */
+        if (
+          partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount) &&
+          state.turnPhase === 'play'
+        ) {
           debug?.step('discard', 'Partner said no to go-out — holding last card.')
           const pass = passTurnKeepingLastFootCard(current)
           return {
@@ -518,7 +526,12 @@ export function runAiTurn(
           currentPlayer.profile.name,
           currentPlayer.profile.avatar,
         )
-        debug?.step('chat', 'Asking partner before going out.')
+        debug?.step(
+          'chat',
+          partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)
+            ? 'Asking partner again before going out.'
+            : 'Asking partner before going out.',
+        )
         return {
           state: current,
           chatMessage: signal,

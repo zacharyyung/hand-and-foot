@@ -146,8 +146,9 @@ export function InstructionsOverlay({ open, onClose }: InstructionsOverlayProps)
             </p>
             <p className="mt-2">
               When your AI partner asks to go out, saying <strong>No</strong> keeps them from
-              going out and from asking again. Use <strong>You should go out!</strong> in table
-              chat whenever you want to clear them to go out (even if they have not asked).
+              going out for now — they may ask again on a later turn. Use{' '}
+              <strong>You should go out!</strong> in table chat whenever you want to clear them to
+              go out (even if they have not asked).
             </p>
           </section>
 

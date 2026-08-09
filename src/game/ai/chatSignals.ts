@@ -19,7 +19,6 @@ import {
   pendingPartnerWildRequest,
   priorWildAskTexts,
   teamCanGoOut,
-  wasPartnerGoOutDenied,
   wasPartnerWildDeniedForBook,
   type ChatMessage,
 } from '../chat'
@@ -197,8 +196,6 @@ export function maybeAiChatSignal(
 
   const partnerIdx = partnerSeat(seatIndex, state.playerCount as PlayerCount)
   if (awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx)) return null
-  /* Partner already said no — don't keep asking (they can later say "You should go out!"). */
-  if (wasPartnerGoOutDenied(messages, seatIndex, partnerIdx)) return null
   /* Already cleared — no need to ask again. */
   if (hasPartnerGoOutApproval(state, seatIndex, messages)) return null
 

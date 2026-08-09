@@ -183,9 +183,9 @@ export function GameChat({
               <div>
                 <p className="font-display text-sm font-semibold text-ink">Table chat</p>
                 <p className="mt-0.5 text-[10px] leading-relaxed text-ink-muted">
-                  Ask if you can go out, or tell your partner they should. Saying no to their ask
-                  keeps them from going out — clear them later with &ldquo;You should go
-                  out!&rdquo;
+                  Ask if you can go out, or tell your partner they should. Saying no keeps them
+                  from going out for now — they may ask again later, or clear them with
+                  &ldquo;You should go out!&rdquo;
                 </p>
               </div>
               <button
@@ -225,7 +225,8 @@ export function GameChat({
                   {partner.profile.avatar} {partner.profile.name} says they can go out!
                 </p>
                 <p className="mt-1 text-[10px] text-ink-muted">
-                  Only you can reply — yes clears them to go out, no keeps them from going out.
+                  Only you can reply — yes clears them to go out, no keeps them from going out for
+                  now (they may ask again later).
                 </p>
                 <div className="mt-2 flex gap-2">
                   <button
@@ -357,8 +358,8 @@ export function GameChat({
                 {partnerToldToWait && !partnerRequest && (
                   <p className="rounded-lg bg-black/25 px-2.5 py-2 text-center text-[10px] leading-relaxed text-ink-muted">
                     {canTellPartnerToGoOut
-                      ? `You told ${partner.profile.name} not to go out — they are holding. Tap above when you're ready for them to go out.`
-                      : `You told ${partner.profile.name} not to go out — they are holding. When you're ready, tell them they should go out.`}
+                      ? `You told ${partner.profile.name} not to go out — they are holding for now and may ask again later. Tap above when you're ready for them to go out.`
+                      : `You told ${partner.profile.name} not to go out — they are holding for now and may ask again later. You can also tell them they should go out.`}
                   </p>
                 )}
 
