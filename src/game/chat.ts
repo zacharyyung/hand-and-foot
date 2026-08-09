@@ -78,7 +78,11 @@ export function latestPartnerGoOutAdvice(
   return null
 }
 
-/** Partner already said no to going out — don't keep asking (like wild deny). */
+/**
+ * Partner said no to the latest go-out ask (and has not cleared them since).
+ * Blocks going out until Yes / "You should go out!", but does not permanently
+ * stop the AI from asking again on a later turn.
+ */
 export function wasPartnerGoOutDenied(
   messages: ChatMessage[],
   requesterSeat: number,
@@ -90,7 +94,7 @@ export function wasPartnerGoOutDenied(
   return latestPartnerGoOutAdvice(messages, responderSeat) === 'deny'
 }
 
-/** Partner said no to the latest go-out ask — AI partner must wait for clearance. */
+/** Partner said no to the latest go-out ask — do not go out until they clear you. */
 export function unresolvedPartnerDenial(
   messages: ChatMessage[],
   requesterSeat: number,
@@ -752,7 +756,7 @@ export function shouldAiAttemptGoOut(
   if (hasPartnerGoOutApproval(state, seatIndex, messages)) return true
 
   if (partnerIsHuman) {
-    /* Human No is binding until they say "You should go out!" (or Yes). */
+    /* Human No blocks going out until Yes / "You should go out!" (AI may re-ask later). */
     if (partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)) return false
     /* Wait for the human's yes/no before discarding the last card. */
     if (awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx)) return false

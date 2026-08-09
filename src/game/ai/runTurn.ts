@@ -209,7 +209,11 @@ export function runAiTurn(
   /* Snapshot after draw — wilds placed later this turn are stripped if we pause to ask. */
   const baselineForWildAsk = current
 
-  /* Ask to go out while still holding 2+ cards — before melding down to one. */
+  /*
+   * Ask to go out while still holding 2+ cards — before melding down to one.
+   * Mid-turn resume after No uses entry turnPhase === 'play'; don't re-ask until
+   * a fresh turn (which enters in `draw`). Saying No is not permanent.
+   */
   if (partnerIsHuman && current.turnPhase === 'play') {
     if (awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx)) {
       debug?.step('chat', 'Waiting for partner go-out yes/no.')
@@ -220,8 +224,16 @@ export function runAiTurn(
       }
     }
     const earlyGoOutAsk = maybeAiChatSignal(current, seatIndex, messages)
-    if (earlyGoOutAsk) {
-      debug?.step('chat', 'Asking partner before going out (2+ cards).')
+    const midTurnAfterNo =
+      partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount) &&
+      state.turnPhase === 'play'
+    if (earlyGoOutAsk && !midTurnAfterNo) {
+      debug?.step(
+        'chat',
+        partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)
+          ? 'Asking partner again before going out (2+ cards).'
+          : 'Asking partner before going out (2+ cards).',
+      )
       return {
         state: current,
         chatMessage: earlyGoOutAsk,
@@ -526,8 +538,9 @@ export function runAiTurn(
       canTeamGoOut(team.books, team.meldThresholdMet)
 
     /*
-     * Ask while 2–4 cards remain (never on the final card — discarding that
-     * goes out, so the partner would have no real choice).
+     * Ask while 2+ cards remain (never on the final card — discarding that
+     * goes out, so the partner would have no real choice). Mid-turn after No
+     * does not immediately re-ask; a later turn that started in `draw` may.
      */
     if (partnerIsHuman) {
       if (awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx)) {
@@ -540,8 +553,16 @@ export function runAiTurn(
       }
 
       const goOutAsk = maybeAiChatSignal(current, seatIndex, messages)
-      if (goOutAsk) {
-        debug?.step('chat', 'Asking partner before going out (2+ cards).')
+      const midTurnAfterNo =
+        partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount) &&
+        state.turnPhase === 'play'
+      if (goOutAsk && !midTurnAfterNo) {
+        debug?.step(
+          'chat',
+          partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)
+            ? 'Asking partner again before going out (2+ cards).'
+            : 'Asking partner before going out (2+ cards).',
+        )
         return {
           state: current,
           chatMessage: goOutAsk,

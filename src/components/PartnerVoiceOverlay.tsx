@@ -97,8 +97,8 @@ export function PartnerVoiceOverlay({
       </p>
 
       <p className="mb-2.5 text-[10px] leading-relaxed text-ink-muted">
-        Yes clears them to go out. No keeps them from going out — they won&apos;t ask again this
-        round. You can still say &ldquo;You should go out!&rdquo; later in table chat.
+        Yes clears them to go out. No keeps them from going out for now — they may ask again later.
+        You can also say &ldquo;You should go out!&rdquo; anytime in table chat.
       </p>
 
       <div className="flex gap-2">

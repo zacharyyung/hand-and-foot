@@ -401,6 +401,39 @@ assert(
   'after No AI ends its turn without discarding to go out',
 )
 
+/* Next turn after No: AI may ask again with 2+ cards (No is not permanent). */
+const nextTurnAfterNo = stubState({
+  currentPlayerIndex: 2,
+  turnPhase: 'draw',
+  stock: [card('ns1', 'K'), card('ns2', 'K', 'diamonds'), card('ns3', '6')],
+  discard: [card('nd1', '3', 'spades')],
+  players: stubState().players.map((p, i) =>
+    i === 2
+      ? {
+          ...p,
+          hand: [card('nlast', 'Q')],
+          foot: [],
+          isPlayingFoot: true,
+          footOnHold: false,
+        }
+      : p,
+  ),
+})
+const reAskTurn = runAiTurn(nextTurnAfterNo, [goOutAsk, goOutNo])
+assert(
+  reAskTurn.chatMessage?.type === 'ready_go_out',
+  'AI asks to go out again on a later turn after No',
+)
+assert(
+  reAskTurn.state.players[2].hand.length >= 2,
+  're-ask still holds at least 2 cards',
+)
+assert(reAskTurn.awaitingPartner === true, 're-ask pauses for yes/no again')
+assert(
+  reAskTurn.state.wentOutTeamId === null,
+  're-ask does not go out until the human answers',
+)
+
 const goOutClear = {
   ...createApproveGoOutSignal(0, 'You', '🧑', 'You should go out!'),
   timestamp: goOutNo.timestamp + 1,
