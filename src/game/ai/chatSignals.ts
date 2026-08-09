@@ -204,9 +204,19 @@ export function maybeAiChatSignal(
 
   const pub = buildAiPublicState(state, seatIndex)
   if (!pub.isPlayingFoot) return null
+  /* Still have a facedown foot pile — not closing yet. */
+  if (player.foot.length > 0) return null
 
-  const closing = pub.myFootCount === 0 && pub.myHand.length <= 4
-  if (!closing) return null
+  const handLen = pub.myHand.length
+  /* Never ask on the final card — discarding it goes out anyway. */
+  if (handLen < 2) return null
+
+  const partnerIsHuman = state.players[partnerIdx]?.profile.isHuman === true
+  /*
+   * Human partner: ask as soon as books are ready with 2+ cards left, before
+   * melding down to one. AI partners only broadcast when closing (2–4 cards).
+   */
+  if (!partnerIsHuman && handLen > 4) return null
 
   return createReadyGoOutSignal(
     seatIndex,

@@ -321,15 +321,38 @@ assert(
   'AI passes instead of soft-locking on last foot card',
 )
 
-/* Control: clean+dirty + last card + Yes → go out */
-const ready = goOutState([card('last2', '4')], [cleanBook, dirtyBook])
+/* Ask with 2+ cards — not on the final card alone */
+const oneCard = goOutState([card('last1', '4')], [cleanBook, dirtyBook])
+const oneCardTurn = runAiTurn(oneCard, [])
+assert(
+  oneCardTurn.chatMessage?.type !== 'ready_go_out',
+  'does not ask to go out with only 1 card left',
+)
+assert(oneCardTurn.state.phase === 'playing', 'holds last card instead of asking at 1')
+assert(
+  oneCardTurn.state.players[2].hand.length === 1,
+  'still holds the last foot card when no prior clearance',
+)
+
+const ready = goOutState(
+  [card('keep1', '4'), card('keep2', '5', 'diamonds')],
+  [cleanBook, dirtyBook],
+)
 const readyAsk = runAiTurn(ready, [])
-assert(readyAsk.chatMessage?.type === 'ready_go_out', 'asks when books qualify')
-const readyYes = {
+assert(readyAsk.chatMessage?.type === 'ready_go_out', 'asks when books qualify with 2+ cards')
+assert(
+  readyAsk.state.players[2].hand.length >= 2,
+  'still holds at least 2 cards when asking to go out',
+)
+
+/* After Yes on the last card, AI goes out */
+const lastCardCleared = goOutState([card('last2', '4')], [cleanBook, dirtyBook])
+const priorAskTwo = createReadyGoOutSignal(2, 'AI', 'A')
+const priorYesTwo = {
   ...createApproveGoOutSignal(0, 'You', 'Y'),
-  timestamp: readyAsk.chatMessage!.timestamp + 1,
+  timestamp: priorAskTwo.timestamp + 1,
 }
-const readyDone = runAiTurn(readyAsk.state, [readyAsk.chatMessage!, readyYes])
+const readyDone = runAiTurn(lastCardCleared, [priorAskTwo, priorYesTwo])
 assert(readyDone.state.phase === 'roundEnd', 'goes out with clean+dirty after Yes')
 assert(readyDone.state.wentOutTeamId === 0, 'correct team went out')
 

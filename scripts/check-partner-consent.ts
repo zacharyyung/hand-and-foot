@@ -312,6 +312,35 @@ const state = stubState()
 assert(canAiSendWildRequest(state, 2, []), 'AI can send wild request')
 assert(isAllowedChatMessage(state, ask, []), 'wild_request allowed by chat validation')
 
+/* With 2+ cards and books ready, AI asks before going out — not on the last card. */
+const twoCardState = {
+  ...state,
+  players: state.players.map((p, i) =>
+    i === 2
+      ? {
+          ...p,
+          hand: [card('q1', 'Q'), card('q2', 'Q', 'diamonds')],
+        }
+      : p,
+  ),
+}
+const twoCardAsk = runAiTurn(twoCardState, [])
+assert(
+  twoCardAsk.chatMessage?.type === 'ready_go_out',
+  'AI asks to go out while holding at least 2 cards',
+)
+assert(
+  twoCardAsk.state.players[2].hand.length >= 2,
+  'AI still has 2+ cards when the go-out ask is sent',
+)
+assert(twoCardAsk.awaitingPartner === true, 'AI pauses for human go-out reply')
+
+const oneCardAsk = runAiTurn(state, [])
+assert(
+  oneCardAsk.chatMessage?.type !== 'ready_go_out',
+  'AI does not ask to go out with only 1 card left',
+)
+
 const goOutAsk = createReadyGoOutSignal(2, 'AI', '🤖')
 assert(
   !shouldAiAttemptGoOut(state, 2, [goOutAsk]),
