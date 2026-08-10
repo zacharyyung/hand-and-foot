@@ -321,17 +321,18 @@ assert(
   'AI passes instead of soft-locking on last foot card',
 )
 
-/* Ask with 2+ cards — not on the final card alone */
+/* Last-card fallback asks when no earlier 2+ ask happened */
 const oneCard = goOutState([card('last1', '4')], [cleanBook, dirtyBook])
 const oneCardTurn = runAiTurn(oneCard, [])
 assert(
-  oneCardTurn.chatMessage?.type !== 'ready_go_out',
-  'does not ask to go out with only 1 card left',
+  oneCardTurn.chatMessage?.type === 'ready_go_out',
+  'asks on last card when no prior ask exists',
 )
-assert(oneCardTurn.state.phase === 'playing', 'holds last card instead of asking at 1')
+assert(oneCardTurn.awaitingPartner === true, 'last-card ask waits for partner')
+assert(oneCardTurn.state.phase === 'playing', 'does not go out until partner answers')
 assert(
   oneCardTurn.state.players[2].hand.length === 1,
-  'still holds the last foot card when no prior clearance',
+  'still holds the last foot card while asking',
 )
 
 const ready = goOutState(

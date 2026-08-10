@@ -753,16 +753,18 @@ export function shouldAiAttemptGoOut(
   const partnerIdx = partnerSeat(seatIndex, playerCount)
   const partnerIsHuman = state.players[partnerIdx]?.profile.isHuman === true
 
-  if (hasPartnerGoOutApproval(state, seatIndex, messages)) return true
-
   if (partnerIsHuman) {
+    /* Always ask first — standing "You should go out!" alone is not enough. */
+    if (!latestReadyGoOutFrom(messages, seatIndex)) return false
     /* Human No blocks going out until Yes / "You should go out!" (AI may re-ask later). */
     if (partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)) return false
+    if (hasPartnerGoOutApproval(state, seatIndex, messages)) return true
     /* Wait for the human's yes/no before discarding the last card. */
     if (awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx)) return false
-    if (!latestReadyGoOutFrom(messages, seatIndex)) return false
     return false
   }
+
+  if (hasPartnerGoOutApproval(state, seatIndex, messages)) return true
 
   if (opponentsHoldManyCards(state, seatIndex)) return true
 

@@ -19,6 +19,7 @@ import {
   partnerAdvisedAgainstGoOut,
   partnerDeniedLatestWildAsk,
   pendingPartnerWildRequest,
+  PROACTIVE_GO_OUT_APPROVE_TEXT,
   shouldAiAttemptGoOut,
   wasPartnerWildDeniedForBook,
   type ChatMessage,
@@ -27,6 +28,7 @@ import { needsHumanWildConsent } from '../src/game/ai/chatSignals'
 import { runAiTurn, stripWildAddsSince } from '../src/game/ai/runTurn'
 import { bookWildCount, isCleanBook, type Book } from '../src/game/books'
 import { isWildCard, type Card } from '../src/game/cards'
+import { discardCard } from '../src/game/actions'
 import type { GameState, PlayerState } from '../src/game/deal'
 
 function assert(condition: boolean, message: string) {
@@ -337,9 +339,11 @@ assert(twoCardAsk.awaitingPartner === true, 'AI pauses for human go-out reply')
 
 const oneCardAsk = runAiTurn(state, [])
 assert(
-  oneCardAsk.chatMessage?.type !== 'ready_go_out',
-  'AI does not ask to go out with only 1 card left',
+  oneCardAsk.chatMessage?.type === 'ready_go_out',
+  'AI asks to go out on last card when no earlier ask happened',
 )
+assert(oneCardAsk.awaitingPartner === true, 'last-card ask pauses for yes/no')
+assert(oneCardAsk.state.wentOutTeamId === null, 'last-card ask does not go out yet')
 
 const goOutAsk = createReadyGoOutSignal(2, 'AI', '🤖')
 assert(
@@ -350,6 +354,37 @@ assert(
   !shouldAiAttemptGoOut(state, 2, []),
   'AI does not go out before asking human',
 )
+
+/* Last-card fallback: always ask (never go out silently) when somehow on 1 card. */
+const askTurn = runAiTurn(state, [])
+assert(askTurn.chatMessage?.type === 'ready_go_out', 'AI asks before going out on last card')
+assert(askTurn.awaitingPartner === true, 'AI pauses for yes/no after asking')
+assert(askTurn.state.phase === 'playing', 'round continues while waiting on ask')
+assert(askTurn.state.wentOutTeamId === null, 'AI does not go out on the ask turn')
+assert(
+  askTurn.state.players[2].hand.length === 1,
+  'AI still holds last card while waiting',
+)
+
+const proactiveOnly = createApproveGoOutSignal(
+  0,
+  'You',
+  '🧑',
+  PROACTIVE_GO_OUT_APPROVE_TEXT,
+)
+assert(
+  hasPartnerGoOutApproval(state, 2, [proactiveOnly]),
+  'You should go out! is standing approval',
+)
+assert(
+  !shouldAiAttemptGoOut(state, 2, [proactiveOnly]),
+  'standing approval alone cannot skip the ask',
+)
+
+const bypass = discardCard(state, state.players[2].hand[0].id, [])
+assert(bypass.error != null, 'discardCard blocks AI go-out without an ask')
+assert(bypass.state.phase === 'playing', 'discardCard does not end the round without ask')
+assert(bypass.state.wentOutTeamId == null, 'discardCard sets no went-out team without ask')
 
 const goOutYes = {
   ...createApproveGoOutSignal(0, 'You', '🧑'),
@@ -363,6 +398,18 @@ assert(
   shouldAiAttemptGoOut(state, 2, [goOutAsk, goOutYes]),
   'AI goes out after human says yes',
 )
+
+/* Standing clearance still requires a visible ask, then may finish same turn. */
+const proactiveTurn = runAiTurn(state, [proactiveOnly])
+assert(
+  proactiveTurn.chatMessage?.type === 'ready_go_out',
+  'AI still asks after You should go out!',
+)
+assert(
+  proactiveTurn.state.phase === 'roundEnd',
+  'after asking with standing clearance AI may go out',
+)
+assert(proactiveTurn.state.wentOutTeamId === 0, 'correct team went out after ask + clearance')
 
 /* Human No must stick even when opponents still hold many cards. */
 assert(
@@ -446,6 +493,32 @@ assert(
   shouldAiAttemptGoOut(state, 2, [goOutAsk, goOutNo, goOutClear]),
   'AI goes out after You should go out! clears the No',
 )
+
+/* After Yes, a later turn still announces before going out (never silent). */
+const clearedTwoCard = {
+  ...twoCardState,
+}
+const priorYesOnly = {
+  ...createApproveGoOutSignal(0, 'You', '🧑'),
+  timestamp: 1,
+}
+const priorAskOld = {
+  ...createReadyGoOutSignal(2, 'AI', '🤖'),
+  timestamp: 0,
+}
+const announceAgain = runAiTurn(clearedTwoCard, [priorAskOld, priorYesOnly])
+assert(
+  announceAgain.chatMessage?.type === 'ready_go_out',
+  'AI re-announces go-out even after a prior Yes',
+)
+assert(
+  announceAgain.state.phase === 'roundEnd' || announceAgain.awaitingPartner === true,
+  'after prior Yes AI either finishes same turn or waits on a fresh ask',
+)
+/* With standing Yes, announce + finish is allowed (not a silent go-out). */
+if (announceAgain.state.phase === 'roundEnd') {
+  assert(announceAgain.state.wentOutTeamId === 0, 'team goes out after announce + prior Yes')
+}
 
 /* --- Ask-before-place: wild must not be on the book while the prompt is up --- */
 function bookFromState(game: GameState, id: string): Book {

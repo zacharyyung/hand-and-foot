@@ -27,9 +27,11 @@ import {
   deniedWildBookIds,
   hasPartnerGoOutApproval,
   hasPartnerWildApprovalForBook,
+  latestReadyGoOutFrom,
   partnerAdvisedAgainstGoOut,
   partnerDeniedLatestWildAsk,
   wasPartnerWildDeniedForBook,
+  createReadyGoOutSignal,
 } from '../chat'
 import { partnerSeat, type PlayerCount } from '../teams'
 import { findAddToBookActions } from './decisions'
@@ -211,11 +213,15 @@ export function runAiTurn(
 
   /*
    * Ask to go out while still holding 2+ cards — before melding down to one.
-   * Mid-turn resume after No uses entry turnPhase === 'play'; don't re-ask until
-   * a fresh turn (which enters in `draw`). Saying No is not permanent.
+   * Always announce, even with standing clearance; pause only when the human
+   * has not cleared them. Mid-turn resume after No does not immediately re-ask.
    */
   if (partnerIsHuman && current.turnPhase === 'play') {
-    if (awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx)) {
+    const earlyCleared = hasPartnerGoOutApproval(current, seatIndex, messages)
+    if (
+      awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx) &&
+      !earlyCleared
+    ) {
       debug?.step('chat', 'Waiting for partner go-out yes/no.')
       return {
         state: current,
@@ -232,13 +238,21 @@ export function runAiTurn(
         'chat',
         partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)
           ? 'Asking partner again before going out (2+ cards).'
-          : 'Asking partner before going out (2+ cards).',
+          : earlyCleared
+            ? 'Announcing go-out with standing clearance (2+ cards).'
+            : 'Asking partner before going out (2+ cards).',
       )
-      return {
-        state: current,
-        chatMessage: earlyGoOutAsk,
-        awaitingPartner: true,
-        debugTrace: debug?.trace,
+      if (earlyCleared) {
+        /* Standing Yes / "You should go out!" — still announce, then finish. */
+        chatMessage = earlyGoOutAsk
+        messages = [...messages, earlyGoOutAsk]
+      } else {
+        return {
+          state: current,
+          chatMessage: earlyGoOutAsk,
+          awaitingPartner: true,
+          debugTrace: debug?.trace,
+        }
       }
     }
   }
@@ -538,15 +552,21 @@ export function runAiTurn(
       canTeamGoOut(team.books, team.meldThresholdMet)
 
     /*
-     * Ask while 2+ cards remain (never on the final card — discarding that
-     * goes out, so the partner would have no real choice). Mid-turn after No
-     * does not immediately re-ask; a later turn that started in `draw` may.
+     * Ask while 2+ cards remain. Always announce before going out — standing
+     * clearance still gets a visible "I can go out!" then may finish same turn.
+     * Last-card fallback: if somehow on the final card with no ask yet, ask
+     * (or announce + finish when already cleared) so go-out is never silent.
      */
     if (partnerIsHuman) {
-      if (awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx)) {
+      const endCleared = hasPartnerGoOutApproval(current, seatIndex, messages)
+      if (
+        awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx) &&
+        !endCleared
+      ) {
         debug?.step('chat', 'Waiting for partner go-out yes/no.')
         return {
           state: current,
+          chatMessage,
           awaitingPartner: true,
           debugTrace: debug?.trace,
         }
@@ -561,17 +581,53 @@ export function runAiTurn(
           'chat',
           partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)
             ? 'Asking partner again before going out (2+ cards).'
-            : 'Asking partner before going out (2+ cards).',
+            : endCleared
+              ? 'Announcing go-out with standing clearance (2+ cards).'
+              : 'Asking partner before going out (2+ cards).',
         )
-        return {
-          state: current,
-          chatMessage: goOutAsk,
-          awaitingPartner: true,
-          debugTrace: debug?.trace,
+        if (endCleared) {
+          chatMessage = goOutAsk
+          messages = [...messages, goOutAsk]
+        } else {
+          return {
+            state: current,
+            chatMessage: goOutAsk,
+            awaitingPartner: true,
+            debugTrace: debug?.trace,
+          }
         }
       }
 
-      if (lastFoot && !hasPartnerGoOutApproval(current, seatIndex, messages)) {
+      if (lastFoot && !latestReadyGoOutFrom(messages, seatIndex)) {
+        if (partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)) {
+          debug?.step('discard', 'Partner said no to go-out — holding last card.')
+          const pass = passTurnKeepingLastFootCard(current)
+          return {
+            state: pass.error ? current : pass.state,
+            chatMessage,
+            debugTrace: debug?.trace,
+          }
+        }
+
+        const signal = createReadyGoOutSignal(
+          seatIndex,
+          currentPlayer.profile.name,
+          currentPlayer.profile.avatar,
+        )
+        debug?.step('chat', 'Asking partner before going out (last card fallback).')
+
+        if (endCleared) {
+          chatMessage = signal
+          messages = [...messages, signal]
+        } else {
+          return {
+            state: current,
+            chatMessage: signal,
+            awaitingPartner: true,
+            debugTrace: debug?.trace,
+          }
+        }
+      } else if (lastFoot && !endCleared) {
         debug?.step(
           'discard',
           partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)
@@ -581,6 +637,7 @@ export function runAiTurn(
         const pass = passTurnKeepingLastFootCard(current)
         return {
           state: pass.error ? current : pass.state,
+          chatMessage,
           debugTrace: debug?.trace,
         }
       }

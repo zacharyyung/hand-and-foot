@@ -13,7 +13,6 @@ import {
   createReadyGoOutSignal,
   createWildRequestSignal,
   DENY_GO_OUT_TEXT,
-  hasPartnerGoOutApproval,
   hasPartnerWildApprovalForBook,
   pendingPartnerGoOutRequest,
   pendingPartnerWildRequest,
@@ -196,8 +195,6 @@ export function maybeAiChatSignal(
 
   const partnerIdx = partnerSeat(seatIndex, state.playerCount as PlayerCount)
   if (awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx)) return null
-  /* Already cleared — no need to ask again. */
-  if (hasPartnerGoOutApproval(state, seatIndex, messages)) return null
 
   const pub = buildAiPublicState(state, seatIndex)
   if (!pub.isPlayingFoot) return null
@@ -205,13 +202,14 @@ export function maybeAiChatSignal(
   if (player.foot.length > 0) return null
 
   const handLen = pub.myHand.length
-  /* Never ask on the final card — discarding it goes out anyway. */
+  /* Prefer asking with 2+ cards — last-card fallback lives in runAiTurn. */
   if (handLen < 2) return null
 
   const partnerIsHuman = state.players[partnerIdx]?.profile.isHuman === true
   /*
-   * Human partner: ask as soon as books are ready with 2+ cards left, before
-   * melding down to one. AI partners only broadcast when closing (2–4 cards).
+   * Human partner: always announce when books are ready with 2+ cards, even if
+   * standing clearance already exists (runAiTurn may finish the same turn).
+   * AI partners only broadcast when closing (2–4 cards).
    */
   if (!partnerIsHuman && handLen > 4) return null
 

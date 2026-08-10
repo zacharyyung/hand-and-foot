@@ -447,7 +447,7 @@ export function canTeamGoOut(books: Book[], meldThresholdMet: boolean): boolean 
 export function discardCard(
   state: GameState,
   cardId: string,
-  _chatMessages: ChatMessage[] = [],
+  chatMessages: ChatMessage[] = [],
 ): { state: GameState; error?: string } {
   if (state.turnPhase !== 'play' && state.turnPhase !== 'discard') {
     return { state, error: 'You must draw before discarding.' }
@@ -469,6 +469,16 @@ export function discardCard(
           'Cannot go out — need 1 completed clean book and 1 completed dirty book (7+ each).',
       }
     }
+    /* Defense in depth: AI with a human partner cannot go out without asking. */
+    if (
+      !player.profile.isHuman &&
+      !shouldAiAttemptGoOut(state, playerIndex, chatMessages)
+    ) {
+      return {
+        state,
+        error: 'Your AI partner must ask in table chat before going out.',
+      }
+    }
   }
 
   const willBeEmpty = player.hand.length === 1
@@ -477,7 +487,8 @@ export function discardCard(
     player.isPlayingFoot &&
     player.foot.length === 0 &&
     !player.footOnHold &&
-    canTeamGoOut(team.books, team.meldThresholdMet)
+    canTeamGoOut(team.books, team.meldThresholdMet) &&
+    (player.profile.isHuman || shouldAiAttemptGoOut(state, playerIndex, chatMessages))
 
   const newHand = removeCardsFromHand(player.hand, [cardId])
   let updatedPlayer: PlayerState = { ...player, hand: newHand }
@@ -519,7 +530,7 @@ export function canGoOut(state: GameState): boolean {
   return canTeamGoOut(team.books, team.meldThresholdMet)
 }
 
-/** Whether the active player may discard to go out (partner chat is advisory). */
+/** Whether the active player may discard to go out. Humans may always; AI needs partner ask/approval. */
 export function canPlayerGoOut(
   state: GameState,
   chatMessages: ChatMessage[] = [],
