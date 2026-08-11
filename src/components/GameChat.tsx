@@ -351,7 +351,8 @@ export function GameChat({
 
                 {partnerClearedToGoOut && !partnerRequest && (
                   <p className="rounded-lg bg-emerald-500/12 px-2.5 py-2 text-center text-[10px] leading-relaxed text-emerald-200/90 ring-1 ring-emerald-400/25">
-                    You cleared {partner.profile.name} to go out — they won&apos;t ask again.
+                    You cleared {partner.profile.name} to go out — they will still ask for a Yes
+                    when ready, then finish after you approve.
                   </p>
                 )}
 

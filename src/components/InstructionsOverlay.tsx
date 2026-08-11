@@ -145,10 +145,11 @@ export function InstructionsOverlay({ open, onClose }: InstructionsOverlayProps)
               go out if all requirements are met and you think it is the right move.
             </p>
             <p className="mt-2">
-              Your AI partner always asks before going out. Saying <strong>No</strong> keeps them
-              from going out for now — they may ask again on a later turn. Use{' '}
-              <strong>You should go out!</strong> in table chat to clear them — they still announce{' '}
-              <strong>I can go out!</strong>, then finish if books are set.
+              Your AI partner always asks before going out and waits for your Yes or No.
+              Saying <strong>No</strong> keeps them from going out for now — they may ask again
+              on a later turn. Use <strong>You should go out!</strong> in table chat to clear a
+              No (or answer an ask) — they still show the Yes/No prompt when they are ready, then
+              finish only after you approve that ask.
             </p>
           </section>
 

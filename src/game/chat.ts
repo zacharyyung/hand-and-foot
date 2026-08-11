@@ -712,6 +712,8 @@ function partnerApprovedGoOut(
 /**
  * Partner cleared going out — either replied yes to an ask, or proactively said
  * "You should go out!" (standing approval until a later deny).
+ * Standing clearance alone does not let the AI skip the Yes/No pause — see
+ * hasExplicitGoOutApproval / shouldAiAttemptGoOut.
  */
 export function hasPartnerGoOutApproval(
   state: GameState,
@@ -721,6 +723,21 @@ export function hasPartnerGoOutApproval(
   const partnerIdx = partnerSeat(seatIndex, state.playerCount as PlayerCount)
   if (latestPartnerGoOutAdvice(messages, partnerIdx) === 'approve') return true
 
+  const myReady = latestReadyGoOutFrom(messages, seatIndex)
+  if (!myReady) return false
+  return partnerApprovedGoOut(messages, partnerIdx, myReady.timestamp)
+}
+
+/**
+ * Human said Yes (or "You should go out!") to the AI's latest go-out ask.
+ * Standing clearance from before the ask does not count — each ask needs a reply.
+ */
+export function hasExplicitGoOutApproval(
+  messages: ChatMessage[],
+  seatIndex: number,
+  playerCount: PlayerCount,
+): boolean {
+  const partnerIdx = partnerSeat(seatIndex, playerCount)
   const myReady = latestReadyGoOutFrom(messages, seatIndex)
   if (!myReady) return false
   return partnerApprovedGoOut(messages, partnerIdx, myReady.timestamp)
@@ -758,7 +775,8 @@ export function shouldAiAttemptGoOut(
     if (!latestReadyGoOutFrom(messages, seatIndex)) return false
     /* Human No blocks going out until Yes / "You should go out!" (AI may re-ask later). */
     if (partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)) return false
-    if (hasPartnerGoOutApproval(state, seatIndex, messages)) return true
+    /* Must have Yes to this ask — do not finish on standing clearance alone. */
+    if (hasExplicitGoOutApproval(messages, seatIndex, playerCount)) return true
     /* Wait for the human's yes/no before discarding the last card. */
     if (awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx)) return false
     return false
