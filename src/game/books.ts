@@ -270,8 +270,8 @@ export function selectionIncludesWild(hand: Card[], selectedIds: string[]): bool
 }
 
 /**
- * Prefer a natural-rank match, then an already-dirty book, then the largest book.
- * Used for lone-wild adds so the UI does not default onto a clean book.
+ * Prefer a natural-rank match, then an already-dirty book, then a strategic clean
+ * target for wilds (complete a 6-card dirty, else the smallest incomplete clean).
  */
 export function pickPreferredAddBook(
   matches: Book[],
@@ -289,7 +289,29 @@ export function pickPreferredAddBook(
 
   const dirty = matches.filter((b) => !isCleanBook(b))
   if (dirty.length > 0) {
+    /* Prefer completing a dirty book, else the largest dirty pile. */
+    const almostDone = dirty.filter((b) => b.cards.length === 6)
+    if (almostDone.length > 0) {
+      return [...almostDone].sort((a, b) => b.cards.length - a.cards.length)[0]
+    }
     return [...dirty].sort((a, b) => b.cards.length - a.cards.length)[0]
+  }
+
+  const wildOnly =
+    selected.length > 0 &&
+    selected.every((c) => isWildCard(c) || isRedThree(c))
+
+  if (wildOnly) {
+    const sixCard = matches.filter((b) => b.cards.length === 6)
+    if (sixCard.length > 0) return sixCard[0]
+
+    const incomplete = matches.filter((b) => b.cards.length < 7)
+    if (incomplete.length > 0) {
+      return [...incomplete].sort((a, b) => a.cards.length - b.cards.length)[0]
+    }
+
+    /* Last resort among completed cleans: dirty the smallest one. */
+    return [...matches].sort((a, b) => a.cards.length - b.cards.length)[0]
   }
 
   return [...matches].sort((a, b) => b.cards.length - a.cards.length)[0]

@@ -434,6 +434,71 @@ export function teamHasCompletedDirtyBook(books: Book[]): boolean {
   return books.some((b) => b.cards.length >= 7 && isDirtyBook(b))
 }
 
+/**
+ * Point-aware score for dirtying a clean book with wilds.
+ * Higher is better. Call only after justifyDirtyingCleanBook allows it.
+ *
+ * Priorities:
+ * 1. Completing a 6-card book into a dirty (+100) — especially when needed to go out
+ * 2. Dumping wilds onto the smallest incomplete clean books (least clean-bonus waste)
+ * 3. Avoid dirtying large completed cleans (lose 200 from the 300→100 bonus)
+ */
+export function scoreWildOnCleanTarget(
+  book: Book,
+  cards: Card[],
+  teamBooks: Book[],
+  opts: {
+    urgency: 'low' | 'medium' | 'high'
+    canTeamGoOut: boolean
+    nearGoOut: boolean
+  },
+): number {
+  if (!isCleanBook(book) || countWildsInCards(cards) === 0) return 0
+
+  const size = book.cards.length
+  const newSize = size + cards.length
+  const completes = newSize >= 7
+  const otherCompletedClean = teamBooks.some(
+    (b) => b.id !== book.id && b.cards.length >= 7 && isCleanBook(b),
+  )
+  const needsDirtyCompleted = !teamHasCompletedDirtyBook(teamBooks)
+
+  let score = 0
+
+  /* Completing a near-done book as dirty: bank the +100 bonus now. */
+  if (size === 6 && completes) {
+    score += 220
+    if (needsDirtyCompleted && otherCompletedClean) score += 180
+    if (opts.canTeamGoOut || opts.nearGoOut) score += 120
+    if (opts.urgency === 'high') score += 40
+    return score
+  }
+
+  /* Completing from 5 with multiple cards into dirty. */
+  if (size === 5 && completes) {
+    score += 90
+    if (needsDirtyCompleted && otherCompletedClean) score += 100
+    if (opts.canTeamGoOut || opts.nearGoOut) score += 60
+  }
+
+  /* Dirtying an already-completed clean burns 200 bonus points — last resort. */
+  if (size >= 7) {
+    score -= 250
+    /* Bigger completed cleans are worse to dirty (more natural progress wasted). */
+    score -= Math.min(size - 7, 6) * 35
+    if (opts.urgency === 'high' && opts.nearGoOut) score += 40
+    return score
+  }
+
+  /*
+   * Dumping onto incomplete cleans: prefer the fewest cards so a short pile
+   * becomes dirty instead of a nearly-clean book that was close to +300.
+   */
+  score += (6 - size) * 45
+  if (opts.urgency === 'high') score += 20
+  return score
+}
+
 function teammates(otherPlayers: AiPublicState['otherPlayers'], myTeamId: number) {
   return otherPlayers.filter((p) => p.teamId === myTeamId)
 }
@@ -498,7 +563,7 @@ export function hasAlternativeWildTarget(
 }
 
 /**
- * Wild on a clean book costs a 300-point bonus — only allow when dumping/endgame
+ * Wild on a clean book costs a 300→100 bonus swing — only allow when dumping/endgame
  * or completing the team's required dirty book to go out.
  * Never destroy the only completed clean book (that breaks go-out).
  */
@@ -526,6 +591,7 @@ export function justifyDirtyingCleanBook(
     booksWithWildAddedThisTurn,
   )
 
+  /* Prefer already-dirty books whenever they can take the wild. */
   if (alternative) return false
 
   const newSize = book.cards.length + cards.length
@@ -535,21 +601,44 @@ export function justifyDirtyingCleanBook(
   )
   const needsDirtyCompleted = !teamHasCompletedDirtyBook(books)
   const earlyRound = pub.teamScore <= 999 && urgency === 'low'
+  const nearGoOut =
+    partnerNearGoOut(pub.otherPlayers, pub.myTeamId, chatMessages, state) ||
+    (pub.isPlayingFoot && pub.myHand.length <= 4 && pub.myFootCount === 0)
 
   if (earlyRound) return false
 
+  /*
+   * Best case: finish a 5–6 card clean as a *new* dirty completion (+100) to unlock
+   * go-out. Dirtying an already-completed clean (7+) is handled only as a dump last resort.
+   */
   const completesForGoOut =
     completes &&
     otherCompletedClean &&
     needsDirtyCompleted &&
-    book.cards.length >= 6
+    book.cards.length >= 5 &&
+    book.cards.length < 7
 
-  if (completesForGoOut && (urgency !== 'low' || book.cards.length === 6)) {
-    return true
+  if (completesForGoOut) {
+    if (book.cards.length === 6) return true
+    if (urgency !== 'low' || nearGoOut) return true
   }
 
   /* Urgency dumps are allowed only when another completed clean book remains. */
   if (!otherCompletedClean) return false
+
+  /* Prefer dumping onto incomplete piles — never burn a big completed clean first. */
+  const dumpingOntoSmallIncomplete = book.cards.length < 7
+  const mustShedWilds =
+    pub.myHand.length <= 4 &&
+    pub.myHand.filter((c) => isWildCard(c) && !isRedThree(c)).length > 0
+
+  if (
+    dumpingOntoSmallIncomplete &&
+    (nearGoOut || mustShedWilds) &&
+    (urgency !== 'low' || pub.stockCount <= 25)
+  ) {
+    return true
+  }
 
   if (
     urgency === 'high' &&
@@ -557,7 +646,7 @@ export function justifyDirtyingCleanBook(
     pub.myHand.length <= 3 &&
     partnerNearGoOut(pub.otherPlayers, pub.myTeamId, chatMessages, state)
   ) {
-    return true
+    return dumpingOntoSmallIncomplete
   }
 
   if (
@@ -570,7 +659,7 @@ export function justifyDirtyingCleanBook(
       state?.playerCount as PlayerCount | undefined,
     )
   ) {
-    return true
+    return dumpingOntoSmallIncomplete
   }
 
   if (
@@ -578,7 +667,17 @@ export function justifyDirtyingCleanBook(
     heldCards >= 14 &&
     pub.stockCount <= 25 &&
     completes &&
-    book.cards.length >= 5
+    book.cards.length >= 5 &&
+    book.cards.length < 7
+  ) {
+    return true
+  }
+
+  /* Late-game dump: shed wilds onto the smallest incomplete cleans. */
+  if (
+    urgency === 'high' &&
+    dumpingOntoSmallIncomplete &&
+    (pub.myHand.length <= 4 || pub.stockCount <= 20)
   ) {
     return true
   }
@@ -698,6 +797,11 @@ export function pickBestAddToBook(
   const urgency = meldPressure(pub)
   const heldCards = pub.myHand.length + pub.myFootCount
   const aggressive = urgency === 'high' || (urgency === 'medium' && heldCards >= 12)
+  const nearGoOut =
+    partnerNearGoOut(pub.otherPlayers, pub.myTeamId, chatMessages, state) ||
+    (pub.isPlayingFoot && pub.myHand.length <= 4 && pub.myFootCount === 0)
+  const canGoOutNow =
+    teamHasCompletedCleanBook(teamBooks) && teamHasCompletedDirtyBook(teamBooks)
 
   const scored = allowed.map((action) => {
     const book = teamBooks.find((b) => b.id === action.bookId)!
@@ -711,7 +815,13 @@ export function pickBestAddToBook(
     let score = action.priority
 
     if (clean && wildsAdded > 0) {
-      score -= difficulty === 'expert' ? 400 : 300
+      /* Base cost of giving up a clean bonus path — strategy score differentiates targets. */
+      score -= difficulty === 'expert' ? 280 : 220
+      score += scoreWildOnCleanTarget(book, cards, teamBooks, {
+        urgency,
+        canTeamGoOut: canGoOutNow,
+        nearGoOut,
+      })
     }
 
     if (clean && naturalsAdded > 0) {
@@ -721,7 +831,11 @@ export function pickBestAddToBook(
     }
 
     if (!clean && wildsAdded > 0 && bookWildCount(book) < 2) {
-      score += 20
+      /* Dirty books are the default wild sink — prefer completing them. */
+      score += 40
+      if (book.cards.length === 6 && completes) score += 80
+      else if (completes) score += 35
+      else score += Math.max(0, 6 - book.cards.length) * 5
     }
 
     if (naturalsAdded > 0 && !clean) {
@@ -760,28 +874,47 @@ export function pickBestAddToBook(
       score += Math.min(heldCards, 24) * (urgency === 'high' ? 2 : 1)
     }
 
-    return { action, score }
+    return { action, score, book, cards, wildsAdded, clean, completes }
   })
 
   scored.sort((a, b) => b.score - a.score)
 
-  const naturalOnClean = scored.filter(({ action }) => {
-    const book = teamBooks.find((b) => b.id === action.bookId)!
-    const cards = hand.filter((c) => action.cardIds.includes(c.id))
-    return isCleanBook(book) && countWildsInCards(cards) === 0
+  const naturalOnClean = scored.filter(
+    ({ clean, wildsAdded }) => clean && wildsAdded === 0,
+  )
+
+  const strategicWildOnClean = scored.filter(({ clean, wildsAdded, book, completes }) => {
+    if (!clean || wildsAdded === 0) return false
+    /* Always allow justified wild-on-clean that completes a dirty for go-out. */
+    if (
+      book.cards.length >= 5 &&
+      completes &&
+      !teamHasCompletedDirtyBook(teamBooks) &&
+      teamHasCompletedCleanBook(teamBooks)
+    ) {
+      return true
+    }
+    return aggressive || nearGoOut
   })
 
-  const pool = aggressive
-    ? scored
-    : naturalOnClean.length > 0
-      ? naturalOnClean
-      : scored.filter(({ action }) => {
-          const book = teamBooks.find((b) => b.id === action.bookId)!
-          const cards = hand.filter((c) => action.cardIds.includes(c.id))
-          return countWildsInCards(cards) === 0 || !isCleanBook(book)
-        })
+  const nonCleanOrNatural = scored.filter(
+    ({ clean, wildsAdded }) => wildsAdded === 0 || !clean,
+  )
+
+  let pool = scored
+  if (!aggressive) {
+    if (naturalOnClean.length > 0) {
+      pool = [...naturalOnClean, ...strategicWildOnClean]
+    } else if (strategicWildOnClean.length > 0) {
+      pool = [...nonCleanOrNatural, ...strategicWildOnClean]
+    } else {
+      pool = nonCleanOrNatural
+    }
+  }
 
   if (pool.length === 0) return null
+
+  pool.sort((a, b) => b.score - a.score)
 
   if (
     difficulty === 'normal' &&
@@ -815,8 +948,16 @@ export function pickLoneWildAdd(
     return cardPointValue(b) - cardPointValue(a)
   })
 
+  /* Prefer completing a 6-card dirty (+100), then fill toward completion. */
+  const orderedDirty = [...dirtyBooks].sort((a, b) => {
+    const aComplete = a.cards.length === 6 ? 2 : a.cards.length >= 5 ? 1 : 0
+    const bComplete = b.cards.length === 6 ? 2 : b.cards.length >= 5 ? 1 : 0
+    if (aComplete !== bComplete) return bComplete - aComplete
+    return b.cards.length - a.cards.length
+  })
+
   for (const wild of orderedWilds) {
-    for (const book of dirtyBooks) {
+    for (const book of orderedDirty) {
       if (booksWithWildAddedThisTurn.includes(book.id)) continue
       const check = canAddToBook(book, [wild], {
         wildAlreadyAddedThisTurn: false,

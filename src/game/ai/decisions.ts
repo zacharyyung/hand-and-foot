@@ -169,8 +169,23 @@ export function findAddToBookActions(
           (newSize >= 7 ? 100 : newSize * 10) + combo.length
         if (bookIsClean && wildsInCombo > 0) {
           priority -= 800
+          /*
+           * Among clean wild targets: prefer completing a 6-card dirty book,
+           * then the smallest incomplete piles — never favor the largest clean.
+           */
+          if (book.cards.length === 6 && newSize >= 7) {
+            priority += 250
+          } else if (book.cards.length >= 7) {
+            priority -= 150 + Math.min(book.cards.length - 7, 6) * 20
+          } else {
+            priority += (6 - book.cards.length) * 20
+          }
         } else if (wildsInCombo === 0) {
           priority += 25
+        } else if (!bookIsClean && wildsInCombo > 0) {
+          /* Dirty sinks: prefer completing or filling toward 7. */
+          if (book.cards.length === 6 && newSize >= 7) priority += 80
+          else if (newSize >= 7) priority += 40
         }
         actions.push({
           type: 'addToBook',
