@@ -314,7 +314,7 @@ const state = stubState()
 assert(canAiSendWildRequest(state, 2, []), 'AI can send wild request')
 assert(isAllowedChatMessage(state, ask, []), 'wild_request allowed by chat validation')
 
-/* With 2+ cards and books ready, AI asks before going out — not on the last card. */
+/* Ask only after melding down to the last foot card when books are ready. */
 const twoCardState = {
   ...state,
   players: state.players.map((p, i) =>
@@ -329,18 +329,43 @@ const twoCardState = {
 const twoCardAsk = runAiTurn(twoCardState, [])
 assert(
   twoCardAsk.chatMessage?.type === 'ready_go_out',
-  'AI asks to go out while holding at least 2 cards',
+  'AI asks to go out after melding down to the last card',
 )
 assert(
-  twoCardAsk.state.players[2].hand.length >= 2,
-  'AI still has 2+ cards when the go-out ask is sent',
+  twoCardAsk.state.players[2].hand.length === 1,
+  'AI is on the last foot card when the go-out ask is sent',
 )
 assert(twoCardAsk.awaitingPartner === true, 'AI pauses for human go-out reply')
+assert(twoCardAsk.state.wentOutTeamId === null, 'ask turn does not go out yet')
+
+/* Unmeldable 2 cards: do not ask early — Yes would not be able to go out. */
+const unmeldableTwo = {
+  ...state,
+  players: state.players.map((p, i) =>
+    i === 2
+      ? {
+          ...p,
+          hand: [card('u4', '4'), card('u5', '5', 'diamonds')],
+        }
+      : p,
+  ),
+}
+const unmeldableTurn = runAiTurn(unmeldableTwo, [])
+assert(
+  unmeldableTurn.chatMessage?.type !== 'ready_go_out',
+  'AI does not ask to go out while holding 2 unmeldable cards',
+)
+assert(unmeldableTurn.awaitingPartner !== true, 'no go-out pause with 2 unmeldable cards')
+assert(unmeldableTurn.state.wentOutTeamId === null, 'unmeldable 2-card turn does not go out')
+assert(
+  unmeldableTurn.state.players[2].hand.length === 1,
+  'AI discards one unmeldable card and keeps playing',
+)
 
 const oneCardAsk = runAiTurn(state, [])
 assert(
   oneCardAsk.chatMessage?.type === 'ready_go_out',
-  'AI asks to go out on last card when no earlier ask happened',
+  'AI asks to go out on last card when books qualify',
 )
 assert(oneCardAsk.awaitingPartner === true, 'last-card ask pauses for yes/no')
 assert(oneCardAsk.state.wentOutTeamId === null, 'last-card ask does not go out yet')
@@ -355,7 +380,7 @@ assert(
   'AI does not go out before asking human',
 )
 
-/* Last-card fallback: always ask (never go out silently) when somehow on 1 card. */
+/* Last-card ask: always pause (never go out silently). */
 const askTurn = runAiTurn(state, [])
 assert(askTurn.chatMessage?.type === 'ready_go_out', 'AI asks before going out on last card')
 assert(askTurn.awaitingPartner === true, 'AI pauses for yes/no after asking')
@@ -398,6 +423,27 @@ assert(
   shouldAiAttemptGoOut(state, 2, [goOutAsk, goOutYes]),
   'AI goes out after human says yes',
 )
+
+/* Yes after a real last-card ask must finish the round (reported bug). */
+const yesAfterLastAsk = {
+  ...createApproveGoOutSignal(0, 'You', '🧑'),
+  timestamp: (askTurn.chatMessage?.timestamp ?? 0) + 1,
+}
+const afterLastYes = runAiTurn(askTurn.state, [askTurn.chatMessage!, yesAfterLastAsk])
+assert(afterLastYes.state.phase === 'roundEnd', 'Yes after last-card ask goes out')
+assert(afterLastYes.state.wentOutTeamId === 0, 'correct team went out after last-card Yes')
+
+/* Meldable 2-card hand: ask on last card, then Yes goes out. */
+const yesAfterTwoCardAsk = {
+  ...createApproveGoOutSignal(0, 'You', '🧑'),
+  timestamp: (twoCardAsk.chatMessage?.timestamp ?? 0) + 1,
+}
+const afterTwoCardYes = runAiTurn(twoCardAsk.state, [
+  twoCardAsk.chatMessage!,
+  yesAfterTwoCardAsk,
+])
+assert(afterTwoCardYes.state.phase === 'roundEnd', 'Yes after meld-down ask goes out')
+assert(afterTwoCardYes.state.wentOutTeamId === 0, 'correct team went out after meld-down Yes')
 
 /* Standing clearance still requires a visible ask and Yes/No pause. */
 const proactiveTurn = runAiTurn(state, [proactiveOnly])
@@ -465,7 +511,7 @@ assert(
   'after No AI ends its turn without discarding to go out',
 )
 
-/* Next turn after No: AI may ask again with 2+ cards (No is not permanent). */
+/* Next turn after No: AI may ask again on the last card (No is not permanent). */
 const nextTurnAfterNo = stubState({
   currentPlayerIndex: 2,
   turnPhase: 'draw',
@@ -475,7 +521,7 @@ const nextTurnAfterNo = stubState({
     i === 2
       ? {
           ...p,
-          hand: [card('nlast', 'Q')],
+          hand: [card('nlast', '4')],
           foot: [],
           isPlayingFoot: true,
           footOnHold: false,
@@ -489,8 +535,8 @@ assert(
   'AI asks to go out again on a later turn after No',
 )
 assert(
-  reAskTurn.state.players[2].hand.length >= 2,
-  're-ask still holds at least 2 cards',
+  reAskTurn.state.players[2].hand.length === 1,
+  're-ask is on the last foot card',
 )
 assert(reAskTurn.awaitingPartner === true, 're-ask pauses for yes/no again')
 assert(
@@ -512,12 +558,22 @@ assert(
 )
 
 /* After Yes, a later turn must ask again (never silent go-out on a stale Yes). */
-const clearedTwoCard = {
-  ...twoCardState,
+const clearedLastCard = stubState({
   turnPhase: 'draw' as const,
   stock: [card('cs1', 'K'), card('cs2', 'K', 'diamonds'), card('cs3', '6')],
   discard: [card('cd1', '3', 'spades')],
-}
+  players: stubState().players.map((p, i) =>
+    i === 2
+      ? {
+          ...p,
+          hand: [card('staleLast', '4')],
+          foot: [],
+          isPlayingFoot: true,
+          footOnHold: false,
+        }
+      : p,
+  ),
+})
 const priorYesOnly = {
   ...createApproveGoOutSignal(0, 'You', '🧑'),
   timestamp: 1,
@@ -526,7 +582,7 @@ const priorAskOld = {
   ...createReadyGoOutSignal(2, 'AI', '🤖'),
   timestamp: 0,
 }
-const announceAgain = runAiTurn(clearedTwoCard, [priorAskOld, priorYesOnly])
+const announceAgain = runAiTurn(clearedLastCard, [priorAskOld, priorYesOnly])
 assert(
   announceAgain.chatMessage?.type === 'ready_go_out',
   'AI re-asks go-out on a later turn even after a prior Yes',
@@ -534,6 +590,10 @@ assert(
 assert(announceAgain.awaitingPartner === true, 'later turn pauses for a fresh Yes/No')
 assert(announceAgain.state.phase === 'playing', 'later turn does not finish on a stale Yes')
 assert(announceAgain.state.wentOutTeamId === null, 'no silent go-out after a prior-turn Yes')
+assert(
+  announceAgain.state.players[2].hand.length === 1,
+  're-ask after stale Yes is still on the last card',
+)
 
 /* --- Ask-before-place: wild must not be on the book while the prompt is up --- */
 function bookFromState(game: GameState, id: string): Book {

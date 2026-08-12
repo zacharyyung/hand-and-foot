@@ -27,7 +27,6 @@ import {
   deniedWildBookIds,
   hasExplicitGoOutApproval,
   hasPartnerWildApprovalForBook,
-  latestReadyGoOutFrom,
   partnerAdvisedAgainstGoOut,
   partnerDeniedLatestWildAsk,
   wasPartnerWildDeniedForBook,
@@ -212,38 +211,15 @@ export function runAiTurn(
   const baselineForWildAsk = current
 
   /*
-   * Ask to go out while still holding 2+ cards — before melding down to one.
-   * Always pause for Yes/No. Standing "You should go out!" clears a prior No
-   * but does not skip the overlay. After Yes, only a mid-turn resume (same
-   * turn) may finish — a later turn must ask again.
-   * Mid-turn resume after No does not immediately re-ask.
+   * Stay paused while the human answers a go-out Yes/No. The ask itself happens
+   * later — only once the AI is on the last foot card with books ready — so a
+   * Yes always means discard-to-go-out (not an early 2-card tease).
    */
   if (partnerIsHuman && current.turnPhase === 'play') {
-    const midTurnResume = state.turnPhase === 'play'
-    const earlyApproved =
-      midTurnResume && hasExplicitGoOutApproval(messages, seatIndex, playerCount)
     if (awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx)) {
       debug?.step('chat', 'Waiting for partner go-out yes/no.')
       return {
         state: current,
-        awaitingPartner: true,
-        debugTrace: debug?.trace,
-      }
-    }
-    const earlyGoOutAsk = maybeAiChatSignal(current, seatIndex, messages)
-    const midTurnAfterNo =
-      partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount) &&
-      state.turnPhase === 'play'
-    if (earlyGoOutAsk && !midTurnAfterNo && !earlyApproved) {
-      debug?.step(
-        'chat',
-        partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)
-          ? 'Asking partner again before going out (2+ cards).'
-          : 'Asking partner before going out (2+ cards).',
-      )
-      return {
-        state: current,
-        chatMessage: earlyGoOutAsk,
         awaitingPartner: true,
         debugTrace: debug?.trace,
       }
@@ -265,24 +241,11 @@ export function runAiTurn(
     const urgency = meldPressure(pub)
     const addAttempts = urgency === 'high' ? 4 : urgency === 'medium' ? 3 : 2
     const teamReady = canTeamGoOut(team.books, team.meldThresholdMet)
-    const midTurnResume = state.turnPhase === 'play'
-    const goOutApproved =
-      midTurnResume && hasExplicitGoOutApproval(messages, seatIndex, playerCount)
-    const goOutDenied = partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)
-    if (
-      pub.isPlayingFoot &&
-      teamReady &&
-      (pub.myHand.length === 1 ||
-        (partnerIsHuman &&
-          pub.myHand.length <= 2 &&
-          !goOutApproved &&
-          !goOutDenied))
-    ) {
+    /* Last foot card + books ready: stop melding and discard (or ask) to go out. */
+    if (pub.isPlayingFoot && teamReady && pub.myHand.length === 1) {
       debug?.step(
         'meld',
-        pub.myHand.length === 1
-          ? 'Foot has 1 card and team can go out — skipping meld to discard.'
-          : 'Holding 2 cards to ask partner before going out — skipping further melds.',
+        'Foot has 1 card and team can go out — skipping meld to discard.',
       )
       break
     }
@@ -547,14 +510,15 @@ export function runAiTurn(
       canTeamGoOut(team.books, team.meldThresholdMet)
 
     /*
-     * Ask while 2+ cards remain. Always pause for Yes/No — standing clearance
-     * does not skip the overlay. After an explicit Yes, only mid-turn resume
-     * may finish; a later turn asks again. Last-card fallback asks + pauses.
+     * Human partner: ask Yes/No only when on the last foot card and the team
+     * meets go-out conditions. Standing clearance still requires a fresh ask;
+     * only a Yes to that ask (mid-turn resume) finishes the round.
      */
     if (partnerIsHuman) {
       const midTurnResume = state.turnPhase === 'play'
       const endApproved =
         midTurnResume && hasExplicitGoOutApproval(messages, seatIndex, playerCount)
+
       if (awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx)) {
         debug?.step('chat', 'Waiting for partner go-out yes/no.')
         return {
@@ -565,27 +529,15 @@ export function runAiTurn(
         }
       }
 
-      const goOutAsk = maybeAiChatSignal(current, seatIndex, messages)
-      const midTurnAfterNo =
-        partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount) &&
-        state.turnPhase === 'play'
-      if (goOutAsk && !midTurnAfterNo && !endApproved) {
-        debug?.step(
-          'chat',
-          partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)
-            ? 'Asking partner again before going out (2+ cards).'
-            : 'Asking partner before going out (2+ cards).',
-        )
-        return {
-          state: current,
-          chatMessage: goOutAsk,
-          awaitingPartner: true,
-          debugTrace: debug?.trace,
-        }
-      }
-
-      if (lastFoot && !latestReadyGoOutFrom(messages, seatIndex)) {
-        if (partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)) {
+      if (lastFoot) {
+        if (endApproved) {
+          debug?.step('discard', 'Partner said yes — discarding last card to go out.')
+          /* Fall through to discard / go-out below. */
+        } else if (
+          partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount) &&
+          midTurnResume
+        ) {
+          /* Just said No to this ask — hold the last card until a later turn. */
           debug?.step('discard', 'Partner said no to go-out — holding last card.')
           const pass = passTurnKeepingLastFootCard(current)
           return {
@@ -593,54 +545,28 @@ export function runAiTurn(
             chatMessage,
             debugTrace: debug?.trace,
           }
-        }
-
-        const signal = createReadyGoOutSignal(
-          seatIndex,
-          currentPlayer.profile.name,
-          currentPlayer.profile.avatar,
-        )
-        debug?.step('chat', 'Asking partner before going out (last card fallback).')
-        return {
-          state: current,
-          chatMessage: signal,
-          awaitingPartner: true,
-          debugTrace: debug?.trace,
-        }
-      } else if (lastFoot && !endApproved) {
-        /*
-         * Stale ask+Yes from an earlier turn, or No: hold unless mid-turn Yes.
-         * Prefer a fresh ask when 2+ cards somehow remain; on last card after a
-         * prior-turn Yes, ask again so the human confirms this opportunity.
-         */
-        if (
-          !partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount) &&
-          !midTurnResume
-        ) {
+        } else {
+          /*
+           * First opportunity, new turn after No, or stale prior-turn Yes:
+           * always ask before discarding the last card when books are ready.
+           */
           const signal = createReadyGoOutSignal(
             seatIndex,
             currentPlayer.profile.name,
             currentPlayer.profile.avatar,
           )
-          debug?.step('chat', 'Asking partner again before going out (new turn).')
+          debug?.step(
+            'chat',
+            partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)
+              ? 'Asking partner again before going out (last card).'
+              : 'Asking partner before going out (last card).',
+          )
           return {
             state: current,
             chatMessage: signal,
             awaitingPartner: true,
             debugTrace: debug?.trace,
           }
-        }
-        debug?.step(
-          'discard',
-          partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)
-            ? 'Partner said no to go-out — holding last card.'
-            : 'Last foot card without partner clearance — holding card.',
-        )
-        const pass = passTurnKeepingLastFootCard(current)
-        return {
-          state: pass.error ? current : pass.state,
-          chatMessage,
-          debugTrace: debug?.trace,
         }
       }
     }

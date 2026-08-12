@@ -202,16 +202,14 @@ export function maybeAiChatSignal(
   if (player.foot.length > 0) return null
 
   const handLen = pub.myHand.length
-  /* Prefer asking with 2+ cards — last-card fallback lives in runAiTurn. */
-  if (handLen < 2) return null
-
   const partnerIsHuman = state.players[partnerIdx]?.profile.isHuman === true
   /*
-   * Human partner: always announce when books are ready with 2+ cards, even if
-   * standing clearance already exists (runAiTurn may finish the same turn).
-   * AI partners only broadcast when closing (2–4 cards).
+   * Human partner: ask only on the last foot card (runAiTurn), so Yes always
+   * means discard-to-go-out — never ask early with 2+ unmeldable cards.
+   * AI–AI teams still broadcast when closing (2–4 cards).
    */
-  if (!partnerIsHuman && handLen > 4) return null
+  if (partnerIsHuman) return null
+  if (handLen < 2 || handLen > 4) return null
 
   return createReadyGoOutSignal(
     seatIndex,
