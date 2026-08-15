@@ -321,21 +321,25 @@ assert(
   'AI passes instead of soft-locking on last foot card',
 )
 
-/* Last-card ask when books qualify */
+/* Never ask on the last card alone — No would not be a real choice. */
 const oneCard = goOutState([card('last1', '4')], [cleanBook, dirtyBook])
 const oneCardTurn = runAiTurn(oneCard, [])
 assert(
-  oneCardTurn.chatMessage?.type === 'ready_go_out',
-  'asks on last card when books qualify',
+  oneCardTurn.chatMessage?.type !== 'ready_go_out',
+  'does not ask on last card alone',
 )
-assert(oneCardTurn.awaitingPartner === true, 'last-card ask waits for partner')
-assert(oneCardTurn.state.phase === 'playing', 'does not go out until partner answers')
+assert(oneCardTurn.awaitingPartner !== true, 'no yes/no pause on forced last card')
+assert(oneCardTurn.state.phase === 'playing', 'does not go out without a prior Yes')
 assert(
   oneCardTurn.state.players[2].hand.length === 1,
-  'still holds the last foot card while asking',
+  'still holds the last foot card',
+)
+assert(
+  oneCardTurn.state.currentPlayerIndex !== 2,
+  'passes holding the last card instead of asking',
 )
 
-/* With 2 unmeldable cards, do not ask yet — wait until the last card. */
+/* With 2 unmeldable cards, do not ask yet — Yes could not finish go-out. */
 const ready = goOutState(
   [card('keep1', '4'), card('keep2', '5', 'diamonds')],
   [cleanBook, dirtyBook],
@@ -347,7 +351,7 @@ assert(
 )
 assert(readyAsk.state.wentOutTeamId == null, 'does not go out with 2 unmeldable cards')
 
-/* Meldable extras: meld down to last card, then ask */
+/* Meldable extras: ask with 2+ still in hand, then Yes goes out */
 const meldable = goOutState(
   [card('keepQ1', 'A'), card('keepQ2', '4')],
   [cleanBook, dirtyBook],
@@ -355,15 +359,15 @@ const meldable = goOutState(
 const meldableAsk = runAiTurn(meldable, [])
 assert(
   meldableAsk.chatMessage?.type === 'ready_go_out',
-  'asks after melding down to the last card',
+  'asks with 2+ cards when go-out is reachable',
 )
 assert(
-  meldableAsk.state.players[2].hand.length === 1,
-  'on last card when asking to go out',
+  meldableAsk.state.players[2].hand.length >= 2,
+  'still has 2+ cards when asking to go out',
 )
-assert(meldableAsk.awaitingPartner === true, 'pauses for Yes/No on last card')
+assert(meldableAsk.awaitingPartner === true, 'pauses for Yes/No with 2+ cards')
 
-/* After Yes on the last card, AI goes out */
+/* After Yes on a prior ask while already on last card, AI goes out */
 const lastCardCleared = goOutState([card('last2', '4')], [cleanBook, dirtyBook])
 const priorAskTwo = createReadyGoOutSignal(2, 'AI', 'A')
 const priorYesTwo = {
@@ -374,13 +378,13 @@ const readyDone = runAiTurn(lastCardCleared, [priorAskTwo, priorYesTwo])
 assert(readyDone.state.phase === 'roundEnd', 'goes out with clean+dirty after Yes')
 assert(readyDone.state.wentOutTeamId === 0, 'correct team went out')
 
-/* Mid-turn Yes after last-card ask must go out (the reported bug). */
+/* Mid-turn Yes after 2-card ask must go out. */
 const yesAfterAsk = {
   ...createApproveGoOutSignal(0, 'You', 'Y'),
   timestamp: (meldableAsk.chatMessage?.timestamp ?? 0) + 1,
 }
 const afterYes = runAiTurn(meldableAsk.state, [meldableAsk.chatMessage!, yesAfterAsk])
-assert(afterYes.state.phase === 'roundEnd', 'Yes after last-card ask goes out')
+assert(afterYes.state.phase === 'roundEnd', 'Yes after 2-card ask goes out')
 assert(afterYes.state.wentOutTeamId === 0, 'correct team went out after Yes')
 
 console.log('check-go-out-books: all assertions passed')

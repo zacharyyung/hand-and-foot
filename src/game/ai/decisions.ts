@@ -260,6 +260,48 @@ export function rankStrengthInHand(hand: Card[], rank: Rank): number {
   return hand.filter((c) => c.rank === rank && !isRedThree(c)).length
 }
 
+/**
+ * True when the AI can meld down to exactly one foot card this turn (so a partner
+ * Yes can finish with a go-out discard). Used to ask before the forced last card.
+ */
+export function canMeldDownToLastCard(
+  hand: Card[],
+  teamBooks: Book[],
+  booksWithWildAddedThisTurn: string[] = [],
+  meldThresholdMet = true,
+): boolean {
+  if (hand.length < 2) return false
+
+  let remaining = [...hand]
+  let books = teamBooks.map((b) => ({ ...b, cards: [...b.cards] }))
+  let wildAdded = [...booksWithWildAddedThisTurn]
+
+  for (let guard = 0; guard < 24 && remaining.length > 1; guard++) {
+    const actions = findAddToBookActions(
+      remaining,
+      books,
+      true,
+      wildAdded,
+      meldThresholdMet,
+    ).filter((a) => remaining.length - a.cardIds.length >= 1)
+
+    if (actions.length === 0) break
+
+    const best = actions[0]!
+    const played = new Set(best.cardIds)
+    const cards = remaining.filter((c) => played.has(c.id))
+    remaining = remaining.filter((c) => !played.has(c.id))
+    books = books.map((b) =>
+      b.id === best.bookId ? { ...b, cards: [...b.cards, ...cards] } : b,
+    )
+    if (countWildsInCards(cards) > 0) {
+      wildAdded = [...wildAdded, best.bookId]
+    }
+  }
+
+  return remaining.length === 1
+}
+
 export function bestStartBook(
   actions: AiAction[],
   hand: Card[],
