@@ -779,6 +779,89 @@ assert(
   'after Yes the same wild card is on the book',
 )
 
+/*
+ * Reported bug: after Yes, with a same-rank natural still in hand, the AI must
+ * place the consented wild — not the identity card (leaving the book clean).
+ */
+const naturalOnAskRank = card('tk-nat', 'K', 'hearts')
+const yesWithNaturalState = stubState({
+  roundNumber: 3,
+  teams: [
+    {
+      id: 0,
+      score: 1500,
+      books: [
+        {
+          id: nearCompleteClean.id,
+          rank: 'K',
+          teamId: 0,
+          startedBySeatIndex: 2,
+          cards: [
+            card('yk1', 'K'),
+            card('yk2', 'K', 'diamonds'),
+            card('yk3', 'K', 'clubs'),
+            card('yk4', 'K', 'spades'),
+            card('yk5', 'K'),
+            card('yk6', 'K', 'diamonds'),
+          ],
+        },
+        completedCleanAces,
+      ],
+      meldThresholdMet: true,
+    },
+    {
+      id: 1,
+      score: 1200,
+      books: [],
+      meldThresholdMet: true,
+    },
+  ],
+  players: timingState.players.map((p, i) =>
+    i === 2
+      ? {
+          ...p,
+          hand: [timingWild, naturalOnAskRank, card('yx1', '4')],
+          foot: [],
+          isPlayingFoot: true,
+          footOnHold: false,
+        }
+      : p,
+  ),
+  stock: [card('ys1', '4'), card('ys2', '5')],
+  discard: [card('yd1', '3', 'spades')],
+})
+const askWithNaturalInHand = createWildRequestSignal(
+  2,
+  'AI',
+  '🤖',
+  'K',
+  nearCompleteClean.id,
+)
+const approveWithNatural = {
+  ...createWildApproveSignal(0, 'You', '🧑', nearCompleteClean.id),
+  timestamp: askWithNaturalInHand.timestamp + 1,
+}
+const afterYesWithNatural = runAiTurn(yesWithNaturalState, [
+  askWithNaturalInHand,
+  approveWithNatural,
+])
+const bookAfterYesWithNatural = bookFromState(
+  afterYesWithNatural.state,
+  nearCompleteClean.id,
+)
+assert(
+  bookWildCount(bookAfterYesWithNatural) >= 1,
+  'after Yes with same-rank natural in hand, wild still lands',
+)
+assert(
+  bookAfterYesWithNatural.cards.some((c) => c.id === timingWild.id),
+  'after Yes the consented wild is on the book (not skipped for a natural)',
+)
+assert(
+  !isCleanBook(bookAfterYesWithNatural),
+  'after Yes the book is dirty — identity card alone is not enough',
+)
+
 /* stripWildAddsSince must pull mid-turn wilds off books when pausing to ask. */
 const stripClean: Book = {
   id: 'book-strip-clean',

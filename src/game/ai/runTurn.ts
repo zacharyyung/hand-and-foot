@@ -18,6 +18,7 @@ import { cardLabel, isWildCard } from '../cards'
 import {
   bookWildCount,
   countWildsInCards,
+  isCleanBook,
   wouldDestroyOnlyCompletedCleanBook,
   type Book,
 } from '../books'
@@ -583,10 +584,21 @@ export function runAiTurn(
     let goingOut = canPlayerGoOut(current, messages)
     if (goingOut) debug?.step('discard', 'Can go out this turn.')
 
+    const approvedCleanBookIds = partnerIsHuman
+      ? pub.myTeamBooks
+          .filter(
+            (b) =>
+              isCleanBook(b) &&
+              hasPartnerWildApprovalForBook(messages, seatIndex, partnerIdx, b.id),
+          )
+          .map((b) => b.id)
+      : []
+
     const loneWild = pickLoneWildAdd(
       pub.myHand,
       pub.myTeamBooks.filter((b) => !deniedWildBooks.has(b.id)),
       current.booksWithWildAddedThisTurn,
+      approvedCleanBookIds,
     )
     if (loneWild && !goingOut) {
       const book = getTeam(current, currentPlayer.profile.teamId).books.find(

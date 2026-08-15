@@ -12,14 +12,32 @@ import {
 } from '../books'
 import type { GameState } from '../deal'
 import type { ChatMessage } from '../chat'
-import { opponentTeamSignaledGoOut } from '../chat'
+import { hasPartnerWildApprovalForBook, opponentTeamSignaledGoOut } from '../chat'
 import { partnerGoOutSignaledInChat } from './chatSignals'
 import { cardPointValue, meldThreshold, meldContributionFromCards } from '../scoring'
-import type { PlayerCount } from '../teams'
+import { partnerSeat, type PlayerCount } from '../teams'
 import type { AiDifficulty } from '../deal'
 import type { AiPublicState } from './publicState'
 import { footMeldAllowedForHand } from '../actions'
 import { findAddToBookActions, findStartBookActions, type AiAction } from './decisions'
+
+/** Human partner already said Yes to dirtying this specific book. */
+function bookHasPartnerWildApproval(
+  bookId: string,
+  pub: AiPublicState,
+  chatMessages: ChatMessage[],
+  state?: GameState,
+): boolean {
+  if (!state) return false
+  const partnerIdx = partnerSeat(pub.mySeatIndex, state.playerCount as PlayerCount)
+  if (!state.players[partnerIdx]?.profile.isHuman) return false
+  return hasPartnerWildApprovalForBook(
+    chatMessages,
+    pub.mySeatIndex,
+    partnerIdx,
+    bookId,
+  )
+}
 
 function groupByRank(hand: Card[]): Map<Rank, Card[]> {
   const groups = new Map<Rank, Card[]>()
@@ -582,6 +600,12 @@ export function justifyDirtyingCleanBook(
   /* Hard rule: keep go-out clean book intact unless another completed clean remains. */
   if (wouldDestroyOnlyCompletedCleanBook(book, cards, books)) return false
 
+  /*
+   * Partner already said Yes to dirtying this book — honor that consent even when
+   * a same-rank natural or another dirty sink would otherwise score higher.
+   */
+  if (bookHasPartnerWildApproval(book.id, pub, chatMessages, state)) return true
+
   const urgency = meldPressure(pub)
   const heldCards = pub.myHand.length + pub.myFootCount
   const alternative = hasAlternativeWildTarget(
@@ -879,6 +903,25 @@ export function pickBestAddToBook(
 
   scored.sort((a, b) => b.score - a.score)
 
+  /*
+   * After a human Yes to wilding a clean book, play that wild before any natural
+   * of the same rank — otherwise re-planning prefers the identity card and the
+   * consented wild never lands.
+   */
+  const approvedWildAdds = scored.filter(
+    ({ wildsAdded, book }) =>
+      wildsAdded > 0 && bookHasPartnerWildApproval(book.id, pub, chatMessages, state),
+  )
+  if (approvedWildAdds.length > 0) {
+    approvedWildAdds.sort((a, b) => {
+      const aPure = a.wildsAdded === a.cards.length ? 1 : 0
+      const bPure = b.wildsAdded === b.cards.length ? 1 : 0
+      if (aPure !== bPure) return bPure - aPure
+      return b.score - a.score
+    })
+    return approvedWildAdds[0].action
+  }
+
   const naturalOnClean = scored.filter(
     ({ clean, wildsAdded }) => clean && wildsAdded === 0,
   )
@@ -933,12 +976,17 @@ export function pickLoneWildAdd(
   hand: Card[],
   teamBooks: Book[],
   booksWithWildAddedThisTurn: string[],
+  /** Clean books the human partner already approved dirtying. */
+  approvedCleanBookIds: string[] = [],
 ): { bookId: string; cardId: string } | null {
   const wilds = hand.filter((c) => isWildCard(c) && !isRedThree(c))
   if (wilds.length === 0) return null
 
   const dirtyBooks = teamBooks.filter(
     (book) => !isCleanBook(book) && bookWildCount(book) < 2,
+  )
+  const approvedCleanBooks = teamBooks.filter(
+    (book) => approvedCleanBookIds.includes(book.id) && isCleanBook(book),
   )
 
   // Prefer placing jokers before deuces.
@@ -956,9 +1004,30 @@ export function pickLoneWildAdd(
     return b.cards.length - a.cards.length
   })
 
+  const orderedApprovedClean = [...approvedCleanBooks].sort((a, b) => {
+    const aComplete = a.cards.length === 6 ? 2 : a.cards.length >= 5 ? 1 : 0
+    const bComplete = b.cards.length === 6 ? 2 : b.cards.length >= 5 ? 1 : 0
+    if (aComplete !== bComplete) return bComplete - aComplete
+    return a.cards.length - b.cards.length
+  })
+
   for (const wild of orderedWilds) {
     for (const book of orderedDirty) {
       if (booksWithWildAddedThisTurn.includes(book.id)) continue
+      const check = canAddToBook(book, [wild], {
+        wildAlreadyAddedThisTurn: false,
+      })
+      if (check.ok) {
+        return { bookId: book.id, cardId: wild.id }
+      }
+    }
+  }
+
+  /* Honor partner Yes when no dirty sink took the wild. */
+  for (const wild of orderedWilds) {
+    for (const book of orderedApprovedClean) {
+      if (booksWithWildAddedThisTurn.includes(book.id)) continue
+      if (wouldDestroyOnlyCompletedCleanBook(book, [wild], teamBooks)) continue
       const check = canAddToBook(book, [wild], {
         wildAlreadyAddedThisTurn: false,
       })
