@@ -48,6 +48,7 @@ import { handFlightAnchor, stagingBookAnchor, bookFlightAnchor } from '../game/f
 import type { CardFlightRequest } from '../game/cardFlight'
 import { CardFlightLayer } from './CardFlightLayer'
 import { HandCards } from './HandCards'
+import { lockGameViewport } from './lockGameViewport'
 import { StagingArea, type StagedBook } from './StagingArea'
 import { RoundTable } from './RoundTable'
 import { MeldTracker, CurrentRoundTracker } from './Scoreboard'
@@ -1477,7 +1478,9 @@ export function GameView({
     const body = document.body
     html.dataset.gamePlaying = 'true'
     body.dataset.gamePlaying = 'true'
+    const unlockViewport = lockGameViewport()
     return () => {
+      unlockViewport()
       delete html.dataset.gamePlaying
       delete body.dataset.gamePlaying
     }

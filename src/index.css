@@ -110,19 +110,21 @@
 }
 
 @layer components {
-  /* Lock viewport while playing — no page scroll / rubber-band on mobile */
+  /* Lock viewport while playing — no page scroll / rubber-band / zoom on mobile */
   html[data-game-playing],
   html[data-game-playing] body {
     overflow: hidden;
     height: 100dvh;
     max-height: 100dvh;
     overscroll-behavior: none;
+    touch-action: manipulation;
   }
 
   html[data-game-playing] #root {
     height: 100dvh;
     max-height: 100dvh;
     overflow: hidden;
+    touch-action: manipulation;
   }
 
   html[data-game-playing] .room-bg {
@@ -135,6 +137,16 @@
     overflow: hidden;
     overscroll-behavior: none;
     touch-action: manipulation;
+  }
+
+  html[data-game-playing] .game-play-shell {
+    touch-action: manipulation;
+    overscroll-behavior: none;
+  }
+
+  /* iOS Safari auto-zooms focused controls under 16px — keep game selects at 1rem */
+  html[data-game-playing] .field-control--compact {
+    font-size: 1rem;
   }
 
   /* Room behind the table */
