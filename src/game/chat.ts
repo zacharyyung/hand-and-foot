@@ -283,13 +283,14 @@ export function createWildRequestSignal(
   bookRank: string,
   bookId: string,
   priorAskTexts: string[] = [],
+  motive: WildAskMotive | null = null,
 ): ChatMessage {
   return {
     id: `chat-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     senderSeatIndex,
     senderName,
     senderAvatar,
-    text: pickWildRequestText(bookRank, bookId, priorAskTexts),
+    text: pickWildRequestText(bookRank, bookId, priorAskTexts, motive),
     timestamp: Date.now(),
     type: 'wild_request',
     bookId,
@@ -306,6 +307,9 @@ export function wildBookRankLabel(bookRank: string): string {
   return bookRank
 }
 
+/** Why the AI wants to dirty a clean book — shown in the Yes/No prompt. */
+export type WildAskMotive = 'go_out' | 'dump' | 'points'
+
 const WILD_REQUEST_LINES: Array<(label: string) => string> = [
   (label) => `How about the ${label} book?`,
   (label) => `Mind if I wild the ${label}s?`,
@@ -317,10 +321,29 @@ const WILD_REQUEST_LINES: Array<(label: string) => string> = [
   (label) => `Thinking the ${label}s. Want me to wild it?`,
 ]
 
+const WILD_ASK_MOTIVE_LINES: Record<WildAskMotive, string[]> = {
+  go_out: [
+    "I'm trying to go out and need somewhere for this wild.",
+    'Need to shed this wild so I can go out.',
+    "I'm close to going out — this wild has to land somewhere.",
+  ],
+  dump: [
+    'Nowhere else to put this wild.',
+    'No dirty book left that can take it.',
+    "I've got no other place for this wild.",
+  ],
+  points: [
+    'Best play for points from here.',
+    'Completing it dirty banks us the points.',
+    'This dirty completion is worth more points.',
+  ],
+}
+
 function pickWildRequestText(
   bookRank: string,
   bookId: string,
   priorAskTexts: string[],
+  motive: WildAskMotive | null = null,
 ): string {
   const label = wildBookRankLabel(bookRank)
   const candidates = WILD_REQUEST_LINES.map((line) => line(label))
@@ -329,7 +352,11 @@ function pickWildRequestText(
   let hash = 0
   for (let i = 0; i < bookId.length; i++) hash = (hash * 31 + bookId.charCodeAt(i)) | 0
   hash = (hash + priorAskTexts.length * 17) | 0
-  return pool[Math.abs(hash) % pool.length]!
+  const ask = pool[Math.abs(hash) % pool.length]!
+  if (!motive) return ask
+  const motivePool = WILD_ASK_MOTIVE_LINES[motive]
+  const motiveLine = motivePool[Math.abs(hash) % motivePool.length]!
+  return `${ask} ${motiveLine}`
 }
 
 export function createWildApproveSignal(

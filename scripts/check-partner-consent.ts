@@ -24,7 +24,7 @@ import {
   wasPartnerWildDeniedForBook,
   type ChatMessage,
 } from '../src/game/chat'
-import { needsHumanWildConsent } from '../src/game/ai/chatSignals'
+import { analyzeWildAskMotive, needsHumanWildConsent } from '../src/game/ai/chatSignals'
 import { runAiTurn, stripWildAddsSince } from '../src/game/ai/runTurn'
 import { bookWildCount, isCleanBook, type Book } from '../src/game/books'
 import { isWildCard, type Card } from '../src/game/cards'
@@ -972,5 +972,188 @@ assert(
   stripped.booksWithWildAddedThisTurn.length === 0,
   'strip clears wild-added-this-turn markers',
 )
+
+/* --- Motive text: go-out / nowhere-to-dump / points --- */
+const motiveGoOutBook: Book = {
+  id: 'book-motive-k',
+  rank: 'K',
+  teamId: 0,
+  startedBySeatIndex: 2,
+  cards: [
+    card('mk1', 'K'),
+    card('mk2', 'K', 'diamonds'),
+    card('mk3', 'K', 'clubs'),
+    card('mk4', 'K', 'spades'),
+    card('mk5', 'K'),
+    card('mk6', 'K', 'diamonds'),
+  ],
+}
+const motiveCleanA: Book = {
+  id: 'book-motive-a',
+  rank: 'A',
+  teamId: 0,
+  startedBySeatIndex: 2,
+  cards: [
+    card('ma1', 'A'),
+    card('ma2', 'A', 'diamonds'),
+    card('ma3', 'A', 'clubs'),
+    card('ma4', 'A', 'spades'),
+    card('ma5', 'A'),
+    card('ma6', 'A', 'diamonds'),
+    card('ma7', 'A', 'clubs'),
+  ],
+}
+const motiveWild = card('mj1', 'Joker', 'joker')
+const motiveState = stubState({
+  roundNumber: 3,
+  teams: [
+    {
+      id: 0,
+      score: 1500,
+      books: [motiveGoOutBook, motiveCleanA],
+      meldThresholdMet: true,
+    },
+    { id: 1, score: 1200, books: [], meldThresholdMet: true },
+  ],
+  players: timingState.players.map((p, i) =>
+    i === 2
+      ? {
+          ...p,
+          hand: [motiveWild, card('mx1', '4')],
+          foot: [],
+          isPlayingFoot: true,
+          footOnHold: false,
+        }
+      : p,
+  ),
+})
+assert(
+  analyzeWildAskMotive(motiveState, 2, motiveGoOutBook) === 'go_out',
+  'near go-out with a wild reports go_out motive',
+)
+const motiveAsk = createWildRequestSignal(
+  2,
+  'AI',
+  '🤖',
+  'K',
+  motiveGoOutBook.id,
+  [],
+  'go_out',
+)
+assert(
+  /go(?:ing)? out|shed this wild/i.test(motiveAsk.text),
+  'go-out wild ask mentions going out',
+)
+const dumpAsk = createWildRequestSignal(2, 'AI', '🤖', 'K', motiveGoOutBook.id, [], 'dump')
+assert(
+  /nowhere else|no dirty book|no other place/i.test(dumpAsk.text),
+  'dump wild ask mentions no other place',
+)
+const pointsAsk = createWildRequestSignal(
+  2,
+  'AI',
+  '🤖',
+  'K',
+  motiveGoOutBook.id,
+  [],
+  'points',
+)
+assert(
+  /points|banks/i.test(pointsAsk.text),
+  'points wild ask mentions points',
+)
+
+/*
+ * After Yes on book A, the wild must land before any follow-up ask about book B,
+ * and must stay on A if the AI does ask about B (strip baseline includes it).
+ */
+const secondCleanQ: Book = {
+  id: 'book-second-q',
+  rank: 'Q',
+  teamId: 0,
+  startedBySeatIndex: 2,
+  cards: [
+    card('sq1', 'Q'),
+    card('sq2', 'Q', 'diamonds'),
+    card('sq3', 'Q', 'clubs'),
+    card('sq4', 'Q', 'spades'),
+    card('sq5', 'Q'),
+    card('sq6', 'Q', 'diamonds'),
+  ],
+}
+const secondWild = card('sj2', '2', 'clubs')
+const twoWildState = stubState({
+  roundNumber: 3,
+  teams: [
+    {
+      id: 0,
+      score: 1500,
+      books: [
+        {
+          id: nearCompleteClean.id,
+          rank: 'K',
+          teamId: 0,
+          startedBySeatIndex: 2,
+          cards: [
+            card('2k1', 'K'),
+            card('2k2', 'K', 'diamonds'),
+            card('2k3', 'K', 'clubs'),
+            card('2k4', 'K', 'spades'),
+            card('2k5', 'K'),
+            card('2k6', 'K', 'diamonds'),
+          ],
+        },
+        completedCleanAces,
+        secondCleanQ,
+      ],
+      meldThresholdMet: true,
+    },
+    { id: 1, score: 1200, books: [], meldThresholdMet: true },
+  ],
+  players: timingState.players.map((p, i) =>
+    i === 2
+      ? {
+          ...p,
+          hand: [timingWild, secondWild, card('2x1', '4')],
+          foot: [],
+          isPlayingFoot: true,
+          footOnHold: false,
+        }
+      : p,
+  ),
+  stock: [card('2s1', '4'), card('2s2', '5')],
+  discard: [card('2d1', '3', 'spades')],
+})
+const firstAsk = runUntilWildAsk(twoWildState)
+assert(firstAsk.awaitingPartner === true, 'first wild ask pauses')
+assert(
+  firstAsk.chatMessage?.bookId === nearCompleteClean.id ||
+    firstAsk.chatMessage?.bookId === secondCleanQ.id,
+  'first ask targets a clean book',
+)
+const firstBookId = firstAsk.chatMessage!.bookId!
+const firstApprove = {
+  ...createWildApproveSignal(0, 'You', '🧑', firstBookId),
+  timestamp: firstAsk.chatMessage!.timestamp + 1,
+}
+const afterFirstYes = runAiTurn(firstAsk.state, [firstAsk.chatMessage!, firstApprove])
+assert(
+  bookWildCount(bookFromState(afterFirstYes.state, firstBookId)) >= 1,
+  'after Yes the first book has a wild before any further ask',
+)
+assert(
+  !isCleanBook(bookFromState(afterFirstYes.state, firstBookId)),
+  'first approved book is dirty immediately after Yes',
+)
+if (afterFirstYes.chatMessage?.type === 'wild_request') {
+  assert(
+    afterFirstYes.chatMessage.bookId !== firstBookId,
+    'follow-up ask targets a different book',
+  )
+  assert(
+    bookWildCount(bookFromState(afterFirstYes.state, firstBookId)) >= 1,
+    'follow-up ask does not strip the already-approved wild',
+  )
+}
 
 console.log('check-partner-consent: all assertions passed')

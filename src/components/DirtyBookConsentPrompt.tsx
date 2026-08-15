@@ -26,8 +26,8 @@ interface DirtyBookConsentPromptProps {
   mobile?: boolean
 }
 
-const POPUP_WIDTH = 168
-const ESTIMATED_HEIGHT = 128
+const POPUP_WIDTH = 196
+const ESTIMATED_HEIGHT = 156
 
 /** Small yes/no popup anchored beside a book so the player can see card counts. */
 export function DirtyBookConsentPrompt({
@@ -110,7 +110,7 @@ export function DirtyBookConsentPrompt({
         {clean ? ' — wild not placed yet' : ''}
       </p>
       <p
-        className="mt-1.5 line-clamp-3 text-[11px] font-bold leading-snug"
+        className="mt-1.5 line-clamp-4 text-[11px] font-bold leading-snug"
         style={{ color: '#000000' }}
       >
         {consent.askText}

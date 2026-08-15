@@ -2,7 +2,7 @@ import type { GameState } from '../deal'
 import { getTeam } from '../actions'
 import { getGoOutBlockReason, isCleanBook, wouldDestroyOnlyCompletedCleanBook, type Book } from '../books'
 import { buildAiPublicState } from './publicState'
-import { isRedThree, type Card } from '../cards'
+import { isRedThree, isWildCard, type Card } from '../cards'
 import { heldCardPenalty } from '../scoring'
 import {
   APPROVE_GO_OUT_TEXT,
@@ -20,10 +20,16 @@ import {
   teamCanGoOut,
   wasPartnerWildDeniedForBook,
   type ChatMessage,
+  type WildAskMotive,
 } from '../chat'
 import type { PlayerCount } from '../teams'
 import { partnerSeat } from '../teams'
 import { countWildsInCards } from '../books'
+import {
+  hasAlternativeWildTarget,
+  teamHasCompletedCleanBook,
+  teamHasCompletedDirtyBook,
+} from './strategy'
 
 export interface PartnerGoOutRecommendation {
   approve: boolean
@@ -281,6 +287,46 @@ export function partnerGoOutSignaledInChat(
   )
 }
 
+/**
+ * Why the AI is asking to dirty this clean book — used to brief the human partner.
+ * Prefer go-out urgency, then "nowhere else to dump", then point-maximizing plays.
+ */
+export function analyzeWildAskMotive(
+  state: GameState,
+  seatIndex: number,
+  book: Book,
+): WildAskMotive | null {
+  const pub = buildAiPublicState(state, seatIndex)
+  const hand = pub.myHand
+  const wildsInHand = hand.filter((c) => isWildCard(c) && !isRedThree(c)).length
+  if (wildsInHand === 0) return null
+
+  /*
+   * While playing foot, held cards live in `hand` (myFootCount mirrors hand size),
+   * so "close to going out" is a small hand with wilds still to shed.
+   */
+  const nearGoOut = pub.isPlayingFoot && hand.length <= 4
+  if (nearGoOut) return 'go_out'
+
+  const noAlt = !hasAlternativeWildTarget(
+    hand,
+    pub.myTeamBooks,
+    book.id,
+    state.booksWithWildAddedThisTurn,
+  )
+  if (noAlt) return 'dump'
+
+  const needsDirtyCompleted =
+    teamHasCompletedCleanBook(pub.myTeamBooks) &&
+    !teamHasCompletedDirtyBook(pub.myTeamBooks)
+  const completesDirty = book.cards.length >= 5 && book.cards.length + 1 >= 7
+
+  if (needsDirtyCompleted && completesDirty) return 'points'
+  if (book.cards.length >= 6) return 'points'
+
+  return null
+}
+
 /** AI asks human partner before dirtying a clean book with a wild. */
 export function maybeAiWildRequest(
   state: GameState,
@@ -288,6 +334,7 @@ export function maybeAiWildRequest(
   messages: ChatMessage[],
   bookRank: string,
   bookId: string,
+  book?: Book,
 ): ChatMessage | null {
   const player = state.players[seatIndex]
   if (player.profile.isHuman) return null
@@ -298,6 +345,11 @@ export function maybeAiWildRequest(
   if (hasPartnerWildApprovalForBook(messages, seatIndex, partnerIdx, bookId)) return null
   if (wasPartnerWildDeniedForBook(messages, seatIndex, partnerIdx, bookId)) return null
 
+  const targetBook =
+    book ??
+    getTeam(state, player.profile.teamId).books.find((b) => b.id === bookId)
+  const motive = targetBook ? analyzeWildAskMotive(state, seatIndex, targetBook) : null
+
   return createWildRequestSignal(
     seatIndex,
     player.profile.name,
@@ -305,6 +357,7 @@ export function maybeAiWildRequest(
     bookRank,
     bookId,
     priorWildAskTexts(messages, seatIndex),
+    motive,
   )
 }
 

@@ -14,9 +14,10 @@ import {
 import type { GameState } from '../deal'
 import type { ChatMessage } from '../chat'
 import type { Card } from '../cards'
-import { cardLabel, isWildCard } from '../cards'
+import { cardLabel, isRedThree, isWildCard } from '../cards'
 import {
   bookWildCount,
+  canAddToBook,
   countWildsInCards,
   isCleanBook,
   wouldDestroyOnlyCompletedCleanBook,
@@ -74,6 +75,64 @@ function labelCards(hand: Card[], ids: string[]): string {
       return card ? cardLabel(card) : id
     })
     .join(' ')
+}
+
+/**
+ * After a human Yes, place the consented wild on that clean book before any other
+ * meld or follow-up wild ask. Approved wilds become part of the strip baseline so
+ * a later ask about another book does not yank them back off.
+ */
+function fulfillPartnerApprovedWildAdds(
+  state: GameState,
+  seatIndex: number,
+  messages: ChatMessage[],
+  partnerIdx: number,
+  debug?: AiDebugCollector,
+): GameState {
+  let current = state
+  const teamId = current.players[seatIndex].profile.teamId
+  const approvedBookIds = getTeam(current, teamId)
+    .books.filter(
+      (book) =>
+        isCleanBook(book) &&
+        hasPartnerWildApprovalForBook(messages, seatIndex, partnerIdx, book.id),
+    )
+    .map((book) => book.id)
+
+  for (const bookId of approvedBookIds) {
+    const team = getTeam(current, teamId)
+    const book = team.books.find((b) => b.id === bookId)
+    if (!book || !isCleanBook(book)) continue
+    if (current.booksWithWildAddedThisTurn.includes(book.id)) continue
+
+    const hand = current.players[seatIndex].hand
+    const wilds = hand
+      .filter((c) => isWildCard(c) && !isRedThree(c))
+      .sort((a, b) => {
+        if (a.rank === 'Joker' && b.rank !== 'Joker') return -1
+        if (b.rank === 'Joker' && a.rank !== 'Joker') return 1
+        return 0
+      })
+
+    for (const wild of wilds) {
+      if (wouldDestroyOnlyCompletedCleanBook(book, [wild], team.books)) continue
+      const check = canAddToBook(book, [wild], {
+        wildAlreadyAddedThisTurn: false,
+      })
+      if (!check.ok) continue
+      const result = addToBook(current, book.id, [wild.id])
+      if (!result.error) {
+        debug?.step(
+          'wild',
+          `Placing approved wild on ${book.rank}s immediately (${cardLabel(wild)}).`,
+        )
+        current = result.state
+      }
+      break
+    }
+  }
+
+  return current
 }
 
 /**
@@ -208,7 +267,21 @@ export function runAiTurn(
     state.turnPhase === 'play' &&
     partnerDeniedLatestWildAsk(messages, seatIndex, partnerIdx)
 
-  /* Snapshot after draw — wilds placed later this turn are stripped if we pause to ask. */
+  /*
+   * Yes resume: put the consented wild down immediately, before other melds or
+   * another wild ask. Then snapshot baseline so stripWildAddsSince keeps it.
+   */
+  if (partnerIsHuman && current.turnPhase === 'play') {
+    current = fulfillPartnerApprovedWildAdds(
+      current,
+      seatIndex,
+      messages,
+      partnerIdx,
+      debug,
+    )
+  }
+
+  /* Snapshot after draw (+ fulfilled Yes wilds) — later wilds strip if we pause to ask. */
   const baselineForWildAsk = current
 
   /*
@@ -396,6 +469,7 @@ export function runAiTurn(
               messages,
               book.rank,
               book.id,
+              book,
             )
             if (wildReq) {
               debug?.step(
@@ -627,6 +701,7 @@ export function runAiTurn(
               messages,
               book.rank,
               book.id,
+              book,
             )
             if (wildReq) {
               debug?.step('chat', 'Asking partner before lone wild add.')
