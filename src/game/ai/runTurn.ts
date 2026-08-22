@@ -830,11 +830,15 @@ export function runAiTurn(
     }
 
     const discardPub = buildAiPublicState(current, current.currentPlayerIndex)
+    const opponentRanks = discardPub.allTableBooks
+      .filter((b) => b.teamId !== discardPub.myTeamId)
+      .map((b) => b.rank)
     const discardId = pickDiscardCard(
       discardPub.myHand,
       discardPub.myTeamBooks,
       difficulty,
       goingOut,
+      opponentRanks,
     )
     const cardToDiscard = discardPub.myHand.find((c) => c.id === discardId)
     debug?.step(

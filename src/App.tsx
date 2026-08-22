@@ -7,6 +7,11 @@ import { isAllowedChatMessage } from './game/chat'
 import { loadMutePreference, playSound, unlockAudio } from './game/audio'
 import { loadAutoSortPreference, loadAiDebugPreference, saveAutoSortPreference, saveAiDebugPreference } from './game/preferences'
 import {
+  clearEpisode,
+  learnFromExpertDefeats,
+  recordEpisodeState,
+} from './game/ai/learning'
+import {
   loadPartnerVoiceSettings,
   partnerVoiceService,
   type PartnerVoiceSettings,
@@ -173,6 +178,7 @@ function App() {
     setSavedSummary(null)
     setChatMessages([])
     resetSession()
+    clearEpisode()
     partnerVoiceService.stop()
     setGame(
       startNewGame(
@@ -222,9 +228,23 @@ function App() {
     next: GameState,
     options?: { recordHistory?: boolean },
   ) {
-    if (options?.recordHistory && game) {
-      setGameHistory((history) => [...history.slice(-40), game])
+    if (game) {
+      recordEpisodeState(game)
+      if (options?.recordHistory) {
+        setGameHistory((history) => [...history.slice(-40), game])
+      }
     }
+    recordEpisodeState(next)
+
+    /* Round already scored on go-out — study expert losses before the summary UI. */
+    if (
+      game?.phase === 'playing' &&
+      next.phase === 'roundEnd' &&
+      next.roundScores
+    ) {
+      learnFromExpertDefeats(next)
+    }
+
     setGame(next)
   }
 
@@ -245,6 +265,7 @@ function App() {
       setSavedSummary(null)
       setChatMessages([])
       resetSession()
+      clearEpisode()
       setGame(
         startNewGame(
           buildSetupPlayers(humanPlayers, playerCount, aiDifficulty),
@@ -319,12 +340,18 @@ function App() {
 
     if (game.phase === 'roundEnd') {
       if (!game.roundScores) {
-        setGame(applyRoundScores(game))
+        const scored = applyRoundScores(game)
+        recordEpisodeState(game)
+        learnFromExpertDefeats(scored)
+        setGame(scored)
         return
       }
       if (game.winnerTeamId !== null) {
         playSound('goOut')
-        setGame({ ...game, phase: 'gameOver' })
+        const over = { ...game, phase: 'gameOver' as const }
+        recordEpisodeState(game)
+        learnFromExpertDefeats(over)
+        setGame(over)
         return
       }
       setGame(startNextRound(game))

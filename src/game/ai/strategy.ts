@@ -20,6 +20,15 @@ import type { AiDifficulty } from '../deal'
 import type { AiPublicState } from './publicState'
 import { footMeldAllowedForHand } from '../actions'
 import { findAddToBookActions, findStartBookActions, type AiAction } from './decisions'
+import {
+  getLearnedPreferences,
+  learningStrength,
+  type LearnedPreferences,
+} from './learning'
+
+function learnedOrDefault(): LearnedPreferences {
+  return getLearnedPreferences()
+}
 
 /** Human partner already said Yes to dirtying this specific book. */
 function bookHasPartnerWildApproval(
@@ -222,6 +231,9 @@ export function planInitialMeld(
   const needsClean = teamNeedsCleanBook(teamBooks)
   const highRequirement = required >= 100
 
+  const learned = learnedOrDefault()
+  const strength = learningStrength(learned.sampleSize, difficulty)
+
   const scoreOption = (opt: StartOption) => {
     let s = opt.score
     const rankCount = hand.filter((c) => c.rank === opt.rank && !isRedThree(c)).length
@@ -252,6 +264,14 @@ export function planInitialMeld(
       s += sizeBonus
       if (opt.score >= required) s += 80
       if (opt.cardIds.length >= 7) s += 40
+      if (strength > 0) {
+        if (opt.clean) s += learned.cleanBias * 40 * strength
+        else s -= (1 - learned.cleanBias) * 25 * strength
+        if (opt.cardIds.length >= 4) s += learned.largeBookBias * 30 * strength
+        if (learned.earlyMeldAggressiveness > 0.55 && opt.score >= required * 0.6) {
+          s += learned.earlyMeldAggressiveness * 35 * strength
+        }
+      }
     } else {
       if (opt.clean) {
         s += urgency === 'low' ? 25 : urgency === 'medium' ? 18 : 10
@@ -316,9 +336,23 @@ export function planInitialMeld(
   const plan = search(0, new Set(), [], 0)
   if (!plan) return null
 
+  /*
+   * After defeats that missed openings, expert skips the clean-only retry when
+   * learned early-meld aggressiveness is high — get on the board first.
+   */
+  const preferOpenOverPurity =
+    strength > 0.35 && learned.earlyMeldAggressiveness >= 0.7
+
   // Expert clean-only preference is only for early 50-point opens at low urgency.
   // At 100+ the AI must prioritize clearing the threshold over book purity.
-  if (difficulty !== 'expert' || urgency !== 'low' || required > 50) return plan
+  if (
+    difficulty !== 'expert' ||
+    urgency !== 'low' ||
+    required > 50 ||
+    preferOpenOverPurity
+  ) {
+    return plan
+  }
 
   const cleanOnly = options.filter((o) => o.clean)
   if (cleanOnly.length > 0) {
@@ -375,6 +409,8 @@ export function meldUrgency(teamScore: number): 'low' | 'medium' | 'high' {
 export function meldPressure(pub: AiPublicState): 'low' | 'medium' | 'high' {
   let level = meldUrgency(pub.teamScore)
   const held = pub.myHand.length + pub.myFootCount
+  const learned = learnedOrDefault()
+  const strength = learningStrength(learned.sampleSize, 'expert')
 
   if (held >= 22) return 'high'
   if (held >= 18) level = 'high'
@@ -405,6 +441,30 @@ export function meldPressure(pub: AiPublicState): 'low' | 'medium' | 'high' {
   }
 
   if (pub.isPlayingFoot && pub.myFootCount >= 9 && level === 'low') {
+    level = 'medium'
+  }
+
+  /* Learned from lost races: when opponents look light, push harder. */
+  const opponentLight = pub.otherPlayers.some(
+    (p) =>
+      p.teamId !== pub.myTeamId &&
+      p.handCount + p.footCount <= 6,
+  )
+  if (
+    strength > 0.2 &&
+    learned.raceUrgency >= 0.6 &&
+    opponentLight &&
+    level !== 'high'
+  ) {
+    level = level === 'low' ? 'medium' : 'high'
+  }
+
+  if (
+    strength > 0.25 &&
+    learned.earlyMeldAggressiveness >= 0.7 &&
+    !pub.teamMeldThresholdMet &&
+    level === 'low'
+  ) {
     level = 'medium'
   }
 
@@ -731,6 +791,8 @@ export function pickBestStartWhenUnlocked(
 
   const needsDirty = teamNeedsDirtyBook(teamBooks)
   const needsClean = teamNeedsCleanBook(teamBooks)
+  const learned = learnedOrDefault()
+  const strength = learningStrength(learned.sampleSize, difficulty)
 
   const scored = options.map((opt) => {
     let value = opt.score
@@ -749,6 +811,12 @@ export function pickBestStartWhenUnlocked(
         else value -= 60
       }
       if (needsClean && opt.clean) value += 15
+      if (strength > 0) {
+        if (opt.clean) value += learned.cleanBias * 35 * strength
+        else value -= (1 - learned.cleanBias) * 20 * strength
+        if (opt.cardIds.length >= 4) value += learned.largeBookBias * 25 * strength
+        value -= learned.buildExistingBias * 12 * strength
+      }
     } else {
       if (opt.clean) {
         value += urgency === 'low' ? 20 : 12
@@ -773,7 +841,8 @@ export function pickBestStartWhenUnlocked(
     cleanStarts.length > 0 &&
     urgency === 'low' &&
     !needsDirty &&
-    difficulty === 'expert'
+    difficulty === 'expert' &&
+    (strength < 0.25 || learned.cleanBias >= 0.5)
 
   if (preferCleanOnly) {
     const bestClean = [...cleanStarts].sort((a, b) => {
@@ -837,6 +906,8 @@ export function pickBestAddToBook(
     (pub.isPlayingFoot && pub.myHand.length <= 4)
   const canGoOutNow =
     teamHasCompletedCleanBook(teamBooks) && teamHasCompletedDirtyBook(teamBooks)
+  const learned = learnedOrDefault()
+  const strength = learningStrength(learned.sampleSize, difficulty)
 
   const scored = allowed.map((action) => {
     const book = teamBooks.find((b) => b.id === action.bookId)!
@@ -857,6 +928,9 @@ export function pickBestAddToBook(
         canTeamGoOut: canGoOutNow,
         nearGoOut,
       })
+      if (strength > 0) {
+        score -= learned.cleanBias * 40 * strength
+      }
     }
 
     if (clean && naturalsAdded > 0) {
@@ -879,6 +953,16 @@ export function pickBestAddToBook(
 
     if (completes && clean && naturalsAdded > 0) {
       score += 40
+    }
+
+    if (strength > 0) {
+      score += learned.buildExistingBias * 28 * strength
+      if (naturalsAdded > 0) score += learned.buildExistingBias * 12 * strength
+      if (clean && naturalsAdded > 0) score += learned.cleanBias * 18 * strength
+      if (completes) score += learned.largeBookBias * 15 * strength
+      if (urgency === 'high' || aggressive) {
+        score += learned.raceUrgency * 22 * strength
+      }
     }
 
     if (
@@ -1091,6 +1175,8 @@ export function pickDiscardCard(
   teamBooks: Book[],
   difficulty: AiDifficulty,
   goingOut: boolean,
+  /** Opponent book ranks on the table (public info). */
+  opponentRanks: Rank[] = [],
 ): string {
   if (hand.length === 0) return ''
   if (goingOut) {
@@ -1108,6 +1194,9 @@ export function pickDiscardCard(
 
   const rankGroups = groupByRank(hand)
   const teamRanks = new Set(teamBooks.map((b) => b.rank))
+  const oppRankSet = new Set(opponentRanks)
+  const learned = learnedOrDefault()
+  const strength = learningStrength(learned.sampleSize, difficulty)
 
   const wilds = hand.filter((c) => isWildCard(c) && !isRedThree(c))
   const jokers = wilds.filter((c) => c.rank === 'Joker')
@@ -1134,6 +1223,18 @@ export function pickDiscardCard(
       if (sameRank.length >= 2) discardScore -= 40
       if (sameRank.length >= 3) discardScore -= 30
       if (teamRanks.has(card.rank)) discardScore -= 25
+      if (strength > 0) {
+        if (sameRank.length >= 2) discardScore -= learned.protectPairs * 35 * strength
+        if (teamRanks.has(card.rank)) {
+          discardScore -= learned.buildExistingBias * 20 * strength
+        }
+        if (oppRankSet.has(card.rank)) {
+          discardScore -= learned.avoidFeedingOpponents * 70 * strength
+        }
+        if (penalty >= 20) {
+          discardScore += learned.raceUrgency * 12 * strength
+        }
+      }
     } else if (card.rank === 'Joker') {
       discardScore -= 500
     } else {

@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "check:ai-meld": "npx tsx scripts/check-ai-meld.ts",
+    "check:ai-learn-defeat": "npx tsx scripts/check-ai-learn-defeat.ts",
     "check:go-out-books": "npx tsx scripts/check-go-out-books.ts",
     "check:go-out-yes-cases": "npx tsx scripts/check-go-out-yes-cases.ts",
     "check:partner-consent": "npx tsx scripts/check-partner-consent.ts",

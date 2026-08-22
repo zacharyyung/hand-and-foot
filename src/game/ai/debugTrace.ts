@@ -180,6 +180,9 @@ export function buildAiDebugSnapshot(
     pub.myTeamBooks,
     difficulty,
     false,
+    pub.allTableBooks
+      .filter((b) => b.teamId !== pub.myTeamId)
+      .map((b) => b.rank),
   )
   const discardPreviewCard = pub.myHand.find((c) => c.id === discardId)
 
