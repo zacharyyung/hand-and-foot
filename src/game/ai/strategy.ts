@@ -627,7 +627,8 @@ export function justifyDirtyingCleanBook(
   const earlyRound = pub.teamScore <= 999 && urgency === 'low'
   const nearGoOut =
     partnerNearGoOut(pub.otherPlayers, pub.myTeamId, chatMessages, state) ||
-    (pub.isPlayingFoot && pub.myHand.length <= 4 && pub.myFootCount === 0)
+    /* While playing foot, held cards live in hand — myFootCount mirrors hand size. */
+    (pub.isPlayingFoot && pub.myHand.length <= 4)
 
   if (earlyRound) return false
 
@@ -655,6 +656,15 @@ export function justifyDirtyingCleanBook(
   const mustShedWilds =
     pub.myHand.length <= 4 &&
     pub.myHand.filter((c) => isWildCard(c) && !isRedThree(c)).length > 0
+
+  /*
+   * Near go-out with a spare completed clean: allow dumping onto an already-finished
+   * clean so Yes can finish the round when the dirty sink is full. Must run before
+   * urgency gates that return `dumpingOntoSmallIncomplete` (false for 7+ books).
+   */
+  if (nearGoOut && mustShedWilds && book.cards.length >= 7) {
+    return true
+  }
 
   if (
     dumpingOntoSmallIncomplete &&
@@ -823,7 +833,8 @@ export function pickBestAddToBook(
   const aggressive = urgency === 'high' || (urgency === 'medium' && heldCards >= 12)
   const nearGoOut =
     partnerNearGoOut(pub.otherPlayers, pub.myTeamId, chatMessages, state) ||
-    (pub.isPlayingFoot && pub.myHand.length <= 4 && pub.myFootCount === 0)
+    /* While playing foot, held cards live in hand — myFootCount mirrors hand size. */
+    (pub.isPlayingFoot && pub.myHand.length <= 4)
   const canGoOutNow =
     teamHasCompletedCleanBook(teamBooks) && teamHasCompletedDirtyBook(teamBooks)
 

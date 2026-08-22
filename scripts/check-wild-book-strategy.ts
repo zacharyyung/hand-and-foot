@@ -5,6 +5,7 @@
 import { pickPreferredAddBook, type Book } from '../src/game/books'
 import { findAddToBookActions } from '../src/game/ai/decisions'
 import {
+  justifyDirtyingCleanBook,
   pickBestAddToBook,
   scoreWildOnCleanTarget,
 } from '../src/game/ai/strategy'
@@ -252,6 +253,37 @@ assert(
 )
 assert(cleanOnlyPick!.bookId !== 'huge', 'must not prefer largest completed clean')
 assert(cleanOnlyPick!.bookId !== 'keepClean', 'must not prefer completed clean over tiny')
+
+/* Near go-out while playing foot: spare completed clean may take a dump wild. */
+{
+  const footHand = [wild, card('disc', '4')]
+  const fullDirty: Book = {
+    id: 'fullDirty',
+    rank: 'K',
+    teamId: 0,
+    startedBySeatIndex: 2,
+    cards: [
+      card('fd0', 'K'),
+      card('fd1', 'K', 'diamonds'),
+      card('fd2', 'K', 'clubs'),
+      card('fd3', 'K', 'spades'),
+      card('fd4', 'K'),
+      card('fd-w0', '2', 'clubs'),
+      card('fd-w1', 'Joker', 'joker'),
+    ],
+  }
+  const footBooks = [hugeClean, keepClean, fullDirty]
+  const footPub = stubPub(footHand, footBooks, {
+    myFootCount: footHand.length,
+    isPlayingFoot: true,
+    teamScore: 2500,
+    stockCount: 4,
+  })
+  assert(
+    justifyDirtyingCleanBook(keepClean, [wild], footPub, [], []),
+    'near go-out may dump onto spare completed clean when dirty is full',
+  )
+}
 
 /* findAddToBookActions priority: 6-card wild complete > small dump > big completed. */
 const priActions = findAddToBookActions(
