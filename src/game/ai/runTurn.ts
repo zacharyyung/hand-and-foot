@@ -304,6 +304,10 @@ export function runAiTurn(
     `${player.profile.name} (${difficulty}) · hand ${player.hand.length} · max ${maxPlays} meld plays`,
   )
 
+  /*
+   * Mid-turn Yes resume only — a Yes from an earlier turn is stale and must be
+   * re-asked. Standing "You should go out!" without a Yes-to-this-ask does not set this.
+   */
   const goOutClearedThisResume =
     partnerIsHuman &&
     state.turnPhase === 'play' &&
@@ -623,7 +627,8 @@ export function runAiTurn(
     if (partnerIsHuman) {
       const midTurnResume = state.turnPhase === 'play'
       const endApproved =
-        midTurnResume && hasExplicitGoOutApproval(messages, seatIndex, playerCount)
+        midTurnResume &&
+        hasExplicitGoOutApproval(messages, seatIndex, playerCount)
 
       if (awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx)) {
         debug?.step('chat', 'Waiting for partner go-out yes/no.')

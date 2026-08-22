@@ -1,7 +1,15 @@
 import type { Card, Rank } from '../cards'
 import { isRedThree, isWildCard } from '../cards'
 import type { Book } from '../books'
-import { bookWildCount, canAddToBook, canStartBook, countWildsInCards, naturalRank } from '../books'
+import {
+  bookWildCount,
+  canAddToBook,
+  canStartBook,
+  countWildsInCards,
+  isCleanBook,
+  naturalRank,
+  wouldDestroyOnlyCompletedCleanBook,
+} from '../books'
 import { footMeldAllowedForHand } from '../actions'
 import { cardPointValue, meldContributionFromCards } from '../scoring'
 
@@ -263,6 +271,10 @@ export function rankStrengthInHand(hand: Card[], rank: Rank): number {
 /**
  * True when the AI can meld down to exactly one foot card this turn (so a partner
  * Yes can finish with a go-out discard). Used to ask before the forced last card.
+ *
+ * Paths that would destroy the only completed clean book are excluded. Wilds onto
+ * a spare clean book are allowed here — runAiTurn will pause for wild consent
+ * after a go-out Yes before placing them.
  */
 export function canMeldDownToLastCard(
   hand: Card[],
@@ -277,25 +289,71 @@ export function canMeldDownToLastCard(
   let wildAdded = [...booksWithWildAddedThisTurn]
 
   for (let guard = 0; guard < 24 && remaining.length > 1; guard++) {
-    const actions = findAddToBookActions(
+    const addActions = findAddToBookActions(
       remaining,
       books,
       true,
       wildAdded,
       meldThresholdMet,
-    ).filter((a) => remaining.length - a.cardIds.length >= 1)
+    ).filter((a) => {
+      if (remaining.length - a.cardIds.length < 1) return false
+      const cards = remaining.filter((c) => a.cardIds.includes(c.id))
+      const book = books.find((b) => b.id === a.bookId)
+      if (!book) return false
+      if (
+        countWildsInCards(cards) > 0 &&
+        isCleanBook(book) &&
+        wouldDestroyOnlyCompletedCleanBook(book, cards, books)
+      ) {
+        return false
+      }
+      return true
+    })
 
-    if (actions.length === 0) break
+    if (addActions.length > 0) {
+      const best = addActions[0]!
+      const played = new Set(best.cardIds)
+      const cards = remaining.filter((c) => played.has(c.id))
+      remaining = remaining.filter((c) => !played.has(c.id))
+      books = books.map((b) =>
+        b.id === best.bookId ? { ...b, cards: [...b.cards, ...cards] } : b,
+      )
+      if (countWildsInCards(cards) > 0) {
+        wildAdded = [...wildAdded, best.bookId]
+      }
+      continue
+    }
 
-    const best = actions[0]!
-    const played = new Set(best.cardIds)
+    const startActions = findStartBookActions(
+      remaining,
+      books,
+      true,
+      meldThresholdMet,
+    ).filter(
+      (a): a is Extract<AiAction, { type: 'startBook' }> =>
+        a.type === 'startBook' && remaining.length - a.cardIds.length >= 1,
+    )
+
+    if (startActions.length === 0) break
+
+    const bestStart = startActions[0]!
+    const played = new Set(bestStart.cardIds)
     const cards = remaining.filter((c) => played.has(c.id))
     remaining = remaining.filter((c) => !played.has(c.id))
-    books = books.map((b) =>
-      b.id === best.bookId ? { ...b, cards: [...b.cards, ...cards] } : b,
-    )
+    const check = canStartBook(cards, books)
+    if (!check.ok) break
+    books = [
+      ...books,
+      {
+        id: `preview-${check.rank}-${guard}`,
+        rank: check.rank,
+        cards,
+        teamId: books[0]?.teamId ?? 0,
+        startedBySeatIndex: 0,
+      },
+    ]
     if (countWildsInCards(cards) > 0) {
-      wildAdded = [...wildAdded, best.bookId]
+      wildAdded = [...wildAdded, `preview-${check.rank}-${guard}`]
     }
   }
 

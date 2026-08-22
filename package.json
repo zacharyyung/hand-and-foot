@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "check:ai-meld": "npx tsx scripts/check-ai-meld.ts",
     "check:go-out-books": "npx tsx scripts/check-go-out-books.ts",
+    "check:go-out-yes-cases": "npx tsx scripts/check-go-out-yes-cases.ts",
     "check:partner-consent": "npx tsx scripts/check-partner-consent.ts",
     "check:wild-book-strategy": "npx tsx scripts/check-wild-book-strategy.ts"
   },
