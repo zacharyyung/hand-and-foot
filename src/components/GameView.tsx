@@ -661,8 +661,6 @@ export function GameView({
     return footMeldBlockReason
   }, [footMeldBlocked, footMeldBlockReason, goingOut, viewer])
   const playerHint = error ? null : wildBlockReason ?? footMeldHint ?? goOutBlockReason
-  const goToFootDiscard =
-    isMyTurn && canGoToFoot(viewer) && playableSelectedIds.length === 1
   const skipAndRunSelected =
     isMyTurn && willSkipAndRun(viewer, playableSelectedIds)
   const skipAndRunMeld =
@@ -1103,7 +1101,7 @@ export function GameView({
     setDiscardWarning(null)
     setDirtyBookWarning(null)
     if (goingOut) playSound('goOut')
-    else if (goToFootDiscard) playSound('goToFoot')
+    else if (canGoToFoot(viewer)) playSound('goToFoot')
     else playSound('discard')
     onGameChange(result.state, { recordHistory: true })
   }
@@ -1854,9 +1852,7 @@ export function GameView({
                               className={`disabled:opacity-35 ${
                                 goingOut
                                   ? 'btn-success animate-soft-pulse'
-                                  : goToFootDiscard
-                                    ? 'btn-foot animate-soft-pulse'
-                                    : 'btn-danger'
+                                  : 'btn-danger'
                               }`}
                             >
                               {goingOut
@@ -1867,11 +1863,7 @@ export function GameView({
                                   ? mobileLayout
                                     ? 'Out'
                                     : 'Discard to go out'
-                                  : goToFootDiscard
-                                    ? mobileLayout
-                                      ? 'Foot'
-                                      : 'Go to foot'
-                                    : 'Discard'}
+                                  : 'Discard'}
                             </button>
                           )}
                         </>
