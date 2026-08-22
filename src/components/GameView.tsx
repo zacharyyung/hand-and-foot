@@ -360,9 +360,22 @@ export function GameView({
     [stagedBooks],
   )
 
+  /** Selected cards still available to play (in hand, not staged) — ignores stale ids. */
+  const playableSelectedCards = useMemo(
+    () =>
+      viewer.hand.filter(
+        (c) => selectedIds.includes(c.id) && !stagedCardIds.has(c.id),
+      ),
+    [viewer.hand, selectedIds, stagedCardIds],
+  )
+  const playableSelectedIds = useMemo(
+    () => playableSelectedCards.map((c) => c.id),
+    [playableSelectedCards],
+  )
+
   const matchingStagedBook = useMemo(() => {
-    if (selectedIds.length === 0 || stagedBooks.length === 0) return null
-    const cards = viewer.hand.filter((c) => selectedIds.includes(c.id))
+    if (playableSelectedIds.length === 0 || stagedBooks.length === 0) return null
+    const cards = playableSelectedCards
     if (cards.length === 0) return null
     const naturals = cards.filter((c) => !isWildCard(c))
     const staged =
@@ -378,18 +391,23 @@ export function GameView({
       startedBySeatIndex: viewerSeat,
     }
     return canAddToBook(stagedAsBook, cards).ok ? staged : null
-  }, [selectedIds, stagedBooks, viewer.hand, team.id, viewerSeat])
+  }, [
+    playableSelectedIds,
+    playableSelectedCards,
+    stagedBooks,
+    team.id,
+    viewerSeat,
+  ])
 
-  const selectedCards = handForDisplay.filter((c) => selectedIds.includes(c.id))
   const selectedPoints = needsStagedMeld
-    ? meldContributionFromCards(selectedCards)
-    : sumCardPoints(selectedCards)
+    ? meldContributionFromCards(playableSelectedCards)
+    : sumCardPoints(playableSelectedCards)
   const addBookOptions = useMemo(
     () =>
       team.meldThresholdMet && !isLastFootCard(viewer)
         ? findAllBooksForSelectedCards(
             viewer.hand,
-            selectedIds,
+            playableSelectedIds,
             team.books,
             game.booksWithWildAddedThisTurn,
           )
@@ -398,7 +416,7 @@ export function GameView({
       team.meldThresholdMet,
       team.books,
       viewer,
-      selectedIds,
+      playableSelectedIds,
       game.booksWithWildAddedThisTurn,
     ],
   )
@@ -406,11 +424,11 @@ export function GameView({
     () =>
       needsAddBookPicker(
         viewer.hand,
-        selectedIds,
+        playableSelectedIds,
         team.books,
         game.booksWithWildAddedThisTurn,
       ),
-    [viewer.hand, selectedIds, team.books, game.booksWithWildAddedThisTurn],
+    [viewer.hand, playableSelectedIds, team.books, game.booksWithWildAddedThisTurn],
   )
   const matchedAddBook = useMemo(() => {
     if (addBookOptions.length === 0) return null
@@ -419,7 +437,7 @@ export function GameView({
     }
     return findBookForSelectedCards(
       viewer.hand,
-      selectedIds,
+      playableSelectedIds,
       team.books,
       game.booksWithWildAddedThisTurn,
     )
@@ -428,7 +446,7 @@ export function GameView({
     showAddBookPicker,
     selectedAddBookId,
     viewer.hand,
-    selectedIds,
+    playableSelectedIds,
     team.books,
     game.booksWithWildAddedThisTurn,
   ])
@@ -438,7 +456,7 @@ export function GameView({
     const mode = needsStagedMeld ? 'stage' : team.meldThresholdMet ? 'add' : 'start'
     return getWildPlayBlockReason(
       viewer.hand,
-      selectedIds,
+      playableSelectedIds,
       team.books,
       mode,
       game.booksWithWildAddedThisTurn,
@@ -450,7 +468,7 @@ export function GameView({
     needsStagedMeld,
     team.meldThresholdMet,
     viewer.hand,
-    selectedIds,
+    playableSelectedIds,
     team.books,
   ])
   const goingOut = isMyTurn && canPlayerGoOut(game, chatMessages)
@@ -485,7 +503,10 @@ export function GameView({
 
     const stagedIds = stagedBooks.flatMap((b) => b.cardIds)
 
-    if (selectedIds.length > 0 && !footMeldLeavesDiscard(viewer, selectedIds)) {
+    if (
+      playableSelectedIds.length > 0 &&
+      !footMeldLeavesDiscard(viewer, playableSelectedIds)
+    ) {
       return 'Keep at least one card to discard — you cannot meld your whole foot.'
     }
 
@@ -493,7 +514,7 @@ export function GameView({
       return 'Keep at least one card to discard — you cannot meld your whole foot.'
     }
 
-    const stagedAndSelected = [...new Set([...stagedIds, ...selectedIds])]
+    const stagedAndSelected = [...new Set([...stagedIds, ...playableSelectedIds])]
     if (
       stagedAndSelected.length > 0 &&
       !footMeldLeavesDiscard(viewer, stagedAndSelected)
@@ -519,8 +540,8 @@ export function GameView({
       if (stagedReason) return stagedReason
     }
 
-    if (needsStagedMeld && matchingStagedBook && selectedIds.length > 0) {
-      const cards = viewer.hand.filter((c) => selectedIds.includes(c.id))
+    if (needsStagedMeld && matchingStagedBook && playableSelectedIds.length > 0) {
+      const cards = playableSelectedCards
       let virtualBooks: Book[] = [...team.books]
       for (const staged of stagedBooks) {
         const nextCards =
@@ -540,11 +561,11 @@ export function GameView({
       }
       const addStageReason = tryCheck(stagedAndSelected, virtualBooks, true)
       if (addStageReason) return addStageReason
-    } else if (needsStagedMeld && selectedIds.length >= 3) {
-      const cards = viewer.hand.filter((c) => selectedIds.includes(c.id))
+    } else if (needsStagedMeld && playableSelectedIds.length >= 3) {
+      const cards = playableSelectedCards
       const stageCheck = validateStageBook(
         viewer.hand,
-        selectedIds,
+        playableSelectedIds,
         team.books,
         stagedBooks.map((b) => b.rank),
       )
@@ -577,8 +598,8 @@ export function GameView({
       }
     }
 
-    if (team.meldThresholdMet && matchedAddBook && selectedIds.length > 0) {
-      const selected = viewer.hand.filter((c) => selectedIds.includes(c.id))
+    if (team.meldThresholdMet && matchedAddBook && playableSelectedIds.length > 0) {
+      const selected = playableSelectedCards
       const addCheck = canAddToBook(matchedAddBook, selected, {
         wildAlreadyAddedThisTurn: game.booksWithWildAddedThisTurn.includes(
           matchedAddBook.id,
@@ -592,13 +613,13 @@ export function GameView({
         const books = team.books.map((b) =>
           b.id === matchedAddBook.id ? updatedBook : b,
         )
-        const addReason = tryCheck(selectedIds, books, team.meldThresholdMet)
+        const addReason = tryCheck(playableSelectedIds, books, team.meldThresholdMet)
         if (addReason) return addReason
       }
     }
 
-    if (selectedIds.length >= 3 && team.meldThresholdMet) {
-      const selected = viewer.hand.filter((c) => selectedIds.includes(c.id))
+    if (playableSelectedIds.length >= 3 && team.meldThresholdMet) {
+      const selected = playableSelectedCards
       const startCheck = canStartBook(selected, team.books)
       if (startCheck.ok) {
         const projectedBook: Book = {
@@ -609,7 +630,7 @@ export function GameView({
           startedBySeatIndex: viewerSeat,
         }
         const startReason = tryCheck(
-          selectedIds,
+          playableSelectedIds,
           [...team.books, projectedBook],
           team.meldThresholdMet,
         )
@@ -624,7 +645,8 @@ export function GameView({
     game.turnPhase,
     game.booksWithWildAddedThisTurn,
     stagedBooks,
-    selectedIds,
+    playableSelectedIds,
+    playableSelectedCards,
     team.books,
     team.id,
     team.meldThresholdMet,
@@ -640,12 +662,9 @@ export function GameView({
   }, [footMeldBlocked, footMeldBlockReason, goingOut, viewer])
   const playerHint = error ? null : wildBlockReason ?? footMeldHint ?? goOutBlockReason
   const goToFootDiscard =
-    isMyTurn &&
-    canGoToFoot(viewer) &&
-    selectedIds.length === 1 &&
-    addBookOptions.length === 0
+    isMyTurn && canGoToFoot(viewer) && playableSelectedIds.length === 1
   const skipAndRunSelected =
-    isMyTurn && willSkipAndRun(viewer, selectedIds)
+    isMyTurn && willSkipAndRun(viewer, playableSelectedIds)
   const skipAndRunMeld =
     isMyTurn && willSkipAndRun(viewer, stagedBooks.flatMap((b) => b.cardIds))
   // After the initial meld, always show Start book. Hiding it when other books
@@ -653,24 +672,21 @@ export function GameView({
   // three 10s, or two 8s + a wild — even though the meld requirement was met.
   const showStartBook = !needsStagedMeld
   const startBookCheck =
-    selectedIds.length < 3
+    playableSelectedIds.length < 3
       ? ({ ok: false as const, reason: 'Need at least 3 cards to start a book.' })
-      : canStartBook(
-          viewer.hand.filter((c) => selectedIds.includes(c.id)),
-          team.books,
-        )
+      : canStartBook(playableSelectedCards, team.books)
   const skipAndRunActive =
     skipAndRunMeld ||
     (skipAndRunSelected &&
       addBookOptions.length === 0 &&
-      !(team.meldThresholdMet && selectedIds.length >= 3))
+      !(team.meldThresholdMet && playableSelectedIds.length >= 3))
   const skipAndRunDisabled = skipAndRunMeld
     ? stagedBooks.length === 0 ||
       (needsStagedMeld && stagedPoints < requiredMeld) ||
       footMeldBlocked
     : addBookOptions.length > 0 && skipAndRunSelected
-      ? selectedIds.length === 0 || !matchedAddBook
-      : selectedIds.length < 3
+      ? playableSelectedIds.length === 0 || !matchedAddBook
+      : playableSelectedIds.length < 3
   const hasLeftoverStaging = !needsStagedMeld && stagedBooks.length > 0
   const teamColor = TEAM_COLORS[viewer.profile.teamId]
 
@@ -714,6 +730,15 @@ export function GameView({
     })
   }, [viewer.hand])
 
+  /* Drop selection ids for cards that left the hand (meld/undo) so Discard stays usable. */
+  useEffect(() => {
+    const handIds = new Set(viewer.hand.map((c) => c.id))
+    setSelectedIds((prev) => {
+      const next = prev.filter((id) => handIds.has(id))
+      return next.length === prev.length ? prev : next
+    })
+  }, [viewer.hand])
+
   useEffect(() => {
     setSelectedIds([])
     setError(null)
@@ -726,22 +751,27 @@ export function GameView({
   useEffect(() => {
     setDiscardWarning((current) => {
       if (!current) return null
-      if (selectedIds.length === 1 && selectedIds[0] === current.cardId) return current
+      if (
+        playableSelectedIds.length === 1 &&
+        playableSelectedIds[0] === current.cardId
+      ) {
+        return current
+      }
       return null
     })
-  }, [selectedIds])
+  }, [playableSelectedIds])
 
   // Drop the dirty-book prompt once the selection or target book changes.
   useEffect(() => {
     setDirtyBookWarning((current) => {
       if (!current) return null
       if (!matchedAddBook || matchedAddBook.id !== current.bookId) return null
-      if (selectedIds.length !== current.cardIds.length) return null
-      const selected = new Set(selectedIds)
+      if (playableSelectedIds.length !== current.cardIds.length) return null
+      const selected = new Set(playableSelectedIds)
       if (current.cardIds.some((id) => !selected.has(id))) return null
       return current
     })
-  }, [selectedIds, matchedAddBook])
+  }, [playableSelectedIds, matchedAddBook])
 
   useEffect(() => {
     if (!showAddBookPicker) {
@@ -750,11 +780,10 @@ export function GameView({
     }
     setSelectedAddBookId((prev) => {
       if (prev && addBookOptions.some((b) => b.id === prev)) return prev
-      const selected = viewer.hand.filter((c) => selectedIds.includes(c.id))
-      const preferred = pickPreferredAddBook(addBookOptions, selected)
+      const preferred = pickPreferredAddBook(addBookOptions, playableSelectedCards)
       return preferred?.id ?? addBookOptions[0]?.id ?? null
     })
-  }, [showAddBookPicker, addBookOptions, selectedIds, viewer.hand])
+  }, [showAddBookPicker, addBookOptions, playableSelectedCards])
 
   /* Turn-change / your-turn cues */
   useEffect(() => {
@@ -967,9 +996,9 @@ export function GameView({
 
   function handleStartBook() {
     unlockAudio()
-    const cards = viewer.hand.filter((c) => selectedIds.includes(c.id))
+    const cards = playableSelectedCards
     const prevBookIds = new Set(team.books.map((b) => b.id))
-    const result = startBook(game, selectedIds)
+    const result = startBook(game, playableSelectedIds)
     if (result.error) {
       setError(result.error)
       playSound('invalid')
@@ -994,21 +1023,21 @@ export function GameView({
       playSound('invalid')
       return
     }
-    const cards = viewer.hand.filter((c) => selectedIds.includes(c.id))
+    const cards = playableSelectedCards
 
     const dirtyWarn = shouldWarnDirtyCleanBook(matchedAddBook, cards)
     if (dirtyWarn) {
       setDirtyBookWarning({
         bookId: matchedAddBook.id,
         bookRank: dirtyWarn.bookRank,
-        cardIds: [...selectedIds],
+        cardIds: [...playableSelectedIds],
       })
       setDiscardWarning(null)
       setError(null)
       return
     }
 
-    performAddToBook(matchedAddBook, cards, selectedIds)
+    performAddToBook(matchedAddBook, cards, playableSelectedIds)
   }
 
   function performAddToBook(book: Book, cards: Card[], cardIds: string[]) {
@@ -1081,13 +1110,13 @@ export function GameView({
 
   function handleDiscard() {
     unlockAudio()
-    if (selectedIds.length !== 1) {
+    if (playableSelectedIds.length !== 1) {
       setError('Select exactly one card to discard.')
       playSound('invalid')
       return
     }
 
-    const cardId = selectedIds[0]
+    const cardId = playableSelectedIds[0]
 
     if (isLastFootCard(viewer)) {
       const blockReason = getGoOutBlockReason(team.books, team.meldThresholdMet)
@@ -1098,7 +1127,13 @@ export function GameView({
       }
     }
 
-    if (!goingOut && !isLastFootCard(viewer) && team.books.length > 0) {
+    /* Going to foot by discarding the last hand card is intentional — don't warn. */
+    if (
+      !goingOut &&
+      !isLastFootCard(viewer) &&
+      !canGoToFoot(viewer) &&
+      team.books.length > 0
+    ) {
       const warning = shouldWarnDiscardToBook(viewer.hand, cardId, team.books)
       if (warning) {
         setDiscardWarning({
@@ -1123,7 +1158,7 @@ export function GameView({
 
   function handleStage() {
     unlockAudio()
-    const cards = viewer.hand.filter((c) => selectedIds.includes(c.id))
+    const cards = playableSelectedCards
     if (cards.length === 0) {
       setError('Select cards to stage.')
       playSound('invalid')
@@ -1170,7 +1205,7 @@ export function GameView({
         ]
       }
       const stagedAndSelected = [
-        ...new Set([...stagedBooks.flatMap((b) => b.cardIds), ...selectedIds]),
+        ...new Set([...stagedBooks.flatMap((b) => b.cardIds), ...playableSelectedIds]),
       ]
       const footCheck = checkFootMeld(viewer, stagedAndSelected, virtualBooks, true, {
         booksBeforeMeld: team.books,
@@ -1188,7 +1223,7 @@ export function GameView({
           book.id === matchingStaged.id
             ? {
                 ...book,
-                cardIds: [...book.cardIds, ...selectedIds],
+                cardIds: [...book.cardIds, ...playableSelectedIds],
                 cards: [...book.cards, ...cards],
               }
             : book,
@@ -1203,7 +1238,7 @@ export function GameView({
 
     const check = validateStageBook(
       viewer.hand,
-      selectedIds,
+      playableSelectedIds,
       team.books,
       stagedBooks.map((b) => b.rank),
     )
@@ -1236,7 +1271,7 @@ export function GameView({
       },
     ]
     const stagedAndSelected = [
-      ...new Set([...stagedBooks.flatMap((b) => b.cardIds), ...selectedIds]),
+      ...new Set([...stagedBooks.flatMap((b) => b.cardIds), ...playableSelectedIds]),
     ]
     const footCheck = checkFootMeld(viewer, stagedAndSelected, virtualBooks, true, {
       booksBeforeMeld: team.books,
@@ -1253,7 +1288,7 @@ export function GameView({
       ...prev,
       {
         id: bookId,
-        cardIds: [...selectedIds],
+        cardIds: [...playableSelectedIds],
         rank: check.rank,
         cards,
       },
@@ -1590,7 +1625,7 @@ export function GameView({
                     <span className="seat-chip-pile-label">F</span>
                     <span className="seat-chip-pile-count">{playerFootCount(viewer)}</span>
                   </span>
-                  {selectedIds.length > 0 && (
+                  {playableSelectedIds.length > 0 && (
                     <span className="text-ink-muted">{selectedPoints} pts</span>
                   )}
                 </span>
@@ -1708,8 +1743,8 @@ export function GameView({
                                   disabled={
                                     footMeldBlocked ||
                                     (matchingStagedBook
-                                      ? selectedIds.length === 0
-                                      : selectedIds.length < 3)
+                                      ? playableSelectedIds.length === 0
+                                      : playableSelectedIds.length < 3)
                                   }
                                   className="btn-secondary disabled:opacity-35"
                                 >
@@ -1791,7 +1826,7 @@ export function GameView({
                               <button
                                 onClick={handleAddToBook}
                                 disabled={
-                                  selectedIds.length === 0 ||
+                                  playableSelectedIds.length === 0 ||
                                   !matchedAddBook ||
                                   footMeldBlocked
                                 }
@@ -1815,12 +1850,12 @@ export function GameView({
                           ) : (
                             <button
                               onClick={handleDiscard}
-                              disabled={selectedIds.length !== 1}
+                              disabled={playableSelectedIds.length !== 1}
                               className={`disabled:opacity-35 ${
                                 goingOut
-                                  ? 'btn-success'
+                                  ? 'btn-success animate-soft-pulse'
                                   : goToFootDiscard
-                                    ? 'btn-foot'
+                                    ? 'btn-foot animate-soft-pulse'
                                     : 'btn-danger'
                               }`}
                             >
