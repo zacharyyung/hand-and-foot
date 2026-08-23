@@ -18,6 +18,7 @@ import { cardPointValue, meldThreshold, meldContributionFromCards } from '../sco
 import { partnerSeat, type PlayerCount } from '../teams'
 import type { AiDifficulty } from '../deal'
 import type { AiPublicState } from './publicState'
+import { cardsHeldByAi } from './publicState'
 import { footMeldAllowedForHand } from '../actions'
 import { findAddToBookActions, findStartBookActions, type AiAction } from './decisions'
 import {
@@ -405,10 +406,16 @@ export function meldUrgency(teamScore: number): 'low' | 'medium' | 'high' {
   return 'low'
 }
 
+/**
+ * Cards this seat still holds. While playing foot, foot cards live in `myHand`
+ * and `myFootCount` mirrors that length — do not double-count.
+ */
+export { cardsHeldByAi } from './publicState'
+
 /** How hard the AI should push to meld — rises with meld limits, hand size, and a shrinking stock. */
 export function meldPressure(pub: AiPublicState): 'low' | 'medium' | 'high' {
   let level = meldUrgency(pub.teamScore)
-  const held = pub.myHand.length + pub.myFootCount
+  const held = cardsHeldByAi(pub)
   const learned = learnedOrDefault()
   const strength = learningStrength(learned.sampleSize, 'expert')
 
@@ -440,7 +447,10 @@ export function meldPressure(pub: AiPublicState): 'low' | 'medium' | 'high' {
     level = 'medium'
   }
 
-  if (pub.isPlayingFoot && pub.myFootCount >= 9 && level === 'low') {
+  /* Foot dump: put down playable cards instead of banking a fat foot for later. */
+  if (pub.isPlayingFoot && pub.myHand.length >= 10) {
+    level = 'high'
+  } else if (pub.isPlayingFoot && pub.myHand.length >= 6 && level === 'low') {
     level = 'medium'
   }
 
@@ -487,13 +497,30 @@ export function shouldRandomlySkipMeld(
   urgency: 'low' | 'medium' | 'high',
   kind: 'add' | 'endTurn',
   teamMeldThresholdMet = true,
+  /** Never sandbag once in the foot — leftover playable cards look like a bug. */
+  isPlayingFoot = false,
 ): boolean {
   if (!teamMeldThresholdMet) return false
+  if (isPlayingFoot) return false
   if (difficulty === 'expert' || urgency === 'high') return false
   if (kind === 'add') {
     return Math.random() < (urgency === 'low' ? 0.08 : 0.02)
   }
   return Math.random() < (urgency === 'low' ? 0.1 : 0.03)
+}
+
+/**
+ * Safety cap on meld iterations. Must cover emptying the hand into foot
+ * (skip-and-run) and then playing the foot in the same turn — each rank can
+ * need its own add — so this scales with cards still held.
+ */
+export function aiMeldPlayBudget(
+  handLength: number,
+  footLength: number,
+  isPlayingFoot: boolean,
+): number {
+  const pending = isPlayingFoot ? handLength : handLength + footLength
+  return Math.max(32, pending + 8)
 }
 
 export function teamNeedsDirtyBook(books: Book[]): boolean {
@@ -667,7 +694,7 @@ export function justifyDirtyingCleanBook(
   if (bookHasPartnerWildApproval(book.id, pub, chatMessages, state)) return true
 
   const urgency = meldPressure(pub)
-  const heldCards = pub.myHand.length + pub.myFootCount
+  const heldCards = cardsHeldByAi(pub)
   const alternative = hasAlternativeWildTarget(
     pub.myHand,
     books,
@@ -898,7 +925,7 @@ export function pickBestAddToBook(
   if (allowed.length === 0) return null
 
   const urgency = meldPressure(pub)
-  const heldCards = pub.myHand.length + pub.myFootCount
+  const heldCards = cardsHeldByAi(pub)
   const aggressive = urgency === 'high' || (urgency === 'medium' && heldCards >= 12)
   const nearGoOut =
     partnerNearGoOut(pub.otherPlayers, pub.myTeamId, chatMessages, state) ||

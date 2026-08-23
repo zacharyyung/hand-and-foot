@@ -44,6 +44,7 @@ import {
   shouldAskBeforeWildAdd,
 } from './chatSignals'
 import {
+  aiMeldPlayBudget,
   initialMeldUrgency,
   meldPressure,
   pickBestAddToBook,
@@ -298,7 +299,16 @@ export function runAiTurn(
     }
   }
 
-  const maxPlays = difficulty === 'expert' ? 14 : 10
+  /*
+   * Budget must cover emptying the hand into foot (skip-and-run) and then
+   * playing the foot in the same turn. A fixed 10/14 cap left playable foot
+   * cards stranded until the next turn.
+   */
+  let maxPlays = aiMeldPlayBudget(
+    player.hand.length,
+    player.foot.length,
+    player.isPlayingFoot,
+  )
   debug?.step(
     'turn',
     `${player.profile.name} (${difficulty}) · hand ${player.hand.length} · max ${maxPlays} meld plays`,
@@ -326,6 +336,16 @@ export function runAiTurn(
     const urgency = meldPressure(pub)
     const addAttempts = urgency === 'high' ? 4 : urgency === 'medium' ? 3 : 2
     const teamReady = canTeamGoOut(team.books, team.meldThresholdMet)
+    /*
+     * Skip-and-run can inject a full foot mid-loop. Top up the remaining budget
+     * so those new cards are not stuck behind the pre-foot play count.
+     */
+    if (pub.isPlayingFoot) {
+      const needed = aiMeldPlayBudget(pub.myHand.length, 0, true)
+      if (i + needed > maxPlays) {
+        maxPlays = i + needed
+      }
+    }
     /*
      * Stop melding to ask (or discard) before the forced last-card go-out.
      * After a mid-turn Yes, keep melding down so discard can finish the round.
@@ -404,176 +424,217 @@ export function runAiTurn(
         debug?.step('initial', 'No initial meld plan — stopping meld loop.')
       }
     } else {
-      const addActions = findAddToBookActions(
-        pub.myHand,
-        pub.myTeamBooks,
-        pub.isPlayingFoot,
-        current.booksWithWildAddedThisTurn,
-        team.meldThresholdMet,
-      ).filter((a) => {
-        if (!deniedWildBooks.has(a.bookId)) return true
-        /* Denial blocks wilds only — naturals onto that book are fine. */
-        const cards = pub.myHand.filter((c) => a.cardIds.includes(c.id))
-        return countWildsInCards(cards) === 0
-      })
-      debug?.step('add', `${addActions.length} add action(s) available.`)
-      const triedAdds = new Set<string>()
-
-      for (let attempt = 0; attempt < addAttempts && !played; attempt++) {
-        const remaining = addActions.filter(
-          (a) => !triedAdds.has(`${a.bookId}:${a.cardIds.join(',')}`),
-        )
-        const bestAdd = pickBestAddToBook(
-          remaining,
-          pub,
-          current.booksWithWildAddedThisTurn,
+      /*
+       * In the foot, start stranded new books while a discard cushion remains.
+       * Otherwise adds burn every spare card first and a 3-of-a-kind gets stuck
+       * with nothing left to discard (illegal to meld the whole hand).
+       */
+      if (pub.isPlayingFoot && pub.myHand.length >= 4) {
+        const footStartIds = pickBestStartWhenUnlocked(
+          pub.myHand,
+          pub.myTeamBooks,
+          urgency,
           difficulty,
-          messages,
-          current,
+          true,
         )
-        if (!bestAdd) {
-          debug?.step('add', 'No scored add action left.')
-          break
-        }
-
-        triedAdds.add(`${bestAdd.bookId}:${bestAdd.cardIds.join(',')}`)
-        if (shouldRandomlySkipMeld(difficulty, urgency, 'add', pub.teamMeldThresholdMet)) {
-          debug?.step(
-            'add',
-            `Random skip (normal): ${labelCards(pub.myHand, bestAdd.cardIds)}`,
-          )
-          continue
-        }
-
-        const book = pub.myTeamBooks.find((b) => b.id === bestAdd.bookId)
-        if (!book) continue
-
-        const addCards = pub.myHand.filter((c) => bestAdd.cardIds.includes(c.id))
-        const addHasWilds = countWildsInCards(addCards) > 0
         if (
-          partnerIsHuman &&
-          addHasWilds &&
-          wasPartnerWildDeniedForBook(messages, seatIndex, partnerIdx, book.id)
-        ) {
-          debug?.step('add', `Skip wild on ${book.rank}s — partner already said no.`)
-          continue
-        }
-
-        /*
-         * With a human partner, do not place wilds on already-dirty books in the
-         * same meld pass where we might pause to ask about dirtying a clean book.
-         * Dirty-book wilds still happen later via the lone-wild step after consent.
-         */
-        if (
-          partnerIsHuman &&
-          addHasWilds &&
-          !needsHumanWildConsent(book, addCards, partnerIdx)
+          footStartIds &&
+          pub.myHand.length - footStartIds.length >= 1
         ) {
           debug?.step(
-            'add',
-            `Defer dirty-book wild on ${book.rank}s until after consent checks.`,
+            'start',
+            `Starting book (foot): ${labelCards(pub.myHand, footStartIds)}`,
           )
-          continue
+          const result = startBook(current, footStartIds)
+          if (!result.error) {
+            current = result.state
+            played = true
+          } else {
+            debug?.step('start', `Start failed: ${result.error}`)
+          }
         }
+      }
 
-        if (
-          partnerIsHuman &&
-          shouldAskBeforeWildAdd(
-            current,
-            seatIndex,
+      if (!played) {
+        const addActions = findAddToBookActions(
+          pub.myHand,
+          pub.myTeamBooks,
+          pub.isPlayingFoot,
+          current.booksWithWildAddedThisTurn,
+          team.meldThresholdMet,
+        ).filter((a) => {
+          if (!deniedWildBooks.has(a.bookId)) return true
+          /* Denial blocks wilds only — naturals onto that book are fine. */
+          const cards = pub.myHand.filter((c) => a.cardIds.includes(c.id))
+          return countWildsInCards(cards) === 0
+        })
+        debug?.step('add', `${addActions.length} add action(s) available.`)
+        const triedAdds = new Set<string>()
+
+        for (let attempt = 0; attempt < addAttempts && !played; attempt++) {
+          const remaining = addActions.filter(
+            (a) => !triedAdds.has(`${a.bookId}:${a.cardIds.join(',')}`),
+          )
+          const bestAdd = pickBestAddToBook(
+            remaining,
+            pub,
+            current.booksWithWildAddedThisTurn,
+            difficulty,
             messages,
-            book,
-            bestAdd.cardIds,
-            pub.myHand,
+            current,
           )
-        ) {
+          if (!bestAdd) {
+            debug?.step('add', 'No scored add action left.')
+            break
+          }
+
+          triedAdds.add(`${bestAdd.bookId}:${bestAdd.cardIds.join(',')}`)
           if (
-            hasPartnerWildApprovalForBook(messages, seatIndex, partnerIdx, book.id)
+            shouldRandomlySkipMeld(
+              difficulty,
+              urgency,
+              'add',
+              pub.teamMeldThresholdMet,
+              pub.isPlayingFoot,
+            )
           ) {
-            /* Approved — fall through and play. */
-          } else if (stopFurtherWildAsks) {
             debug?.step(
               'add',
-              `Skip wild ask on ${book.rank}s — partner said no earlier this turn.`,
+              `Random skip (normal): ${labelCards(pub.myHand, bestAdd.cardIds)}`,
             )
             continue
-          } else {
-            const wildReq = maybeAiWildRequest(
+          }
+
+          const book = pub.myTeamBooks.find((b) => b.id === bestAdd.bookId)
+          if (!book) continue
+
+          const addCards = pub.myHand.filter((c) => bestAdd.cardIds.includes(c.id))
+          const addHasWilds = countWildsInCards(addCards) > 0
+          if (
+            partnerIsHuman &&
+            addHasWilds &&
+            wasPartnerWildDeniedForBook(messages, seatIndex, partnerIdx, book.id)
+          ) {
+            debug?.step('add', `Skip wild on ${book.rank}s — partner already said no.`)
+            continue
+          }
+
+          /*
+           * With a human partner, do not place wilds on already-dirty books in the
+           * same meld pass where we might pause to ask about dirtying a clean book.
+           * Dirty-book wilds still happen later via the lone-wild step after consent.
+           */
+          if (
+            partnerIsHuman &&
+            addHasWilds &&
+            !needsHumanWildConsent(book, addCards, partnerIdx)
+          ) {
+            debug?.step(
+              'add',
+              `Defer dirty-book wild on ${book.rank}s until after consent checks.`,
+            )
+            continue
+          }
+
+          if (
+            partnerIsHuman &&
+            shouldAskBeforeWildAdd(
               current,
               seatIndex,
               messages,
-              book.rank,
-              book.id,
               book,
+              bestAdd.cardIds,
+              pub.myHand,
             )
-            if (wildReq) {
+          ) {
+            if (
+              hasPartnerWildApprovalForBook(messages, seatIndex, partnerIdx, book.id)
+            ) {
+              /* Approved — fall through and play. */
+            } else if (stopFurtherWildAsks) {
               debug?.step(
-                'chat',
-                `Asking partner before wild on ${book.rank}s (${labelCards(pub.myHand, bestAdd.cardIds)}).`,
+                'add',
+                `Skip wild ask on ${book.rank}s — partner said no earlier this turn.`,
               )
-              /* Wild stays in hand / off the book until Yes — also strip any other
-               * wilds placed earlier this turn so the prompt is not shown next to
-               * a board that already looks dirtied. */
-              return {
-                state: stripWildAddsSince(baselineForWildAsk, current, seatIndex),
-                chatMessage: wildReq,
-                awaitingPartner: true,
-                debugTrace: debug?.trace,
+              continue
+            } else {
+              const wildReq = maybeAiWildRequest(
+                current,
+                seatIndex,
+                messages,
+                book.rank,
+                book.id,
+                book,
+              )
+              if (wildReq) {
+                debug?.step(
+                  'chat',
+                  `Asking partner before wild on ${book.rank}s (${labelCards(pub.myHand, bestAdd.cardIds)}).`,
+                )
+                /* Wild stays in hand / off the book until Yes — also strip any other
+                 * wilds placed earlier this turn so the prompt is not shown next to
+                 * a board that already looks dirtied. */
+                return {
+                  state: stripWildAddsSince(baselineForWildAsk, current, seatIndex),
+                  chatMessage: wildReq,
+                  awaitingPartner: true,
+                  debugTrace: debug?.trace,
+                }
               }
-            }
-            if (awaitingPartnerWildResponse(messages, seatIndex, partnerIdx)) {
-              return {
-                state: current,
-                awaitingPartner: true,
-                debugTrace: debug?.trace,
+              if (awaitingPartnerWildResponse(messages, seatIndex, partnerIdx)) {
+                return {
+                  state: current,
+                  awaitingPartner: true,
+                  debugTrace: debug?.trace,
+                }
               }
+              /* Denied or unable to ask — skip this add. */
+              continue
             }
-            /* Denied or unable to ask — skip this add. */
+          }
+
+          /*
+           * Hard stop: never dirty a clean book without an explicit Yes.
+           * Covers any hole where shouldAskBeforeWildAdd returned false incorrectly.
+           */
+          if (
+            partnerIsHuman &&
+            needsHumanWildConsent(book, addCards, partnerIdx) &&
+            !hasPartnerWildApprovalForBook(messages, seatIndex, partnerIdx, book.id)
+          ) {
+            debug?.step(
+              'add',
+              `Blocked wild on ${book.rank}s — no partner Yes yet.`,
+            )
             continue
           }
-        }
 
-        /*
-         * Hard stop: never dirty a clean book without an explicit Yes.
-         * Covers any hole where shouldAskBeforeWildAdd returned false incorrectly.
-         */
-        if (
-          partnerIsHuman &&
-          needsHumanWildConsent(book, addCards, partnerIdx) &&
-          !hasPartnerWildApprovalForBook(messages, seatIndex, partnerIdx, book.id)
-        ) {
+          /*
+           * Never destroy the only completed clean book — that removes go-out
+           * eligibility (need 1 clean + 1 dirty completed). Partner Yes cannot
+           * override this; dump wilds elsewhere or discard instead.
+           */
+          if (
+            wouldDestroyOnlyCompletedCleanBook(book, addCards, pub.myTeamBooks)
+          ) {
+            debug?.step(
+              'add',
+              `Skip wild on ${book.rank}s — only completed clean book.`,
+            )
+            continue
+          }
+
           debug?.step(
             'add',
-            `Blocked wild on ${book.rank}s — no partner Yes yet.`,
+            `Adding to ${book.rank} book: ${labelCards(pub.myHand, bestAdd.cardIds)}`,
           )
-          continue
-        }
-
-        /*
-         * Never destroy the only completed clean book — that removes go-out
-         * eligibility (need 1 clean + 1 dirty completed). Partner Yes cannot
-         * override this; dump wilds elsewhere or discard instead.
-         */
-        if (
-          wouldDestroyOnlyCompletedCleanBook(book, addCards, pub.myTeamBooks)
-        ) {
-          debug?.step(
-            'add',
-            `Skip wild on ${book.rank}s — only completed clean book.`,
-          )
-          continue
-        }
-
-        debug?.step(
-          'add',
-          `Adding to ${book.rank} book: ${labelCards(pub.myHand, bestAdd.cardIds)}`,
-        )
-        const result = addToBook(current, bestAdd.bookId, bestAdd.cardIds)
-        if (!result.error) {
-          current = result.state
-          played = true
-        } else {
-          debug?.step('add', `Add failed: ${result.error}`)
+          const result = addToBook(current, bestAdd.bookId, bestAdd.cardIds)
+          if (!result.error) {
+            current = result.state
+            played = true
+          } else {
+            debug?.step('add', `Add failed: ${result.error}`)
+          }
         }
       }
 
@@ -606,7 +667,15 @@ export function runAiTurn(
       break
     }
 
-    if (shouldRandomlySkipMeld(difficulty, urgency, 'endTurn', pub.teamMeldThresholdMet)) {
+    if (
+      shouldRandomlySkipMeld(
+        difficulty,
+        urgency,
+        'endTurn',
+        pub.teamMeldThresholdMet,
+        pub.isPlayingFoot,
+      )
+    ) {
       debug?.step('meld', 'Random end-turn skip (normal mode).')
       break
     }

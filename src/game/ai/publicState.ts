@@ -37,6 +37,14 @@ export interface AiPublicState {
   turnPhase: TurnPhase
 }
 
+/**
+ * Cards this seat still holds. While playing foot, foot cards live in `myHand`
+ * and `myFootCount` mirrors that length — do not double-count.
+ */
+export function cardsHeldByAi(pub: AiPublicState): number {
+  return pub.isPlayingFoot ? pub.myHand.length : pub.myHand.length + pub.myFootCount
+}
+
 export function buildAiPublicState(state: GameState, seatIndex: number): AiPublicState {
   const player = state.players[seatIndex]
   const team = state.teams.find((t) => t.id === player.profile.teamId)!

@@ -196,7 +196,9 @@ export function buildAiDebugSnapshot(
     notes.push('Unlocked but no add or start actions available.')
   }
   if (difficulty === 'normal') {
-    notes.push('Normal mode randomly skips melds ~2–10% (add) and ~3–10% (end turn).')
+    notes.push(
+      'Normal mode may randomly skip melds in hand (~2–10%); foot turns never sandbag.',
+    )
   }
 
   const topStarts = [...startBookActions]

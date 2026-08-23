@@ -2,6 +2,7 @@ import type { GameState } from '../deal'
 import { getTeam } from '../actions'
 import { getGoOutBlockReason, isCleanBook, wouldDestroyOnlyCompletedCleanBook, type Book } from '../books'
 import { buildAiPublicState } from './publicState'
+import { cardsHeldByAi } from './publicState'
 import { isRedThree, isWildCard, type Card } from '../cards'
 import { heldCardPenalty } from '../scoring'
 import {
@@ -71,7 +72,7 @@ export function analyzePartnerGoOutRequest(
     partnerInFoot && partnerFootLeft === 0 && partnerHand <= 3
   const partnerStillInHand = !partnerInFoot || partnerFootLeft > 0
 
-  const aiCardsLeft = pub.myHand.length + pub.myFootCount
+  const aiCardsLeft = cardsHeldByAi(pub)
   const aiAlsoLow = aiCardsLeft <= 4
 
   const aiHand = player.hand
