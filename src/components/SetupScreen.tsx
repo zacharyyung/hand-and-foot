@@ -275,7 +275,7 @@ export function SetupScreen({
                       value={player.name}
                       onChange={(e) => updateHuman(index, { name: e.target.value })}
                       placeholder={`Player ${index + 1}`}
-                      className="field-control px-3 py-2 text-sm"
+                      className="field-control px-3 py-2 text-base"
                     />
                   </label>
                   {askAge && (
@@ -299,7 +299,7 @@ export function SetupScreen({
                           onChange={(e) =>
                             updateHuman(index, { age: Number(e.target.value) })
                           }
-                          className="field-control field-control--number py-2 text-sm"
+                          className="field-control field-control--number py-2 text-base"
                         />
                         <button
                           type="button"

@@ -27,13 +27,37 @@ function getViewportMeta(): HTMLMetaElement | null {
 }
 
 /**
+ * Blur focused controls and snap the visual viewport back to 1×.
+ * iOS Safari often stays zoomed after typing in a <16px setup field;
+ * locking maximum-scale alone will not clear that residual zoom.
+ */
+function resetViewportScale(meta: HTMLMetaElement | null) {
+  const active = document.activeElement
+  if (active instanceof HTMLElement && active !== document.body) {
+    active.blur()
+  }
+  window.scrollTo(0, 0)
+
+  if (!meta) return
+
+  // Nudge initial-scale so Safari recomputes, then lock at 1× on the next frame.
+  meta.setAttribute(
+    'content',
+    'width=device-width, initial-scale=1.0001, maximum-scale=1.0001, viewport-fit=cover',
+  )
+  requestAnimationFrame(() => {
+    meta.setAttribute('content', PLAYING_VIEWPORT)
+  })
+}
+
+/**
  * Disable pinch / focus zoom while the table is up.
  * Setup screen keeps the default scalable viewport.
  */
 export function lockGameViewport(): () => void {
   const meta = getViewportMeta()
   const previousContent = meta?.getAttribute('content') ?? DEFAULT_VIEWPORT
-  meta?.setAttribute('content', PLAYING_VIEWPORT)
+  resetViewportScale(meta)
 
   for (const name of GESTURE_EVENTS) {
     document.addEventListener(name, preventGesture, { passive: false })

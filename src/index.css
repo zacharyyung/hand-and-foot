@@ -149,6 +149,12 @@
     font-size: 1rem;
   }
 
+  /* Setup / onboarding fields must stay ≥16px so typing a name doesn't zoom the page */
+  .setup-screen .field-control,
+  .setup-screen select {
+    font-size: 1rem;
+  }
+
   /* Room behind the table */
   .room-bg {
     min-height: 100dvh;

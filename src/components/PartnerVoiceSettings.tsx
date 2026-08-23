@@ -73,7 +73,7 @@ export function PartnerVoiceSettingsPanel({
               value={settings.voiceId}
               onChange={(e) => void handleVoiceChange(e.target.value)}
               disabled={previewing}
-              className="w-full rounded-lg border border-white/10 bg-black/30 px-2 py-1.5 text-xs text-ink-soft disabled:opacity-60"
+              className="w-full rounded-lg border border-white/10 bg-black/30 px-2 py-2 text-base text-ink-soft disabled:opacity-60"
             >
               {NARRATOR_VOICES.map((voice) => (
                 <option key={voice.id} value={voice.id}>
