@@ -6,11 +6,22 @@ import type { AiDifficulty, GameState } from '../deal'
 import { getTeam } from '../actions'
 import { cardPointValue, meldContributionFromCards, meldThreshold } from '../scoring'
 import { buildAiPublicState } from './publicState'
+import { findAddToBookActions } from './decisions'
 
 const LEARNING_KEY = 'hand-and-foot-ai-lessons'
-const LEARNING_VERSION = 2
+const LEARNING_VERSION = 3
 const MAX_EPISODE_STATES = 800
-const MAX_LESSON_LOG = 40
+const MAX_LESSON_LOG = 60
+
+/** Each defeat applies tallies this many times — lessons compound quickly. */
+const TURBO_TALLY_MULTIPLIER = 3
+/** Extra weight when a human player was on the winning team. */
+const HUMAN_BEAT_MULTIPLIER = 1.75
+/** Sample events needed for full knob strength (was 24). */
+const STRENGTH_SAMPLE_TARGET = 8
+/** Flat ramp from defeats alone — one loss should already tighten play. */
+const DEFEAT_STRENGTH_PER_LOSS = 0.14
+const MAX_DEFEAT_STRENGTH_BONUS = 0.56
 
 /**
  * Strategy knobs derived from post-defeat analysis.
@@ -52,6 +63,9 @@ interface LessonTallies {
   lateRounds: number
   lostRaces: number
   raceRounds: number
+  /** Had a legal meld add but discarded / passed instead. */
+  sandbaggedMelds: number
+  sandbagTurns: number
 }
 
 export interface DefeatLesson {
@@ -95,7 +109,37 @@ function emptyTallies(): LessonTallies {
     lateRounds: 0,
     lostRaces: 0,
     raceRounds: 0,
+    sandbaggedMelds: 0,
+    sandbagTurns: 0,
   }
+}
+
+function migrateMemory(parsed: AiLessonMemory): AiLessonMemory {
+  const base = emptyMemory()
+  if (parsed.version === LEARNING_VERSION) {
+    return {
+      ...base,
+      ...parsed,
+      tallies: { ...base.tallies, ...parsed.tallies },
+      lessons: Array.isArray(parsed.lessons) ? parsed.lessons.slice(-MAX_LESSON_LOG) : [],
+    }
+  }
+  /* v2 → v3: double prior tallies so existing browsers keep momentum. */
+  if (parsed.version === 2) {
+    const t = { ...base.tallies, ...parsed.tallies }
+    for (const key of Object.keys(t) as (keyof LessonTallies)[]) {
+      t[key] = Math.round(t[key] * 2)
+    }
+    return {
+      ...base,
+      version: LEARNING_VERSION,
+      defeatsAnalyzed: parsed.defeatsAnalyzed ?? 0,
+      tallies: t,
+      lessons: Array.isArray(parsed.lessons) ? parsed.lessons.slice(-MAX_LESSON_LOG) : [],
+      updatedAt: parsed.updatedAt ?? Date.now(),
+    }
+  }
+  return base
 }
 
 function emptyMemory(): AiLessonMemory {
@@ -126,16 +170,11 @@ export function loadAiLessons(): AiLessonMemory {
       return cached
     }
     const parsed = JSON.parse(raw) as AiLessonMemory
-    if (!parsed || parsed.version !== LEARNING_VERSION) {
+    if (!parsed || (parsed.version !== LEARNING_VERSION && parsed.version !== 2)) {
       cached = emptyMemory()
       return cached
     }
-    cached = {
-      ...emptyMemory(),
-      ...parsed,
-      tallies: { ...emptyTallies(), ...parsed.tallies },
-      lessons: Array.isArray(parsed.lessons) ? parsed.lessons.slice(-MAX_LESSON_LOG) : [],
-    }
+    cached = migrateMemory(parsed)
     return cached
   } catch {
     cached = emptyMemory()
@@ -225,31 +264,49 @@ export function getLearnedPreferences(
     t.wildOnCleanChances +
     t.completionChances +
     t.lateRounds +
-    t.raceRounds
+    t.raceRounds +
+    t.sandbagTurns
+
+  const defeatBoost = Math.min(
+    MAX_DEFEAT_STRENGTH_BONUS,
+    memory.defeatsAnalyzed * DEFEAT_STRENGTH_PER_LOSS,
+  )
 
   return {
     earlyMeldAggressiveness: clamp01(
-      0.55 + ratio(t.missedOpenings, Math.max(1, t.openingChances), 0) * 0.45,
+      0.52 +
+        ratio(t.missedOpenings, Math.max(1, t.openingChances), 0) * 0.48 +
+        ratio(t.sandbaggedMelds, Math.max(1, t.sandbagTurns), 0) * 0.2 +
+        defeatBoost * 0.15,
     ),
     cleanBias: clamp01(
-      0.55 + ratio(t.dirtyOnlyClean, Math.max(1, t.wildOnCleanChances), 0) * 0.4,
+      0.52 +
+        ratio(t.dirtyOnlyClean, Math.max(1, t.wildOnCleanChances), 0) * 0.48,
     ),
     largeBookBias: clamp01(
-      0.45 + ratio(t.missedCompletions, Math.max(1, t.completionChances), 0) * 0.35,
+      0.42 +
+        ratio(t.missedCompletions, Math.max(1, t.completionChances), 0) * 0.45 +
+        ratio(t.sandbaggedMelds, Math.max(1, t.sandbagTurns), 0) * 0.15,
     ),
     protectPairs: clamp01(
-      0.55 + ratio(t.pairBreaks, Math.max(1, t.safeDiscardChances), 0) * 0.45,
+      0.52 +
+        ratio(t.pairBreaks, Math.max(1, t.safeDiscardChances), 0) * 0.48,
     ),
     buildExistingBias: clamp01(
-      0.5 + ratio(t.discardedTeamRank, Math.max(1, t.discardChoices), 0) * 0.4,
+      0.48 +
+        ratio(t.discardedTeamRank, Math.max(1, t.discardChoices), 0) * 0.45 +
+        ratio(t.sandbaggedMelds, Math.max(1, t.sandbagTurns), 0) * 0.12,
     ),
     avoidFeedingOpponents: clamp01(
-      0.55 + ratio(t.fedOpponents, Math.max(1, t.discardChoices), 0) * 0.45,
+      0.52 +
+        ratio(t.fedOpponents, Math.max(1, t.discardChoices), 0) * 0.48 +
+        defeatBoost * 0.12,
     ),
     raceUrgency: clamp01(
-      0.5 +
-        ratio(t.lostRaces, Math.max(1, t.raceRounds), 0) * 0.3 +
-        ratio(t.lateHighHolds, Math.max(1, t.lateRounds), 0) * 0.25,
+      0.48 +
+        ratio(t.lostRaces, Math.max(1, t.raceRounds), 0) * 0.38 +
+        ratio(t.lateHighHolds, Math.max(1, t.lateRounds), 0) * 0.32 +
+        defeatBoost * 0.2,
     ),
     defeatsAnalyzed: memory.defeatsAnalyzed,
     sampleSize,
@@ -259,10 +316,17 @@ export function getLearnedPreferences(
 export function learningStrength(
   sampleSize: number,
   difficulty: AiDifficulty,
+  defeatsAnalyzed = 0,
 ): number {
-  const ramp = clamp01(sampleSize / 24)
-  if (difficulty === 'expert') return Math.min(1, ramp * 1.15)
-  return ramp * 0.35
+  const ramp = clamp01(sampleSize / STRENGTH_SAMPLE_TARGET)
+  const defeatBoost = Math.min(
+    MAX_DEFEAT_STRENGTH_BONUS,
+    defeatsAnalyzed * DEFEAT_STRENGTH_PER_LOSS,
+  )
+  if (difficulty === 'expert') {
+    return Math.min(1, ramp * 1.35 + defeatBoost)
+  }
+  return Math.min(0.72, ramp * 0.55 + defeatBoost * 0.45)
 }
 
 function findSeatThatActed(prev: GameState, next: GameState): number | null {
@@ -390,6 +454,57 @@ interface AnalysisScratch {
 
 function note(scratch: AnalysisScratch, finding: string): void {
   if (!scratch.findings.includes(finding)) scratch.findings.push(finding)
+}
+
+function analyzePassedMeld(
+  prev: GameState,
+  next: GameState,
+  seat: number,
+  scratch: AnalysisScratch,
+): void {
+  const player = prev.players[seat]!
+  const team = getTeam(prev, player.profile.teamId)
+  if (!team.meldThresholdMet) return
+  if (prev.turnPhase !== 'play') return
+  if (next.discard.length <= prev.discard.length) return
+
+  const adds = findAddToBookActions(
+    player.hand,
+    team.books,
+    player.isPlayingFoot,
+    prev.booksWithWildAddedThisTurn,
+    team.meldThresholdMet,
+  )
+  if (adds.length === 0) return
+
+  scratch.tallies.sandbagTurns += 1
+  scratch.tallies.sandbaggedMelds += 1
+  note(scratch, 'Had a meld available but discarded instead — play cards down faster.')
+}
+
+function winningTeamHadHuman(end: GameState, losingTeamId: number): boolean {
+  return end.players.some(
+    (p) => p.profile.isHuman && p.profile.teamId !== losingTeamId,
+  )
+}
+
+function turboWeight(end: GameState, losingTeamId: number): number {
+  let w = TURBO_TALLY_MULTIPLIER
+  if (winningTeamHadHuman(end, losingTeamId)) {
+    w *= HUMAN_BEAT_MULTIPLIER
+    return w
+  }
+  return w
+}
+
+function applyTurboTallies(
+  target: LessonTallies,
+  source: LessonTallies,
+  weight: number,
+): void {
+  for (const key of Object.keys(source) as (keyof LessonTallies)[]) {
+    target[key] += Math.max(1, Math.round(source[key] * weight))
+  }
 }
 
 function analyzeExpertDiscard(
@@ -579,12 +694,28 @@ export function analyzeDefeatFromEpisode(
     analyzeMissedOpening(prev, next, seat, scratch)
     analyzeExpertDiscard(prev, next, seat, scratch)
     analyzeWildOnClean(prev, next, seat, scratch)
+    analyzePassedMeld(prev, next, seat, scratch)
   }
 
   analyzeRoundEndHoldings(end, losingTeamId, scratch)
 
-  if (scratch.findings.length === 0 && scratch.tallies.discardChoices === 0) {
-    return null
+  if (winningTeamHadHuman(end, losingTeamId)) {
+    scratch.tallies.lostRaces += 1
+    scratch.tallies.raceRounds += 1
+    note(
+      scratch,
+      'Human opponents won — tighten race pressure and stop feeding their books.',
+    )
+  }
+
+  if (
+    scratch.findings.length === 0 &&
+    scratch.tallies.discardChoices === 0 &&
+    scratch.tallies.sandbagTurns === 0
+  ) {
+    scratch.tallies.raceRounds += 1
+    scratch.tallies.lostRaces += 1
+    note(scratch, 'Lost the round — push harder next time.')
   }
 
   const key = analysisKey(end, losingTeamId)
@@ -602,10 +733,8 @@ export function analyzeDefeatFromEpisode(
   if (options?.persist !== false) {
     lastAnalyzedKey = key
     const memory = loadAiLessons()
-    const t = memory.tallies
-    for (const keyName of Object.keys(scratch.tallies) as (keyof LessonTallies)[]) {
-      t[keyName] += scratch.tallies[keyName]
-    }
+    const weight = turboWeight(end, losingTeamId)
+    applyTurboTallies(memory.tallies, scratch.tallies, weight)
     memory.defeatsAnalyzed += 1
     memory.lessons = [...memory.lessons, lesson].slice(-MAX_LESSON_LOG)
     saveAiLessons(memory)

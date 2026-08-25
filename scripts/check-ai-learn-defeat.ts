@@ -153,10 +153,13 @@ const base = startNewGame(profiles, 4)
 
   const prefs = getLearnedPreferences()
   assert(prefs.defeatsAnalyzed >= 1, 'defeatsAnalyzed increments')
-  assert(learningStrength(prefs.sampleSize, 'expert') > 0, 'expert learning strength > 0')
+  assert(
+    learningStrength(prefs.sampleSize, 'expert', prefs.defeatsAnalyzed) > 0.2,
+    'expert learning strength meaningful after one defeat',
+  )
 
-  /* Force strong avoid-feeding with distinct round keys (dedupe guard). */
-  for (let i = 0; i < 10; i++) {
+  /* Fewer repeats needed with turbo tally multiplier. */
+  for (let i = 0; i < 4; i++) {
     const taggedEnd: GameState = { ...end, roundNumber: end.roundNumber + i + 1 }
     analyzeDefeatFromEpisode([before, after, taggedEnd], 1)
   }
