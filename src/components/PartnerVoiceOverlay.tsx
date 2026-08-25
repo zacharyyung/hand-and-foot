@@ -97,9 +97,9 @@ export function PartnerVoiceOverlay({
       </p>
 
       <p className="mb-2.5 text-[10px] leading-relaxed text-ink-muted">
-        Yes clears them to go out now. No keeps them from going out for now — they may ask again
-        later. Saying &ldquo;You should go out!&rdquo; in table chat also answers this ask (or
-        clears a prior No).
+        Yes lets them discard their last card and go out. No keeps them from going out for now —
+        they may ask again later. Saying &ldquo;You should go out!&rdquo; in table chat also answers
+        this ask (or clears a prior No).
       </p>
 
       <div className="flex gap-2">

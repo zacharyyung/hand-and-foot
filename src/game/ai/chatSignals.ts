@@ -210,7 +210,7 @@ export function maybeAiChatSignal(
   if (player.foot.length > 0) return null
 
   const handLen = pub.myHand.length
-  /* Never ask on the final card — discarding it goes out with no real choice. */
+  /* Prefer asking with 2+ cards; last-card asks are handled in runAiTurn as a fallback. */
   if (handLen < 2) return null
 
   const partnerIsHuman = state.players[partnerIdx]?.profile.isHuman === true

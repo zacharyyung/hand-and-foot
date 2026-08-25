@@ -268,6 +268,68 @@ export function rankStrengthInHand(hand: Card[], rank: Rank): number {
   return hand.filter((c) => c.rank === rank && !isRedThree(c)).length
 }
 
+/** Next meld that shrinks the foot toward a single go-out discard card. */
+export type MeldDownStep =
+  | { type: 'addToBook'; bookId: string; cardIds: string[] }
+  | { type: 'startBook'; cardIds: string[] }
+
+/**
+ * Greedy next step toward leaving exactly one foot card. Same rules as
+ * canMeldDownToLastCard — used after a partner Yes so the turn actually finishes.
+ */
+export function pickNextMeldDownToLastCard(
+  hand: Card[],
+  teamBooks: Book[],
+  booksWithWildAddedThisTurn: string[] = [],
+  meldThresholdMet = true,
+): MeldDownStep | null {
+  if (hand.length < 2) return null
+
+  const addActions = findAddToBookActions(
+    hand,
+    teamBooks,
+    true,
+    booksWithWildAddedThisTurn,
+    meldThresholdMet,
+  ).filter((a) => {
+    if (hand.length - a.cardIds.length < 1) return false
+    const cards = hand.filter((c) => a.cardIds.includes(c.id))
+    const book = teamBooks.find((b) => b.id === a.bookId)
+    if (!book) return false
+    if (
+      countWildsInCards(cards) > 0 &&
+      isCleanBook(book) &&
+      wouldDestroyOnlyCompletedCleanBook(book, cards, teamBooks)
+    ) {
+      return false
+    }
+    return true
+  })
+
+  if (addActions.length > 0) {
+    const best = addActions[0]!
+    return { type: 'addToBook', bookId: best.bookId, cardIds: best.cardIds }
+  }
+
+  const startActions = findStartBookActions(
+    hand,
+    teamBooks,
+    true,
+    meldThresholdMet,
+  ).filter(
+    (a): a is Extract<AiAction, { type: 'startBook' }> =>
+      a.type === 'startBook' && hand.length - a.cardIds.length >= 1,
+  )
+
+  if (startActions.length === 0) return null
+
+  const bestStart = startActions[0]!
+  const cards = hand.filter((c) => bestStart.cardIds.includes(c.id))
+  const check = canStartBook(cards, teamBooks)
+  if (!check.ok) return null
+  return { type: 'startBook', cardIds: bestStart.cardIds }
+}
+
 /**
  * True when the AI can meld down to exactly one foot card this turn (so a partner
  * Yes can finish with a go-out discard). Used to ask before the forced last card.
@@ -289,55 +351,28 @@ export function canMeldDownToLastCard(
   let wildAdded = [...booksWithWildAddedThisTurn]
 
   for (let guard = 0; guard < 24 && remaining.length > 1; guard++) {
-    const addActions = findAddToBookActions(
+    const step = pickNextMeldDownToLastCard(
       remaining,
       books,
-      true,
       wildAdded,
       meldThresholdMet,
-    ).filter((a) => {
-      if (remaining.length - a.cardIds.length < 1) return false
-      const cards = remaining.filter((c) => a.cardIds.includes(c.id))
-      const book = books.find((b) => b.id === a.bookId)
-      if (!book) return false
-      if (
-        countWildsInCards(cards) > 0 &&
-        isCleanBook(book) &&
-        wouldDestroyOnlyCompletedCleanBook(book, cards, books)
-      ) {
-        return false
-      }
-      return true
-    })
+    )
+    if (!step) break
 
-    if (addActions.length > 0) {
-      const best = addActions[0]!
-      const played = new Set(best.cardIds)
+    if (step.type === 'addToBook') {
+      const played = new Set(step.cardIds)
       const cards = remaining.filter((c) => played.has(c.id))
       remaining = remaining.filter((c) => !played.has(c.id))
       books = books.map((b) =>
-        b.id === best.bookId ? { ...b, cards: [...b.cards, ...cards] } : b,
+        b.id === step.bookId ? { ...b, cards: [...b.cards, ...cards] } : b,
       )
       if (countWildsInCards(cards) > 0) {
-        wildAdded = [...wildAdded, best.bookId]
+        wildAdded = [...wildAdded, step.bookId]
       }
       continue
     }
 
-    const startActions = findStartBookActions(
-      remaining,
-      books,
-      true,
-      meldThresholdMet,
-    ).filter(
-      (a): a is Extract<AiAction, { type: 'startBook' }> =>
-        a.type === 'startBook' && remaining.length - a.cardIds.length >= 1,
-    )
-
-    if (startActions.length === 0) break
-
-    const bestStart = startActions[0]!
-    const played = new Set(bestStart.cardIds)
+    const played = new Set(step.cardIds)
     const cards = remaining.filter((c) => played.has(c.id))
     remaining = remaining.filter((c) => !played.has(c.id))
     const check = canStartBook(cards, books)

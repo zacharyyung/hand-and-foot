@@ -26,6 +26,7 @@ import {
 import {
   awaitingPartnerGoOutResponse,
   awaitingPartnerWildResponse,
+  createReadyGoOutSignal,
   deniedWildBookIds,
   hasExplicitGoOutApproval,
   hasPartnerWildApprovalForBook,
@@ -34,7 +35,11 @@ import {
   wasPartnerWildDeniedForBook,
 } from '../chat'
 import { partnerSeat, type PlayerCount } from '../teams'
-import { canMeldDownToLastCard, findAddToBookActions } from './decisions'
+import {
+  canMeldDownToLastCard,
+  findAddToBookActions,
+  pickNextMeldDownToLastCard,
+} from './decisions'
 import { AiDebugCollector } from './debugTrace'
 import { buildAiPublicState } from './publicState'
 import {
@@ -681,6 +686,97 @@ export function runAiTurn(
     }
   }
 
+  /*
+   * After a mid-turn Yes, force the same greedy meltdown canMeldDownToLastCard
+   * used for the ask — pickBestAddToBook can diverge and leave cards stranded.
+   */
+  if (goOutClearedThisResume && current.turnPhase === 'play') {
+    for (let guard = 0; guard < 24; guard++) {
+      const goPlayer = getCurrentPlayer(current)
+      const goTeam = getTeam(current, goPlayer.profile.teamId)
+      if (!canTeamGoOut(goTeam.books, goTeam.meldThresholdMet)) break
+      if (goPlayer.hand.length <= 1) break
+
+      const step = pickNextMeldDownToLastCard(
+        goPlayer.hand,
+        goTeam.books,
+        current.booksWithWildAddedThisTurn,
+        goTeam.meldThresholdMet,
+      )
+      if (!step) break
+
+      if (step.type === 'addToBook') {
+        const book = goTeam.books.find((b) => b.id === step.bookId)
+        if (!book) break
+        const addCards = goPlayer.hand.filter((c) => step.cardIds.includes(c.id))
+        if (
+          partnerIsHuman &&
+          shouldAskBeforeWildAdd(
+            current,
+            seatIndex,
+            messages,
+            book,
+            step.cardIds,
+            goPlayer.hand,
+          )
+        ) {
+          if (
+            !hasPartnerWildApprovalForBook(messages, seatIndex, partnerIdx, book.id)
+          ) {
+            if (stopFurtherWildAsks) break
+            const wildReq = maybeAiWildRequest(
+              current,
+              seatIndex,
+              messages,
+              book.rank,
+              book.id,
+              book,
+            )
+            if (wildReq) {
+              debug?.step(
+                'chat',
+                `Asking partner before go-out wild on ${book.rank}s.`,
+              )
+              return {
+                state: stripWildAddsSince(baselineForWildAsk, current, seatIndex),
+                chatMessage: wildReq,
+                awaitingPartner: true,
+                debugTrace: debug?.trace,
+              }
+            }
+            break
+          }
+        }
+        if (
+          partnerIsHuman &&
+          needsHumanWildConsent(book, addCards, partnerIdx) &&
+          !hasPartnerWildApprovalForBook(messages, seatIndex, partnerIdx, book.id)
+        ) {
+          break
+        }
+        if (wouldDestroyOnlyCompletedCleanBook(book, addCards, goTeam.books)) {
+          break
+        }
+        debug?.step(
+          'add',
+          `Go-out meltdown add to ${book.rank}s: ${labelCards(goPlayer.hand, step.cardIds)}`,
+        )
+        const result = addToBook(current, step.bookId, step.cardIds)
+        if (result.error) break
+        current = result.state
+        continue
+      }
+
+      debug?.step(
+        'start',
+        `Go-out meltdown start: ${labelCards(goPlayer.hand, step.cardIds)}`,
+      )
+      const startResult = startBook(current, step.cardIds)
+      if (startResult.error) break
+      current = startResult.state
+    }
+  }
+
   if (current.turnPhase === 'play') {
     const currentPlayer = getCurrentPlayer(current)
     const team = getTeam(current, currentPlayer.profile.teamId)
@@ -689,15 +785,21 @@ export function runAiTurn(
       canTeamGoOut(team.books, team.meldThresholdMet)
 
     /*
-     * Human partner: ask with 2–4 cards while go-out is still a choice — never on
-     * the final card (discarding that goes out with no real No). Standing clearance
-     * still requires a fresh ask; only a Yes to that ask finishes the round.
+     * Human partner: prefer asking with 2–4 meldable cards. If we reach the last
+     * foot card able to go out, ask then (or honor a Yes) — never silently hold
+     * when Yes already cleared this ask. No on the last card still holds.
      */
     if (partnerIsHuman) {
       const midTurnResume = state.turnPhase === 'play'
-      const endApproved =
+      const midTurnYes =
         midTurnResume &&
         hasExplicitGoOutApproval(messages, seatIndex, playerCount)
+      /* Any Yes to the latest ask is enough to discard the last card. */
+      const lastCardApproved = hasExplicitGoOutApproval(
+        messages,
+        seatIndex,
+        playerCount,
+      )
 
       if (awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx)) {
         debug?.step('chat', 'Waiting for partner go-out yes/no.')
@@ -710,7 +812,7 @@ export function runAiTurn(
       }
 
       const goOutAsk = maybeAiChatSignal(current, seatIndex, messages)
-      if (goOutAsk && !endApproved) {
+      if (goOutAsk && !midTurnYes) {
         if (
           partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount) &&
           midTurnResume
@@ -733,24 +835,42 @@ export function runAiTurn(
         }
       }
 
-      if (lastFoot && endApproved) {
+      if (lastFoot && lastCardApproved) {
         debug?.step('discard', 'Partner said yes — discarding last card to go out.')
         /* Fall through to discard / go-out below. */
-      } else if (lastFoot && !endApproved) {
-        /*
-         * Never ask on the last card — No would not be a real choice. Hold it
-         * until a later turn where we can ask with 2+ again (or after a Yes path).
-         */
-        debug?.step(
-          'discard',
-          partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)
-            ? 'Partner said no to go-out — holding last card.'
-            : 'Last foot card without a 2+ card ask — holding card.',
-        )
+      } else if (
+        lastFoot &&
+        partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount) &&
+        midTurnResume
+      ) {
+        /* Just said No to this ask — hold the last card until a later turn. */
+        debug?.step('discard', 'Partner said no to go-out — holding last card.')
         const pass = passTurnKeepingLastFootCard(current)
         return {
           state: pass.error ? current : pass.state,
           chatMessage,
+          debugTrace: debug?.trace,
+        }
+      } else if (lastFoot) {
+        /*
+         * Last card and books ready: ask now so Yes discards to go out.
+         * Covers paths that never got a 2–4 card ask (unmeldable extras, etc.).
+         */
+        const signal = createReadyGoOutSignal(
+          seatIndex,
+          currentPlayer.profile.name,
+          currentPlayer.profile.avatar,
+        )
+        debug?.step(
+          'chat',
+          partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)
+            ? 'Asking partner again before going out (last card).'
+            : 'Asking partner before going out (last card).',
+        )
+        return {
+          state: current,
+          chatMessage: signal,
+          awaitingPartner: true,
           debugTrace: debug?.trace,
         }
       }

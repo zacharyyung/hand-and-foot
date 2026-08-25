@@ -338,7 +338,7 @@ assert(
 assert(twoCardAsk.awaitingPartner === true, 'AI pauses for human go-out reply')
 assert(twoCardAsk.state.wentOutTeamId === null, 'ask turn does not go out yet')
 
-/* Unmeldable 2 cards: do not ask early — Yes would not be able to go out. */
+/* Unmeldable 2 cards: do not ask early — Yes would not finish go-out this turn. */
 const unmeldableTwo = {
   ...state,
   players: state.players.map((p, i) =>
@@ -362,21 +362,42 @@ assert(
   'AI discards one unmeldable card and keeps playing',
 )
 
-/* Last card alone: never ask — discarding would go out with no real choice. */
+/* Last card alone: ask so Yes discards to go out (No holds). */
 const oneCardAsk = runAiTurn(state, [])
 assert(
-  oneCardAsk.chatMessage?.type !== 'ready_go_out',
-  'AI does not ask to go out on the last card alone',
+  oneCardAsk.chatMessage?.type === 'ready_go_out',
+  'AI asks to go out on the last card when books are ready',
 )
-assert(oneCardAsk.awaitingPartner !== true, 'no yes/no pause on forced last card')
-assert(oneCardAsk.state.wentOutTeamId === null, 'last card alone does not go out without prior Yes')
+assert(oneCardAsk.awaitingPartner === true, 'last-card ask pauses for yes/no')
+assert(oneCardAsk.state.wentOutTeamId === null, 'last card alone does not go out until Yes')
 assert(
   oneCardAsk.state.players[2].hand.length === 1,
-  'AI still holds the last foot card',
+  'AI still holds the last foot card while asking',
+)
+assert(oneCardAsk.state.currentPlayerIndex === 2, 'AI stays on turn while asking on last card')
+
+const lastCardYes = {
+  ...createApproveGoOutSignal(0, 'You', '🧑'),
+  timestamp: (oneCardAsk.chatMessage?.timestamp ?? 0) + 1,
+}
+const lastCardDone = runAiTurn(oneCardAsk.state, [oneCardAsk.chatMessage!, lastCardYes])
+assert(lastCardDone.state.phase === 'roundEnd', 'Yes on last-card ask goes out')
+assert(lastCardDone.state.wentOutTeamId === 0, 'correct team went out after last-card Yes')
+
+const lastCardNo = {
+  ...createDenyGoOutSignal(0, 'You', '🧑'),
+  timestamp: (oneCardAsk.chatMessage?.timestamp ?? 0) + 1,
+}
+const lastCardHeld = runAiTurn(oneCardAsk.state, [oneCardAsk.chatMessage!, lastCardNo])
+assert(lastCardHeld.state.phase === 'playing', 'No on last-card ask does not end the round')
+assert(lastCardHeld.state.wentOutTeamId === null, 'No leaves wentOutTeamId null')
+assert(
+  lastCardHeld.state.players[2].hand.length === 1,
+  'after No AI still holds the last foot card',
 )
 assert(
-  oneCardAsk.state.currentPlayerIndex !== 2,
-  'AI passes holding the last card instead of asking',
+  lastCardHeld.state.currentPlayerIndex !== 2,
+  'after No AI passes holding the last card',
 )
 
 const goOutAsk = createReadyGoOutSignal(2, 'AI', '🤖')
@@ -569,10 +590,10 @@ assert(
   'AI goes out after You should go out! clears the No',
 )
 
-/* After Yes, a later turn must ask again (never silent go-out on a stale Yes). */
+/* After Yes, a later turn with 2+ meldable cards must ask again (not silent go-out). */
 const clearedLastCard = stubState({
   turnPhase: 'draw' as const,
-  stock: [card('cs1', 'Q'), card('cs2', 'Q', 'diamonds'), card('cs3', '6')],
+  stock: [card('cs1', 'A'), card('cs2', 'A', 'diamonds'), card('cs3', '6')],
   discard: [card('cd1', '3', 'spades')],
   players: stubState().players.map((p, i) =>
     i === 2
@@ -606,6 +627,25 @@ assert(
   announceAgain.state.players[2].hand.length >= 2,
   're-ask after stale Yes is still with 2+ cards',
 )
+
+/* Prior Yes + already on last card (play phase): honor Yes and go out. */
+const honorYesLast = stubState({
+  turnPhase: 'play' as const,
+  players: stubState().players.map((p, i) =>
+    i === 2
+      ? {
+          ...p,
+          hand: [card('honorLast', '4')],
+          foot: [],
+          isPlayingFoot: true,
+          footOnHold: false,
+        }
+      : p,
+  ),
+})
+const honorDone = runAiTurn(honorYesLast, [priorAskOld, priorYesOnly])
+assert(honorDone.state.phase === 'roundEnd', 'prior Yes on last card goes out')
+assert(honorDone.state.wentOutTeamId === 0, 'correct team after honoring prior Yes')
 
 /* --- Ask-before-place: wild must not be on the book while the prompt is up --- */
 function bookFromState(game: GameState, id: string): Book {

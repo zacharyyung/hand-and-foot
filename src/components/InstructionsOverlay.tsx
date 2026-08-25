@@ -145,12 +145,13 @@ export function InstructionsOverlay({ open, onClose }: InstructionsOverlayProps)
               go out if all requirements are met and you think it is the right move.
             </p>
             <p className="mt-2">
-              Your AI partner asks while still holding a few foot cards when your team can go
-              out — not on their last card, so you still have a real Yes/No choice. They wait for
-              your answer. Saying <strong>No</strong> keeps them from going out for now — they may
-              ask again on a later turn. Use <strong>You should go out!</strong> in table chat to
-              clear a No (or answer an ask) — they still show the Yes/No prompt when they are
-              ready, then finish only after you approve that ask.
+              Your AI partner asks when your team can go out — usually while still holding a few
+              foot cards, or on their last card if that is the first chance. They wait for your
+              answer. Saying <strong>Yes</strong> lets them discard the last card and end the
+              round. Saying <strong>No</strong> keeps them from going out for now — they may ask
+              again on a later turn. Use <strong>You should go out!</strong> in table chat to clear
+              a No (or answer an ask) — they still show the Yes/No prompt when they are ready, then
+              finish only after you approve that ask.
             </p>
           </section>
 

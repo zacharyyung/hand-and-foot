@@ -323,25 +323,29 @@ assert(
   'AI passes instead of soft-locking on last foot card',
 )
 
-/* Never ask on the last card alone — No would not be a real choice. */
+/* Last card alone: ask so Yes can discard to go out. */
 const oneCard = goOutState([card('last1', '4')], [cleanBook, dirtyBook])
 const oneCardTurn = runAiTurn(oneCard, [])
 assert(
-  oneCardTurn.chatMessage?.type !== 'ready_go_out',
-  'does not ask on last card alone',
+  oneCardTurn.chatMessage?.type === 'ready_go_out',
+  'asks on last card when books qualify',
 )
-assert(oneCardTurn.awaitingPartner !== true, 'no yes/no pause on forced last card')
-assert(oneCardTurn.state.phase === 'playing', 'does not go out without a prior Yes')
+assert(oneCardTurn.awaitingPartner === true, 'last-card ask waits for partner')
+assert(oneCardTurn.state.phase === 'playing', 'does not go out until partner answers')
 assert(
   oneCardTurn.state.players[2].hand.length === 1,
-  'still holds the last foot card',
+  'still holds the last foot card while asking',
 )
-assert(
-  oneCardTurn.state.currentPlayerIndex !== 2,
-  'passes holding the last card instead of asking',
-)
+assert(oneCardTurn.state.currentPlayerIndex === 2, 'stays on turn for last-card ask')
+const oneCardYes = {
+  ...createApproveGoOutSignal(0, 'You', 'Y'),
+  timestamp: (oneCardTurn.chatMessage?.timestamp ?? 0) + 1,
+}
+const oneCardDone = runAiTurn(oneCardTurn.state, [oneCardTurn.chatMessage!, oneCardYes])
+assert(oneCardDone.state.phase === 'roundEnd', 'Yes after last-card ask goes out')
+assert(oneCardDone.state.wentOutTeamId === 0, 'correct team after last-card Yes')
 
-/* With 2 unmeldable cards, do not ask yet — Yes could not finish go-out. */
+/* With 2 unmeldable cards, do not ask yet — discard one and pass (ask next opportunity). */
 const ready = goOutState(
   [card('keep1', '4'), card('keep2', '5', 'diamonds')],
   [cleanBook, dirtyBook],
@@ -352,6 +356,10 @@ assert(
   'does not ask early with 2 unmeldable cards',
 )
 assert(readyAsk.state.wentOutTeamId == null, 'does not go out with 2 unmeldable cards')
+assert(
+  readyAsk.state.players[2].hand.length === 1,
+  'discards one unmeldable card and keeps the other',
+)
 
 /* Meldable extras: ask with 2+ still in hand, then Yes goes out */
 const meldable = goOutState(

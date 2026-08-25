@@ -239,7 +239,7 @@ for (const [name, hand] of [
   assert(afterNo.state.wentOutTeamId == null, 'wild No leaves wentOutTeamId null')
 }
 
-/* --- Stale Yes on a later draw turn must re-ask, not silent go-out --- */
+/* --- Stale Yes on a later draw turn must re-ask with 2+, not silent go-out --- */
 {
   const priorAsk = createReadyGoOutSignal(2, 'AI', 'A')
   const priorYes = {
@@ -248,14 +248,16 @@ for (const [name, hand] of [
   }
   assert(hasExplicitGoOutApproval([priorAsk, priorYes], 2, 4), 'stale Yes is explicit')
   const turn = runAiTurn(
-    goOutState([card('last', '4')], [cleanA, dirtyK], { turnPhase: 'draw' }),
+    goOutState([card('last', '4')], [cleanA, dirtyK], {
+      turnPhase: 'draw',
+      stock: [card('sa', 'A'), card('sa2', 'A', 'diamonds'), card('sx', '6'), card('sy', '7')],
+    }),
     [priorAsk, priorYes],
   )
   assert(turn.state.phase === 'playing', 'stale Yes on new turn does not silent go-out')
-  assert(
-    turn.chatMessage?.type === 'ready_go_out' || turn.state.players[2].hand.length >= 2,
-    'stale Yes leads to re-ask or continued play after draw',
-  )
+  assert(turn.chatMessage?.type === 'ready_go_out', 'stale Yes leads to re-ask with 2+ cards')
+  assert(turn.awaitingPartner === true, 'stale Yes re-ask pauses')
+  assert(turn.state.players[2].hand.length >= 2, 're-ask still has 2+ cards')
   assert(turn.state.wentOutTeamId == null, 'no went-out on stale Yes draw turn')
 }
 
@@ -280,14 +282,29 @@ for (const [name, hand] of [
   )
 }
 
-/* --- Unmeldable 2 cards: do not ask --- */
+/* --- Unmeldable 2 cards: do not ask while both remain --- */
 {
   const turn = runAiTurn(
     goOutState([card('x1', '4'), card('x2', '5', 'diamonds')], [cleanA, dirtyK]),
     [],
   )
-  assert(turn.chatMessage?.type !== 'ready_go_out', 'unmeldable 2: no ask')
+  assert(turn.chatMessage?.type !== 'ready_go_out', 'unmeldable 2: no ask while holding 2')
   assert(turn.state.wentOutTeamId == null, 'unmeldable 2: no go-out')
+  assert(turn.state.players[2].hand.length === 1, 'unmeldable 2: discards one')
+}
+
+/* --- Last-card ask + Yes must go out --- */
+{
+  const ask = runAiTurn(goOutState([card('lastOnly', '4')], [cleanA, dirtyK]), [])
+  assert(ask.chatMessage?.type === 'ready_go_out', 'last card: asks')
+  assert(ask.awaitingPartner === true, 'last card: pauses')
+  const yes = {
+    ...createApproveGoOutSignal(0, 'You', 'Y'),
+    timestamp: ask.chatMessage!.timestamp + 1,
+  }
+  const done = runAiTurn(ask.state, [ask.chatMessage!, yes])
+  assert(done.state.phase === 'roundEnd', 'last card: Yes must end the round')
+  assert(done.state.wentOutTeamId === 0, 'last card: correct team')
 }
 
 console.log('check-go-out-yes-cases: all assertions passed')
