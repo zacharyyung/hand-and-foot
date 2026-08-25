@@ -10,6 +10,7 @@ import {
   clearEpisode,
   getLearnedPreferences,
   learningStrength,
+  loadAiLessons,
   resetAiLessons,
   setEpisodeStatesForTest,
 } from '../src/game/ai/learning'
@@ -174,6 +175,82 @@ const base = startNewGame(profiles, 4)
     ['5'],
   )
   assert(discardId !== '5c', 'after lessons, expert avoids feeding opponent 5s')
+}
+
+/* --- Opponent omniscient review: human winner opens early --- */
+{
+  resetAiLessons()
+  const humanHand = [
+    card('A', 'hearts', 'ha1'),
+    card('A', 'spades', 'ha2'),
+    card('A', 'clubs', 'ha3'),
+    card('K', 'hearts', 'hk1'),
+  ]
+  const before: GameState = {
+    ...base,
+    phase: 'playing',
+    turnPhase: 'play',
+    currentPlayerIndex: 0,
+    players: base.players.map((p, i) =>
+      i === 0
+        ? { ...p, hand: [...humanHand], foot: [], isPlayingFoot: false }
+        : i === 1
+          ? { ...p, hand: [card('4', 'clubs', 'e4')], foot: [], isPlayingFoot: true }
+          : p,
+    ),
+    teams: base.teams.map((t) =>
+      t.id === 0 ? { ...t, meldThresholdMet: false, books: [] } : t,
+    ),
+  }
+  const after: GameState = {
+    ...before,
+    meldPointsThisTurn: 120,
+    teams: before.teams.map((t) =>
+      t.id === 0
+        ? {
+            ...t,
+            meldThresholdMet: true,
+            books: [
+              {
+                id: 'human-a',
+                rank: 'A',
+                teamId: 0,
+                startedBySeatIndex: 0,
+                cards: humanHand.slice(0, 3),
+              },
+            ],
+          }
+        : t,
+    ),
+    players: before.players.map((p, i) =>
+      i === 0 ? { ...p, hand: [humanHand[3]!] } : p,
+    ),
+    currentPlayerIndex: 1,
+  }
+  const end: GameState = {
+    ...after,
+    phase: 'roundEnd',
+    wentOutTeamId: 0,
+    roundScores: { 0: 220, 1: -60 },
+  }
+
+  setEpisodeStatesForTest([before, after, end])
+  const lesson = analyzeDefeatFromEpisode([before, after, end], 1)
+  assert(!!lesson, 'opponent review produces a lesson')
+  assert(
+    (lesson?.opponentFindings.length ?? 0) > 0,
+    'opponent findings recorded from human winner',
+  )
+  assert(
+    loadAiLessons().tallies.opponentOpenChances > 0,
+    'opponent open chances tallied',
+  )
+  assert(
+    loadAiLessons().lessons.some((l) => l.opponentFindings.length > 0),
+    'lesson log stores opponent findings',
+  )
+  const prefs = getLearnedPreferences()
+  assert(prefs.earlyMeldAggressiveness >= 0.52, 'opponent open boosts early meld knob')
 }
 
 /* --- Opening meld still works with learning knobs --- */

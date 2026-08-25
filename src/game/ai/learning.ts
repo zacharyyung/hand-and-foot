@@ -9,14 +9,17 @@ import { buildAiPublicState } from './publicState'
 import { findAddToBookActions } from './decisions'
 
 const LEARNING_KEY = 'hand-and-foot-ai-lessons'
-const LEARNING_VERSION = 3
+const LEARNING_VERSION = 4
 const MAX_EPISODE_STATES = 800
 const MAX_LESSON_LOG = 60
+const MAX_FINDINGS_PER_LESSON = 12
 
 /** Each defeat applies tallies this many times — lessons compound quickly. */
 const TURBO_TALLY_MULTIPLIER = 3
 /** Extra weight when a human player was on the winning team. */
 const HUMAN_BEAT_MULTIPLIER = 1.75
+/** Opponent success signals from omniscient post-game review. */
+const OPPONENT_SUCCESS_MULTIPLIER = 2.5
 /** Sample events needed for full knob strength (was 24). */
 const STRENGTH_SAMPLE_TARGET = 8
 /** Flat ramp from defeats alone — one loss should already tighten play. */
@@ -66,13 +69,28 @@ interface LessonTallies {
   /** Had a legal meld add but discarded / passed instead. */
   sandbaggedMelds: number
   sandbagTurns: number
+  /** Winning opponents opened early when legal (omniscient review). */
+  opponentEarlyOpens: number
+  opponentOpenChances: number
+  /** Winning opponents discarded safely — no feed, no pair break. */
+  opponentSafeDiscards: number
+  opponentDiscardSamples: number
+  /** Winning opponents melded instead of passing when a meld was legal. */
+  opponentMeldedInstead: number
+  opponentMeldTurns: number
+  /** Winning team went out holding few cards. */
+  opponentEfficientGoOuts: number
 }
 
 export interface DefeatLesson {
   at: number
   roundNumber: number
   losingTeamId: number
+  /** What our expert team did wrong. */
   findings: string[]
+  /** What winning opponents did well (omniscient post-game review). */
+  opponentFindings: string[]
+  winningTeamIds: number[]
 }
 
 export interface AiLessonMemory {
@@ -111,6 +129,13 @@ function emptyTallies(): LessonTallies {
     raceRounds: 0,
     sandbaggedMelds: 0,
     sandbagTurns: 0,
+    opponentEarlyOpens: 0,
+    opponentOpenChances: 0,
+    opponentSafeDiscards: 0,
+    opponentDiscardSamples: 0,
+    opponentMeldedInstead: 0,
+    opponentMeldTurns: 0,
+    opponentEfficientGoOuts: 0,
   }
 }
 
@@ -121,25 +146,35 @@ function migrateMemory(parsed: AiLessonMemory): AiLessonMemory {
       ...base,
       ...parsed,
       tallies: { ...base.tallies, ...parsed.tallies },
-      lessons: Array.isArray(parsed.lessons) ? parsed.lessons.slice(-MAX_LESSON_LOG) : [],
+      lessons: normalizeLessons(parsed.lessons),
     }
   }
-  /* v2 → v3: double prior tallies so existing browsers keep momentum. */
-  if (parsed.version === 2) {
+  if (parsed.version === 3 || parsed.version === 2) {
     const t = { ...base.tallies, ...parsed.tallies }
-    for (const key of Object.keys(t) as (keyof LessonTallies)[]) {
-      t[key] = Math.round(t[key] * 2)
+    if (parsed.version === 2) {
+      for (const key of Object.keys(t) as (keyof LessonTallies)[]) {
+        t[key] = Math.round(t[key] * 2)
+      }
     }
     return {
       ...base,
       version: LEARNING_VERSION,
       defeatsAnalyzed: parsed.defeatsAnalyzed ?? 0,
       tallies: t,
-      lessons: Array.isArray(parsed.lessons) ? parsed.lessons.slice(-MAX_LESSON_LOG) : [],
+      lessons: normalizeLessons(parsed.lessons),
       updatedAt: parsed.updatedAt ?? Date.now(),
     }
   }
   return base
+}
+
+function normalizeLessons(lessons: DefeatLesson[] | undefined): DefeatLesson[] {
+  if (!Array.isArray(lessons)) return []
+  return lessons.slice(-MAX_LESSON_LOG).map((lesson) => ({
+    ...lesson,
+    opponentFindings: lesson.opponentFindings ?? [],
+    winningTeamIds: lesson.winningTeamIds ?? [],
+  }))
 }
 
 function emptyMemory(): AiLessonMemory {
@@ -170,7 +205,7 @@ export function loadAiLessons(): AiLessonMemory {
       return cached
     }
     const parsed = JSON.parse(raw) as AiLessonMemory
-    if (!parsed || (parsed.version !== LEARNING_VERSION && parsed.version !== 2)) {
+    if (!parsed || (parsed.version !== LEARNING_VERSION && parsed.version !== 3 && parsed.version !== 2)) {
       cached = emptyMemory()
       return cached
     }
@@ -265,18 +300,39 @@ export function getLearnedPreferences(
     t.completionChances +
     t.lateRounds +
     t.raceRounds +
-    t.sandbagTurns
+    t.sandbagTurns +
+    t.opponentOpenChances +
+    t.opponentDiscardSamples +
+    t.opponentMeldTurns
 
   const defeatBoost = Math.min(
     MAX_DEFEAT_STRENGTH_BONUS,
     memory.defeatsAnalyzed * DEFEAT_STRENGTH_PER_LOSS,
   )
 
+  const opponentOpenRate = ratio(
+    t.opponentEarlyOpens,
+    Math.max(1, t.opponentOpenChances),
+    0,
+  )
+  const opponentSafeDiscardRate = ratio(
+    t.opponentSafeDiscards,
+    Math.max(1, t.opponentDiscardSamples),
+    0,
+  )
+  const opponentMeldRate = ratio(
+    t.opponentMeldedInstead,
+    Math.max(1, t.opponentMeldTurns),
+    0,
+  )
+  const opponentGoOutBoost = clamp01(t.opponentEfficientGoOuts * 0.18)
+
   return {
     earlyMeldAggressiveness: clamp01(
       0.52 +
         ratio(t.missedOpenings, Math.max(1, t.openingChances), 0) * 0.48 +
         ratio(t.sandbaggedMelds, Math.max(1, t.sandbagTurns), 0) * 0.2 +
+        opponentOpenRate * 0.28 +
         defeatBoost * 0.15,
     ),
     cleanBias: clamp01(
@@ -286,26 +342,31 @@ export function getLearnedPreferences(
     largeBookBias: clamp01(
       0.42 +
         ratio(t.missedCompletions, Math.max(1, t.completionChances), 0) * 0.45 +
-        ratio(t.sandbaggedMelds, Math.max(1, t.sandbagTurns), 0) * 0.15,
+        ratio(t.sandbaggedMelds, Math.max(1, t.sandbagTurns), 0) * 0.15 +
+        opponentMeldRate * 0.2,
     ),
     protectPairs: clamp01(
       0.52 +
-        ratio(t.pairBreaks, Math.max(1, t.safeDiscardChances), 0) * 0.48,
+        ratio(t.pairBreaks, Math.max(1, t.safeDiscardChances), 0) * 0.48 +
+        opponentSafeDiscardRate * 0.22,
     ),
     buildExistingBias: clamp01(
       0.48 +
         ratio(t.discardedTeamRank, Math.max(1, t.discardChoices), 0) * 0.45 +
-        ratio(t.sandbaggedMelds, Math.max(1, t.sandbagTurns), 0) * 0.12,
+        ratio(t.sandbaggedMelds, Math.max(1, t.sandbagTurns), 0) * 0.12 +
+        opponentMeldRate * 0.18,
     ),
     avoidFeedingOpponents: clamp01(
       0.52 +
         ratio(t.fedOpponents, Math.max(1, t.discardChoices), 0) * 0.48 +
+        opponentSafeDiscardRate * 0.32 +
         defeatBoost * 0.12,
     ),
     raceUrgency: clamp01(
       0.48 +
         ratio(t.lostRaces, Math.max(1, t.raceRounds), 0) * 0.38 +
         ratio(t.lateHighHolds, Math.max(1, t.lateRounds), 0) * 0.32 +
+        opponentGoOutBoost +
         defeatBoost * 0.2,
     ),
     defeatsAnalyzed: memory.defeatsAnalyzed,
@@ -450,10 +511,195 @@ function roughCanMeetOpening(hand: Card[], required: number): boolean {
 interface AnalysisScratch {
   tallies: LessonTallies
   findings: string[]
+  opponentFindings: string[]
 }
 
 function note(scratch: AnalysisScratch, finding: string): void {
   if (!scratch.findings.includes(finding)) scratch.findings.push(finding)
+}
+
+function noteOpponent(scratch: AnalysisScratch, finding: string): void {
+  if (!scratch.opponentFindings.includes(finding)) scratch.opponentFindings.push(finding)
+}
+
+function playerLabel(player: GameState['players'][number]): string {
+  if (player.profile.isHuman) return 'Human opponent'
+  const diff = player.profile.aiDifficulty ?? 'normal'
+  return diff === 'expert' ? 'Expert opponent' : 'Opponent AI'
+}
+
+function teamMelded(prev: GameState, next: GameState, teamId: number): boolean {
+  const prevTeam = getTeam(prev, teamId)
+  const nextTeam = getTeam(next, teamId)
+  if (nextTeam.books.length > prevTeam.books.length) return true
+  if (next.meldPointsThisTurn > prev.meldPointsThisTurn && next.currentPlayerIndex === prev.currentPlayerIndex) {
+    return true
+  }
+  return nextTeam.books.some((book) => {
+    const prevBook = prevTeam.books.find((b) => b.id === book.id)
+    return prevBook != null && book.cards.length > prevBook.cards.length
+  })
+}
+
+/** Omniscient review: winning player opened when they could. */
+function analyzeSuccessfulOpening(
+  prev: GameState,
+  next: GameState,
+  seat: number,
+  scratch: AnalysisScratch,
+): void {
+  const player = prev.players[seat]!
+  const team = getTeam(prev, player.profile.teamId)
+  if (team.meldThresholdMet) return
+  if (prev.turnPhase !== 'play') return
+
+  const required = meldThreshold(team.score)
+  if (!roughCanMeetOpening(player.hand, required)) return
+
+  scratch.tallies.opponentOpenChances += 1
+  const nextTeam = getTeam(next, player.profile.teamId)
+  const opened =
+    nextTeam.meldThresholdMet ||
+    nextTeam.books.length > team.books.length ||
+    teamMelded(prev, next, player.profile.teamId)
+  if (opened) {
+    scratch.tallies.opponentEarlyOpens += 1
+    noteOpponent(
+      scratch,
+      `${playerLabel(player)} opened the meld requirement early — match that pace.`,
+    )
+  }
+}
+
+/** Omniscient review: winning player discarded safely. */
+function analyzeSuccessfulDiscard(
+  prev: GameState,
+  next: GameState,
+  seat: number,
+  scratch: AnalysisScratch,
+): void {
+  if (next.discard.length <= prev.discard.length) return
+  const discarded = next.discard[next.discard.length - 1]
+  if (!discarded) return
+
+  const player = prev.players[seat]!
+  const hand = player.hand
+  scratch.tallies.opponentDiscardSamples += 1
+
+  let safe = true
+  const sameRank = hand.filter(
+    (c) =>
+      c.rank === discarded.rank && !isWildCard(c) && !isRedThree(c) && c.id !== discarded.id,
+  ).length
+  const singles = singletonNaturals(hand).filter((c) => c.id !== discarded.id)
+  if (!isWildCard(discarded) && !isRedThree(discarded) && sameRank >= 1 && singles.length > 0) {
+    safe = false
+  }
+
+  const oppRanks = opponentRanksOnTable(prev, player.profile.teamId)
+  if (!isWildCard(discarded) && oppRanks.has(discarded.rank)) {
+    const safer = hand.find(
+      (c) =>
+        c.id !== discarded.id &&
+        !isWildCard(c) &&
+        !isRedThree(c) &&
+        !oppRanks.has(c.rank),
+    )
+    if (safer) safe = false
+  }
+
+  if (safe) {
+    scratch.tallies.opponentSafeDiscards += 1
+    noteOpponent(
+      scratch,
+      `${playerLabel(player)} discarded safely — avoid feeding and breaking pairs.`,
+    )
+  }
+}
+
+/** Omniscient review: winning player melded when a meld was legal. */
+function analyzeSuccessfulMeld(
+  prev: GameState,
+  next: GameState,
+  seat: number,
+  scratch: AnalysisScratch,
+): void {
+  const player = prev.players[seat]!
+  const team = getTeam(prev, player.profile.teamId)
+  if (!team.meldThresholdMet) return
+  if (prev.turnPhase !== 'play') return
+
+  const adds = findAddToBookActions(
+    player.hand,
+    team.books,
+    player.isPlayingFoot,
+    prev.booksWithWildAddedThisTurn,
+    team.meldThresholdMet,
+  )
+  if (adds.length === 0) return
+
+  scratch.tallies.opponentMeldTurns += 1
+  if (teamMelded(prev, next, player.profile.teamId)) {
+    scratch.tallies.opponentMeldedInstead += 1
+    noteOpponent(
+      scratch,
+      `${playerLabel(player)} melded down instead of holding cards — play faster.`,
+    )
+  }
+}
+
+function analyzeWinningTeamEndState(
+  endState: GameState,
+  winningTeamId: number,
+  scratch: AnalysisScratch,
+): void {
+  if (endState.wentOutTeamId !== winningTeamId) return
+
+  const held = endState.players
+    .filter((p) => p.profile.teamId === winningTeamId)
+    .flatMap((p) => [...p.hand, ...p.foot])
+  const highHeld = held.filter((c) => !isRedThree(c) && cardPointValue(c) >= 20)
+
+  if (held.length <= 3 && highHeld.length === 0) {
+    scratch.tallies.opponentEfficientGoOuts += 1
+    noteOpponent(
+      scratch,
+      'Winning team went out efficiently — race harder when opponents are low.',
+    )
+  }
+}
+
+/**
+ * Post-game omniscient review of every winning-team player (human + AI).
+ * Live play never sees opponent hands — this runs only after round/game end.
+ */
+function analyzeWinningTeamFromEpisode(
+  states: GameState[],
+  winningTeamId: number,
+  scratch: AnalysisScratch,
+): void {
+  const end = states[states.length - 1]!
+
+  for (let i = 0; i < states.length - 1; i++) {
+    const prev = states[i]!
+    const next = states[i + 1]!
+    if (prev.phase !== 'playing') continue
+
+    const seat = findSeatThatActed(prev, next)
+    if (seat == null) continue
+    const player = prev.players[seat]
+    if (!player || player.profile.teamId !== winningTeamId) continue
+
+    analyzeSuccessfulOpening(prev, next, seat, scratch)
+    analyzeSuccessfulDiscard(prev, next, seat, scratch)
+    analyzeSuccessfulMeld(prev, next, seat, scratch)
+  }
+
+  analyzeWinningTeamEndState(end, winningTeamId, scratch)
+}
+
+function winningTeamIds(end: GameState, losingTeamId: number): number[] {
+  return end.teams.filter((t) => t.id !== losingTeamId).map((t) => t.id)
 }
 
 function analyzePassedMeld(
@@ -503,7 +749,9 @@ function applyTurboTallies(
   weight: number,
 ): void {
   for (const key of Object.keys(source) as (keyof LessonTallies)[]) {
-    target[key] += Math.max(1, Math.round(source[key] * weight))
+    const w = key.startsWith('opponent') ? weight * OPPONENT_SUCCESS_MULTIPLIER : weight
+    if (source[key] <= 0) continue
+    target[key] += Math.max(1, Math.round(source[key] * w))
   }
 }
 
@@ -677,6 +925,7 @@ export function analyzeDefeatFromEpisode(
   const scratch: AnalysisScratch = {
     tallies: emptyTallies(),
     findings: [],
+    opponentFindings: [],
   }
 
   for (let i = 0; i < states.length - 1; i++) {
@@ -697,6 +946,11 @@ export function analyzeDefeatFromEpisode(
     analyzePassedMeld(prev, next, seat, scratch)
   }
 
+  const winners = winningTeamIds(end, losingTeamId)
+  for (const winTeamId of winners) {
+    analyzeWinningTeamFromEpisode(states, winTeamId, scratch)
+  }
+
   analyzeRoundEndHoldings(end, losingTeamId, scratch)
 
   if (winningTeamHadHuman(end, losingTeamId)) {
@@ -710,6 +964,7 @@ export function analyzeDefeatFromEpisode(
 
   if (
     scratch.findings.length === 0 &&
+    scratch.opponentFindings.length === 0 &&
     scratch.tallies.discardChoices === 0 &&
     scratch.tallies.sandbagTurns === 0
   ) {
@@ -727,7 +982,9 @@ export function analyzeDefeatFromEpisode(
     at: Date.now(),
     roundNumber: end.roundNumber,
     losingTeamId,
-    findings: scratch.findings.slice(0, 8),
+    findings: scratch.findings.slice(0, MAX_FINDINGS_PER_LESSON),
+    opponentFindings: scratch.opponentFindings.slice(0, MAX_FINDINGS_PER_LESSON),
+    winningTeamIds: winners,
   }
 
   if (options?.persist !== false) {
