@@ -145,8 +145,8 @@ export function InstructionsOverlay({ open, onClose }: InstructionsOverlayProps)
               go out if all requirements are met and you think it is the right move.
             </p>
             <p className="mt-2">
-              Your AI partner asks when your team can go out — usually while still holding a few
-              foot cards, or on their last card if that is the first chance. They wait for your
+              Your AI partner melds playable foot cards first, then asks when they are
+              down to their last discard card and your team can go out. They wait for your
               answer. Saying <strong>Yes</strong> lets them discard the last card and end the
               round. Saying <strong>No</strong> keeps them from going out for now — they may ask
               again on a later turn. Use <strong>You should go out!</strong> in table chat to clear

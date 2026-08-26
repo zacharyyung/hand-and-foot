@@ -26,7 +26,6 @@ import {
 import type { PlayerCount } from '../teams'
 import { partnerSeat } from '../teams'
 import { countWildsInCards } from '../books'
-import { canMeldDownToLastCard } from './decisions'
 import {
   hasAlternativeWildTarget,
   teamHasCompletedCleanBook,
@@ -210,28 +209,13 @@ export function maybeAiChatSignal(
   if (player.foot.length > 0) return null
 
   const handLen = pub.myHand.length
-  /* Prefer asking with 2+ cards; last-card asks are handled in runAiTurn as a fallback. */
-  if (handLen < 2) return null
-
   const partnerIsHuman = state.players[partnerIdx]?.profile.isHuman === true
   /*
-   * Human partner: ask with 2–4 cards while a go-out path still exists (meld down
-   * then discard). AI–AI teams only broadcast when closing (2–4 cards).
+   * Human partners are asked from runAiTurn only after playable cards are melded
+   * down to the last discard card. AI–AI teams still broadcast when closing.
    */
-  if (!partnerIsHuman && handLen > 4) return null
-  if (partnerIsHuman) {
-    if (handLen > 4) return null
-    if (
-      !canMeldDownToLastCard(
-        pub.myHand,
-        pub.myTeamBooks,
-        state.booksWithWildAddedThisTurn,
-        team.meldThresholdMet,
-      )
-    ) {
-      return null
-    }
-  }
+  if (partnerIsHuman) return null
+  if (handLen < 2 || handLen > 4) return null
 
   return createReadyGoOutSignal(
     seatIndex,

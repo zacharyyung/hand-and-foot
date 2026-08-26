@@ -463,12 +463,20 @@ export function meldPressure(pub: AiPublicState): 'low' | 'medium' | 'high' {
     level = 'medium'
   }
 
-  /* Learned from lost races: when opponents look light, push harder. */
+  /*
+   * Opponents already light in hand/foot: dump every playable foot card now —
+   * holding extras for a later go-out ask is too risky.
+   */
   const opponentLight = pub.otherPlayers.some(
     (p) =>
       p.teamId !== pub.myTeamId &&
       p.handCount + p.footCount <= 6,
   )
+  if (pub.isPlayingFoot && opponentLight) {
+    level = 'high'
+  }
+
+  /* Learned from lost races: when opponents look light, push harder. */
   if (
     strength > 0.08 &&
     learned.raceUrgency >= 0.55 &&
