@@ -21,7 +21,6 @@ import {
   createApproveGoOutSignal,
   createDenyGoOutSignal,
   createReadyGoOutSignal,
-  createWildApproveSignal,
   shouldAiAttemptGoOut,
 } from '../src/game/chat'
 import type { Card } from '../src/game/cards'
@@ -462,61 +461,48 @@ assert(
 )
 
 /*
- * Reported bug: wild + discard with a spare completed clean — wild consent first,
- * then go-out ask on the last card, then Yes finishes.
- * Dirty sink is full (2 wilds), so the wild dumps onto a spare clean (with consent).
+ * Wild + discard with a spare completed clean — discard the natural first,
+ * ask go-out on the wild last card (no wild consent on clean books near go-out).
  */
 const wildSpareClean = goOutState(
   [card('wj1', 'Joker', 'joker'), card('wd1', '4')],
   [cleanBook, secondClean, dirtyFull],
 )
-const wildConsentAsk = runAiTurn(wildSpareClean, [])
+const wildDiscardTurn = runAiTurn(wildSpareClean, [])
 assert(
-  wildConsentAsk.awaitingPartner === true &&
-    wildConsentAsk.chatMessage?.type === 'wild_request',
-  'asks before dirtying the spare clean while melding down',
+  wildDiscardTurn.chatMessage?.type !== 'wild_request',
+  'does not ask wild consent near go-out',
 )
 assert(
-  wildConsentAsk.state.phase === 'playing',
-  'does not go out until wild is consented',
+  wildDiscardTurn.state.players[2].hand.length === 1,
+  'discards natural and keeps wild for go-out',
 )
-const wildBookYes = {
-  ...createWildApproveSignal(
-    0,
-    'You',
-    'Y',
-    wildConsentAsk.chatMessage!.bookId ?? secondClean.id,
-  ),
-  timestamp: (wildConsentAsk.chatMessage?.timestamp ?? 0) + 1,
-}
-const wildGoOutAsk = runAiTurn(wildConsentAsk.state, [
-  wildConsentAsk.chatMessage!,
-  wildBookYes,
-])
+assert(
+  wildDiscardTurn.state.players[2].hand[0]?.rank === 'Joker',
+  'wild is the last foot card',
+)
+const wildGoOutAsk = runAiTurn(
+  { ...wildDiscardTurn.state, currentPlayerIndex: 2, turnPhase: 'play' },
+  [],
+)
 assert(
   wildGoOutAsk.chatMessage?.type === 'ready_go_out',
-  'asks to go out on last card after wild dump',
+  'asks to go out on the wild last card',
 )
 assert(wildGoOutAsk.awaitingPartner === true, 'wild go-out ask pauses for Yes/No')
-assert(
-  wildGoOutAsk.state.players[2].hand.length === 1,
-  'only the discard card remains after wild dump',
-)
 const wildGoOutYes = {
   ...createApproveGoOutSignal(0, 'You', 'Y'),
   timestamp: (wildGoOutAsk.chatMessage?.timestamp ?? 0) + 1,
 }
 const wildGoOutDone = runAiTurn(wildGoOutAsk.state, [
-  wildConsentAsk.chatMessage!,
-  wildBookYes,
   wildGoOutAsk.chatMessage!,
   wildGoOutYes,
 ])
 assert(
   wildGoOutDone.state.phase === 'roundEnd',
-  'wild Yes + go-out Yes finishes the round (reported bug)',
+  'go-out Yes discarding wild finishes the round',
 )
-assert(wildGoOutDone.state.wentOutTeamId === 0, 'correct team after wild dump go-out')
+assert(wildGoOutDone.state.wentOutTeamId === 0, 'correct team after wild discard go-out')
 
 /* Sole clean + wild: never ask / never destroy go-out clean. */
 const soleWild = goOutState(

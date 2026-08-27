@@ -517,6 +517,20 @@ export function runAiTurn(
 
           if (
             partnerIsHuman &&
+            pub.isPlayingFoot &&
+            teamReady &&
+            addHasWilds &&
+            needsHumanWildConsent(book, addCards, partnerIdx)
+          ) {
+            debug?.step(
+              'add',
+              `Skip wild on ${book.rank}s near go-out — will discard instead.`,
+            )
+            continue
+          }
+
+          if (
+            partnerIsHuman &&
             shouldAskBeforeWildAdd(
               current,
               seatIndex,
@@ -686,6 +700,7 @@ export function runAiTurn(
           goTeam.books,
           current.booksWithWildAddedThisTurn,
           goTeam.meldThresholdMet,
+          { avoidDirtyingCleanBooks: partnerIsHuman },
         )
         if (!step) break
 
@@ -695,47 +710,10 @@ export function runAiTurn(
           const addCards = goPlayer.hand.filter((c) => step.cardIds.includes(c.id))
           if (
             partnerIsHuman &&
-            shouldAskBeforeWildAdd(
-              current,
-              seatIndex,
-              messages,
-              book,
-              step.cardIds,
-              goPlayer.hand,
-            )
-          ) {
-            if (
-              !hasPartnerWildApprovalForBook(messages, seatIndex, partnerIdx, book.id)
-            ) {
-              if (stopFurtherWildAsks) break
-              const wildReq = maybeAiWildRequest(
-                current,
-                seatIndex,
-                messages,
-                book.rank,
-                book.id,
-                book,
-              )
-              if (wildReq) {
-                debug?.step(
-                  'chat',
-                  `Asking partner before go-out wild on ${book.rank}s.`,
-                )
-                return {
-                  state: stripWildAddsSince(baselineForWildAsk, current, seatIndex),
-                  chatMessage: wildReq,
-                  awaitingPartner: true,
-                  debugTrace: debug?.trace,
-                }
-              }
-              break
-            }
-          }
-          if (
-            partnerIsHuman &&
             needsHumanWildConsent(book, addCards, partnerIdx) &&
             !hasPartnerWildApprovalForBook(messages, seatIndex, partnerIdx, book.id)
           ) {
+            /* Go-out path: discard wilds instead of dirtying clean books. */
             break
           }
           if (wouldDestroyOnlyCompletedCleanBook(book, addCards, goTeam.books)) {
@@ -850,12 +828,22 @@ export function runAiTurn(
           .map((b) => b.id)
       : []
 
-    const loneWild = pickLoneWildAdd(
-      pub.myHand,
-      pub.myTeamBooks.filter((b) => !deniedWildBooks.has(b.id)),
-      current.booksWithWildAddedThisTurn,
-      approvedCleanBookIds,
+    const discardTeam = getTeam(current, currentPlayer.profile.teamId)
+    const discardTeamCanGoOut = canTeamGoOut(
+      discardTeam.books,
+      discardTeam.meldThresholdMet,
     )
+    const skipLoneWildNearGoOut =
+      partnerIsHuman && currentPlayer.isPlayingFoot && discardTeamCanGoOut
+
+    const loneWild = skipLoneWildNearGoOut
+      ? null
+      : pickLoneWildAdd(
+          pub.myHand,
+          pub.myTeamBooks.filter((b) => !deniedWildBooks.has(b.id)),
+          current.booksWithWildAddedThisTurn,
+          approvedCleanBookIds,
+        )
     if (loneWild && !goingOut) {
       const book = getTeam(current, currentPlayer.profile.teamId).books.find(
         (b) => b.id === loneWild.bookId,
@@ -934,13 +922,16 @@ export function runAiTurn(
     /* Re-check go-out after possible wild play. */
     goingOut = canPlayerGoOut(current, messages)
     const endPlayer = getCurrentPlayer(current)
-    const endTeam = getTeam(current, endPlayer.profile.teamId)
-    const endCanTeamGoOut = canTeamGoOut(endTeam.books, endTeam.meldThresholdMet)
+    const endTeamAfterWild = getTeam(current, endPlayer.profile.teamId)
+    const endCanTeamGoOutAfterWild = canTeamGoOut(
+      endTeamAfterWild.books,
+      endTeamAfterWild.meldThresholdMet,
+    )
 
     if (
       partnerIsHuman &&
       isLastFootCard(endPlayer) &&
-      endCanTeamGoOut &&
+      endCanTeamGoOutAfterWild &&
       !goingOut &&
       partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)
     ) {
@@ -957,7 +948,7 @@ export function runAiTurn(
      * Last foot card but books no longer qualify (e.g. only clean was dirtied
      * earlier) — pass instead of soft-locking on a failed go-out discard.
      */
-    if (isLastFootCard(endPlayer) && !endCanTeamGoOut) {
+    if (isLastFootCard(endPlayer) && !endCanTeamGoOutAfterWild) {
       debug?.step(
         'discard',
         'Cannot go out — missing clean/dirty books; holding last card.',
