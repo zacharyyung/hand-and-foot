@@ -277,11 +277,17 @@ export type MeldDownStep =
  * Greedy next step toward leaving exactly one foot card. Same rules as
  * canMeldDownToLastCard — used after a partner Yes so the turn actually finishes.
  */
+export type MeldDownOptions = {
+  /** Skip wild-on-clean adds — prefer discarding wilds when going out. */
+  avoidDirtyingCleanBooks?: boolean
+}
+
 export function pickNextMeldDownToLastCard(
   hand: Card[],
   teamBooks: Book[],
   booksWithWildAddedThisTurn: string[] = [],
   meldThresholdMet = true,
+  options?: MeldDownOptions,
 ): MeldDownStep | null {
   if (hand.length < 2) return null
 
@@ -296,6 +302,13 @@ export function pickNextMeldDownToLastCard(
     const cards = hand.filter((c) => a.cardIds.includes(c.id))
     const book = teamBooks.find((b) => b.id === a.bookId)
     if (!book) return false
+    if (
+      options?.avoidDirtyingCleanBooks &&
+      countWildsInCards(cards) > 0 &&
+      isCleanBook(book)
+    ) {
+      return false
+    }
     if (
       countWildsInCards(cards) > 0 &&
       isCleanBook(book) &&
@@ -335,8 +348,8 @@ export function pickNextMeldDownToLastCard(
  * Yes can finish with a go-out discard). Used to ask before the forced last card.
  *
  * Paths that would destroy the only completed clean book are excluded. Wilds onto
- * a spare clean book are allowed here — runAiTurn will pause for wild consent
- * after a go-out Yes before placing them.
+ * a spare clean book are omitted — the AI discards wilds instead of dirtying cleans
+ * while approaching go-out.
  */
 export function canMeldDownToLastCard(
   hand: Card[],
