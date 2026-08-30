@@ -97,9 +97,10 @@ export function PartnerVoiceOverlay({
       </p>
 
       <p className="mb-2.5 text-[10px] leading-relaxed text-ink-muted">
-        Yes lets them discard their last card and go out. No keeps them from going out for now —
-        they may ask again later. Saying &ldquo;You should go out!&rdquo; in table chat also answers
-        this ask (or clears a prior No).
+        Yes lets them meld down and discard to go out this turn. No keeps them playing — they
+        will not ask again while holding only their last card. Say &ldquo;You should go
+        out!&rdquo; in table chat to clear a prior No or authorize going out on their last
+        card.
       </p>
 
       <div className="flex gap-2">

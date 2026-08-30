@@ -149,7 +149,7 @@ function askThenYes(hand: Card[], books: Book[]) {
 
   assert(ask.chatMessage?.type === 'ready_go_out', 'expected go-out ask')
   assert(ask.awaitingPartner === true, 'expected pause')
-  assert(ask.state.players[2].hand.length === 1, 'expected last-card ask after meltdown')
+  assert(ask.state.players[2].hand.length >= 2, 'expected ask before meltdown to last card')
   const yes = {
     ...createApproveGoOutSignal(0, 'You', 'Y'),
     timestamp: ask.chatMessage!.timestamp + 1,
@@ -214,7 +214,7 @@ for (const [name, hand] of [
 {
   const ask = runAiTurn(goOutState([card('a1', 'A'), card('d1', '4')], [cleanA, dirtyK]), [])
   assert(ask.chatMessage?.type === 'ready_go_out', 'No-case: ask first')
-  assert(ask.state.players[2].hand.length === 1, 'No-case: melded down to last card')
+  assert(ask.state.players[2].hand.length === 2, 'No-case: ask before meltdown')
   const no = {
     ...createDenyGoOutSignal(0, 'You', 'Y'),
     timestamp: ask.chatMessage!.timestamp + 1,
@@ -231,39 +231,49 @@ for (const [name, hand] of [
     [],
   )
   const thread: import('../src/game/chat').ChatMessage[] = []
-  /* Meltdown asks wild consent before the go-out ask. */
-  assert(turn.chatMessage?.type === 'wild_request', 'wild-No case: wild ask while dumping')
-  thread.push(turn.chatMessage!)
-  const wildYes = {
-    ...createWildApproveSignal(0, 'You', 'Y', turn.chatMessage!.bookId ?? ''),
-    timestamp: turn.chatMessage!.timestamp + 1,
-  }
-  thread.push(wildYes)
-  turn = runAiTurn(turn.state, thread)
-  assert(turn.chatMessage?.type === 'ready_go_out', 'wild-No case: go-out ask after wild Yes')
+  /* Go-out ask comes first while 2 cards remain; wild consent follows after Yes. */
+  assert(turn.chatMessage?.type === 'ready_go_out', 'wild-No case: go-out ask before wild meltdown')
   thread.push(turn.chatMessage!)
   const yes = {
     ...createApproveGoOutSignal(0, 'You', 'Y'),
     timestamp: turn.chatMessage!.timestamp + 1,
   }
   thread.push(yes)
+  turn = runAiTurn(turn.state, thread)
+  assert(turn.chatMessage?.type === 'wild_request', 'wild-No case: wild ask after go-out Yes')
+  thread.push(turn.chatMessage!)
+  const wildYes = {
+    ...createWildApproveSignal(0, 'You', 'Y', turn.chatMessage!.bookId ?? ''),
+    timestamp: turn.chatMessage!.timestamp + 1,
+  }
+  thread.push(wildYes)
   const afterYes = runAiTurn(turn.state, thread)
   assert(afterYes.state.phase === 'roundEnd', 'wild already approved: go-out Yes ends round')
   assert(afterYes.state.wentOutTeamId === 0, 'wild already approved: correct team')
 }
 
-/* Deny the wild while dumping — round must continue. */
+/* Deny the wild after go-out Yes — round must continue. */
 {
-  const ask = runAiTurn(
+  let turn = runAiTurn(
     goOutState([card('j2', 'Joker', 'joker'), card('d2', '4')], [cleanA, cleanQ, dirtyK]),
     [],
   )
-  assert(ask.chatMessage?.type === 'wild_request', 'wild deny case: expects wild ask')
-  const wildNo = {
-    ...createWildDenySignal(0, 'You', 'Y', ask.chatMessage!.bookId ?? ''),
-    timestamp: ask.chatMessage!.timestamp + 1,
+  assert(turn.chatMessage?.type === 'ready_go_out', 'wild deny case: go-out ask first')
+  const thread: import('../src/game/chat').ChatMessage[] = [turn.chatMessage!]
+  const goOutYes = {
+    ...createApproveGoOutSignal(0, 'You', 'Y'),
+    timestamp: turn.chatMessage!.timestamp + 1,
   }
-  const afterNo = runAiTurn(ask.state, [ask.chatMessage!, wildNo])
+  thread.push(goOutYes)
+  turn = runAiTurn(turn.state, thread)
+  assert(turn.chatMessage?.type === 'wild_request', 'wild deny case: wild ask after go-out Yes')
+  thread.push(turn.chatMessage!)
+  const wildNo = {
+    ...createWildDenySignal(0, 'You', 'Y', turn.chatMessage!.bookId ?? ''),
+    timestamp: turn.chatMessage!.timestamp + 1,
+  }
+  thread.push(wildNo)
+  const afterNo = runAiTurn(turn.state, thread)
   assert(afterNo.state.phase === 'playing', 'wild No must not end the round')
   assert(afterNo.state.wentOutTeamId == null, 'wild No leaves wentOutTeamId null')
 }
@@ -284,9 +294,9 @@ for (const [name, hand] of [
     [priorAsk, priorYes],
   )
   assert(turn.state.phase === 'playing', 'stale Yes on new turn does not silent go-out')
-  assert(turn.chatMessage?.type === 'ready_go_out', 'stale Yes leads to re-ask on last card')
+  assert(turn.chatMessage?.type === 'ready_go_out', 'stale Yes leads to re-ask before meltdown')
   assert(turn.awaitingPartner === true, 'stale Yes re-ask pauses')
-  assert(turn.state.players[2].hand.length === 1, 're-ask is after dumping drawn cards')
+  assert(turn.state.players[2].hand.length >= 2, 're-ask happens while 2+ cards remain')
   assert(turn.state.wentOutTeamId == null, 'no went-out on stale Yes draw turn')
 }
 
@@ -322,17 +332,17 @@ for (const [name, hand] of [
   assert(turn.state.players[2].hand.length === 1, 'unmeldable 2: discards one')
 }
 
-/* --- Last-card ask + Yes must go out --- */
+/* --- Last card alone: hold without ask; proactive clearance goes out --- */
 {
-  const ask = runAiTurn(goOutState([card('lastOnly', '4')], [cleanA, dirtyK]), [])
-  assert(ask.chatMessage?.type === 'ready_go_out', 'last card: asks')
-  assert(ask.awaitingPartner === true, 'last card: pauses')
-  const yes = {
-    ...createApproveGoOutSignal(0, 'You', 'Y'),
-    timestamp: ask.chatMessage!.timestamp + 1,
+  const hold = runAiTurn(goOutState([card('lastOnly', '4')], [cleanA, dirtyK]), [])
+  assert(hold.chatMessage?.type !== 'ready_go_out', 'last card alone: no ask')
+  assert(hold.awaitingPartner !== true, 'last card alone: no pause')
+  const proactive = {
+    ...createApproveGoOutSignal(0, 'You', 'Y', 'You should go out!'),
+    timestamp: 1,
   }
-  const done = runAiTurn(ask.state, [ask.chatMessage!, yes])
-  assert(done.state.phase === 'roundEnd', 'last card: Yes must end the round')
+  const done = runAiTurn(goOutState([card('lastOnly2', '4')], [cleanA, dirtyK]), [proactive])
+  assert(done.state.phase === 'roundEnd', 'last card: proactive clearance ends the round')
   assert(done.state.wentOutTeamId === 0, 'last card: correct team')
 }
 

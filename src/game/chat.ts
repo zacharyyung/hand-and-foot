@@ -33,7 +33,7 @@ export function isGoOutRequest(type: ChatMessageType): boolean {
   return type === 'ready_go_out'
 }
 
-function isOnLastFootCard(player: PlayerState): boolean {
+export function isOnLastFootCard(player: PlayerState): boolean {
   return (
     player.isPlayingFoot &&
     player.hand.length === 1 &&
@@ -784,9 +784,16 @@ export function shouldAiAttemptGoOut(
   state: GameState,
   seatIndex: number,
   messages: ChatMessage[],
+  options?: { turnEnteredInPlayPhase?: boolean },
 ): boolean {
+  const turnEnteredInPlayPhase = options?.turnEnteredInPlayPhase ?? true
   const player = state.players[seatIndex]
-  if (!player.isPlayingFoot || player.hand.length !== 1 || player.foot.length > 0) {
+  if (
+    !player.isPlayingFoot ||
+    player.hand.length !== 1 ||
+    player.foot.length > 0 ||
+    player.footOnHold
+  ) {
     return false
   }
 
@@ -798,13 +805,24 @@ export function shouldAiAttemptGoOut(
   const partnerIsHuman = state.players[partnerIdx]?.profile.isHuman === true
 
   if (partnerIsHuman) {
-    /* Always ask first — standing "You should go out!" alone is not enough. */
-    if (!latestReadyGoOutFrom(messages, seatIndex)) return false
-    /* Human No blocks going out until Yes / "You should go out!" (AI may re-ask later). */
     if (partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)) return false
-    /* Must have Yes to this ask — do not finish on standing clearance alone. */
-    if (hasExplicitGoOutApproval(messages, seatIndex, playerCount)) return true
-    /* Wait for the human's yes/no before discarding the last card. */
+    if (
+      turnEnteredInPlayPhase &&
+      hasExplicitGoOutApproval(messages, seatIndex, playerCount)
+    ) {
+      return true
+    }
+    /*
+     * On the last foot card, standing partner approval (e.g. "You should go out!")
+     * is enough — there is no meaningful No left because discard equals go-out.
+     * With 2+ cards the AI must still ask before melding down (see runAiTurn).
+     */
+    if (
+      isOnLastFootCard(player) &&
+      latestPartnerGoOutAdvice(messages, partnerIdx) === 'approve'
+    ) {
+      return true
+    }
     if (awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx)) return false
     return false
   }
@@ -844,7 +862,7 @@ export function getPartnerGoOutHint(
   }
 
   if (partnerAdvisedAgainstGoOut(messages, seatIndex, state.playerCount as PlayerCount)) {
-    return 'Partner said not to go out — wait for them to clear you, or discard and keep playing.'
+    return 'Partner said not to go out — use "You should go out!" in table chat when ready, or keep playing.'
   }
 
   return null

@@ -22,6 +22,7 @@ import {
   createDenyGoOutSignal,
   createReadyGoOutSignal,
   createWildApproveSignal,
+  PROACTIVE_GO_OUT_APPROVE_TEXT,
   shouldAiAttemptGoOut,
 } from '../src/game/chat'
 import type { Card } from '../src/game/cards'
@@ -323,27 +324,27 @@ assert(
   'AI passes instead of soft-locking on last foot card',
 )
 
-/* Last card alone: ask so Yes can discard to go out. */
+/* Last card alone: hold without asking; proactive clearance goes out. */
 const oneCard = goOutState([card('last1', '4')], [cleanBook, dirtyBook])
 const oneCardTurn = runAiTurn(oneCard, [])
 assert(
-  oneCardTurn.chatMessage?.type === 'ready_go_out',
-  'asks on last card when books qualify',
+  oneCardTurn.chatMessage?.type !== 'ready_go_out',
+  'does not ask on last card alone',
 )
-assert(oneCardTurn.awaitingPartner === true, 'last-card ask waits for partner')
-assert(oneCardTurn.state.phase === 'playing', 'does not go out until partner answers')
+assert(oneCardTurn.awaitingPartner !== true, 'no pause on last card alone')
+assert(oneCardTurn.state.phase === 'playing', 'does not go out without partner clearance')
 assert(
   oneCardTurn.state.players[2].hand.length === 1,
-  'still holds the last foot card while asking',
+  'holds the last foot card without asking',
 )
-assert(oneCardTurn.state.currentPlayerIndex === 2, 'stays on turn for last-card ask')
-const oneCardYes = {
-  ...createApproveGoOutSignal(0, 'You', 'Y'),
-  timestamp: (oneCardTurn.chatMessage?.timestamp ?? 0) + 1,
+assert(oneCardTurn.state.currentPlayerIndex !== 2, 'passes turn on last card alone')
+const proactiveOneCard = {
+  ...createApproveGoOutSignal(0, 'You', 'Y', PROACTIVE_GO_OUT_APPROVE_TEXT),
+  timestamp: 1,
 }
-const oneCardDone = runAiTurn(oneCardTurn.state, [oneCardTurn.chatMessage!, oneCardYes])
-assert(oneCardDone.state.phase === 'roundEnd', 'Yes after last-card ask goes out')
-assert(oneCardDone.state.wentOutTeamId === 0, 'correct team after last-card Yes')
+const oneCardDone = runAiTurn(oneCard, [proactiveOneCard])
+assert(oneCardDone.state.phase === 'roundEnd', 'proactive clearance goes out on last card')
+assert(oneCardDone.state.wentOutTeamId === 0, 'correct team after proactive last-card go-out')
 
 /* With 2 unmeldable cards, do not ask yet — discard one and pass (ask next opportunity). */
 const ready = goOutState(
@@ -361,7 +362,7 @@ assert(
   'discards one unmeldable card and keeps the other',
 )
 
-/* Meldable extras: dump playable cards, ask on last, then Yes goes out */
+/* Meldable extras: ask while 2+ cards remain, then Yes goes out */
 const meldable = goOutState(
   [card('keepQ1', 'A'), card('keepQ2', '4')],
   [cleanBook, dirtyBook],
@@ -369,13 +370,13 @@ const meldable = goOutState(
 const meldableAsk = runAiTurn(meldable, [])
 assert(
   meldableAsk.chatMessage?.type === 'ready_go_out',
-  'asks after melding down when go-out is reachable',
+  'asks while go-out is reachable and 2+ cards remain',
 )
 assert(
-  meldableAsk.state.players[2].hand.length === 1,
-  'melds playable extras before asking to go out',
+  meldableAsk.state.players[2].hand.length === 2,
+  'asks before melding down to the last card',
 )
-assert(meldableAsk.awaitingPartner === true, 'pauses for Yes/No on last card')
+assert(meldableAsk.awaitingPartner === true, 'pauses for Yes/No before meltdown')
 
 /* After Yes on a prior ask while already on last card, AI goes out */
 const lastCardCleared = goOutState([card('last2', '4')], [cleanBook, dirtyBook])
@@ -411,8 +412,8 @@ assert(
 )
 assert(startBookAsk.awaitingPartner === true, 'start-book go-out ask pauses')
 assert(
-  startBookAsk.state.players[2].hand.length === 1,
-  'starts the book before asking on last card',
+  startBookAsk.state.players[2].hand.length === 4,
+  'asks before melding down on the start-book path',
 )
 const startBookYes = {
   ...createApproveGoOutSignal(0, 'You', 'Y'),
@@ -436,10 +437,10 @@ const multiNat = goOutState(
   [cleanBook, dirtyBook],
 )
 const multiAsk = runAiTurn(multiNat, [])
-assert(multiAsk.chatMessage?.type === 'ready_go_out', 'asks after dumping 4 meldable naturals')
+assert(multiAsk.chatMessage?.type === 'ready_go_out', 'asks while 4 meldable naturals remain')
 assert(
-  multiAsk.state.players[2].hand.length === 1,
-  'melts all playable naturals before asking',
+  multiAsk.state.players[2].hand.length === 4,
+  'asks before meltdown on multi-card natural path',
 )
 const multiYes = {
   ...createApproveGoOutSignal(0, 'You', 'Y'),
@@ -462,9 +463,8 @@ assert(
 )
 
 /*
- * Reported bug: wild + discard with a spare completed clean — wild consent first,
- * then go-out ask on the last card, then Yes finishes.
- * Dirty sink is full (2 wilds), so the wild dumps onto a spare clean (with consent).
+ * Reported bug: wild + discard with a spare completed clean — go-out ask first,
+ * then wild consent during meltdown after Yes, then discard finishes.
  */
 const wildSpareClean = goOutState(
   [card('wj1', 'Joker', 'joker'), card('wd1', '4')],
@@ -473,44 +473,40 @@ const wildSpareClean = goOutState(
 const wildConsentAsk = runAiTurn(wildSpareClean, [])
 assert(
   wildConsentAsk.awaitingPartner === true &&
-    wildConsentAsk.chatMessage?.type === 'wild_request',
-  'asks before dirtying the spare clean while melding down',
+    wildConsentAsk.chatMessage?.type === 'ready_go_out',
+  'asks to go out while 2 cards remain before wild meltdown',
 )
 assert(
   wildConsentAsk.state.phase === 'playing',
-  'does not go out until wild is consented',
+  'does not go out until partner approves the ask',
 )
+const wildGoOutYes = {
+  ...createApproveGoOutSignal(0, 'You', 'Y'),
+  timestamp: (wildConsentAsk.chatMessage?.timestamp ?? 0) + 1,
+}
+const wildGoOutAsk = runAiTurn(wildConsentAsk.state, [
+  wildConsentAsk.chatMessage!,
+  wildGoOutYes,
+])
+assert(
+  wildGoOutAsk.chatMessage?.type === 'wild_request',
+  'asks wild consent during meltdown after go-out Yes',
+)
+assert(wildGoOutAsk.awaitingPartner === true, 'wild consent pauses before finishing')
 const wildBookYes = {
   ...createWildApproveSignal(
     0,
     'You',
     'Y',
-    wildConsentAsk.chatMessage!.bookId ?? secondClean.id,
+    wildGoOutAsk.chatMessage!.bookId ?? secondClean.id,
   ),
-  timestamp: (wildConsentAsk.chatMessage?.timestamp ?? 0) + 1,
-}
-const wildGoOutAsk = runAiTurn(wildConsentAsk.state, [
-  wildConsentAsk.chatMessage!,
-  wildBookYes,
-])
-assert(
-  wildGoOutAsk.chatMessage?.type === 'ready_go_out',
-  'asks to go out on last card after wild dump',
-)
-assert(wildGoOutAsk.awaitingPartner === true, 'wild go-out ask pauses for Yes/No')
-assert(
-  wildGoOutAsk.state.players[2].hand.length === 1,
-  'only the discard card remains after wild dump',
-)
-const wildGoOutYes = {
-  ...createApproveGoOutSignal(0, 'You', 'Y'),
   timestamp: (wildGoOutAsk.chatMessage?.timestamp ?? 0) + 1,
 }
 const wildGoOutDone = runAiTurn(wildGoOutAsk.state, [
   wildConsentAsk.chatMessage!,
-  wildBookYes,
-  wildGoOutAsk.chatMessage!,
   wildGoOutYes,
+  wildGoOutAsk.chatMessage!,
+  wildBookYes,
 ])
 assert(
   wildGoOutDone.state.phase === 'roundEnd',

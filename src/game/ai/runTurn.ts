@@ -32,11 +32,13 @@ import {
   hasPartnerWildApprovalForBook,
   partnerAdvisedAgainstGoOut,
   partnerDeniedLatestWildAsk,
+  shouldAiAttemptGoOut,
   wasPartnerWildDeniedForBook,
 } from '../chat'
 import { partnerSeat, type PlayerCount } from '../teams'
 import {
   findAddToBookActions,
+  canMeldDownToLastCard,
   pickNextMeldDownToLastCard,
 } from './decisions'
 import { AiDebugCollector } from './debugTrace'
@@ -221,6 +223,63 @@ export function stripWildAddsSince(
   }
 }
 
+/**
+ * Ask the human partner while 2+ foot cards remain and a Yes could finish go-out
+ * this turn. Never ask on the last card alone — discard would force go-out anyway.
+ */
+function shouldAskHumanPartnerBeforeGoOut(
+  state: GameState,
+  seatIndex: number,
+  messages: ChatMessage[],
+  turnStartedFromDraw: boolean,
+): boolean {
+  const player = state.players[seatIndex]
+  const playerCount = state.playerCount as PlayerCount
+  const partnerIdx = partnerSeat(seatIndex, playerCount)
+
+  if (!player.isPlayingFoot || player.foot.length > 0 || player.footOnHold) return false
+  if (player.hand.length < 2) return false
+
+  const team = getTeam(state, player.profile.teamId)
+  if (!canTeamGoOut(team.books, team.meldThresholdMet)) return false
+
+  if (awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx)) return false
+  if (
+    !turnStartedFromDraw &&
+    hasExplicitGoOutApproval(messages, seatIndex, playerCount)
+  ) {
+    return false
+  }
+  if (partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)) return false
+
+  return canMeldDownToLastCard(
+    player.hand,
+    team.books,
+    state.booksWithWildAddedThisTurn,
+    team.meldThresholdMet,
+  )
+}
+
+function pauseForPartnerGoOutAsk(
+  state: GameState,
+  seatIndex: number,
+  debug?: AiDebugCollector,
+): AiTurnResult {
+  const player = state.players[seatIndex]
+  const signal = createReadyGoOutSignal(
+    seatIndex,
+    player.profile.name,
+    player.profile.avatar,
+  )
+  debug?.step('chat', 'Asking partner before closing foot (2+ cards remain).')
+  return {
+    state,
+    chatMessage: signal,
+    awaitingPartner: true,
+    debugTrace: debug?.trace,
+  }
+}
+
 export function runAiTurn(
   state: GameState,
   chatMessages: ChatMessage[] = [],
@@ -235,6 +294,7 @@ export function runAiTurn(
   const playerCount = state.playerCount as PlayerCount
   const partnerIdx = partnerSeat(seatIndex, playerCount)
   const partnerIsHuman = state.players[partnerIdx]?.profile.isHuman === true
+  const turnEnteredInPlayPhase = state.turnPhase === 'play'
   let current = state
   let chatMessage: ChatMessage | undefined
   let messages = chatMessages
@@ -285,12 +345,14 @@ export function runAiTurn(
     )
   }
 
+  const turnStartedFromDraw = state.turnPhase === 'draw'
+
   /* Snapshot after draw (+ fulfilled Yes wilds) — later wilds strip if we pause to ask. */
   const baselineForWildAsk = current
 
   /*
-   * Stay paused while the human answers a go-out Yes/No. The ask itself happens
-   * after playable foot cards are melded down to the last discard card.
+   * Stay paused while the human answers a go-out Yes/No. The ask happens while
+   * 2+ foot cards remain so No still leaves meaningful plays this turn.
    */
   if (partnerIsHuman && current.turnPhase === 'play') {
     if (awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx)) {
@@ -301,6 +363,14 @@ export function runAiTurn(
         debugTrace: debug?.trace,
       }
     }
+  }
+
+  if (
+    partnerIsHuman &&
+    current.turnPhase === 'play' &&
+    shouldAskHumanPartnerBeforeGoOut(current, seatIndex, messages, turnStartedFromDraw)
+  ) {
+    return pauseForPartnerGoOutAsk(current, seatIndex, debug)
   }
 
   /*
@@ -330,6 +400,13 @@ export function runAiTurn(
   for (let i = 0; i < maxPlays; i++) {
     if (current.turnPhase !== 'play') break
     if (canPlayerGoOut(current, messages)) break
+
+    if (
+      partnerIsHuman &&
+      shouldAskHumanPartnerBeforeGoOut(current, seatIndex, messages, turnStartedFromDraw)
+    ) {
+      return pauseForPartnerGoOutAsk(current, seatIndex, debug)
+    }
 
     const pub = buildAiPublicState(current, current.currentPlayerIndex)
     const team = getTeam(current, pub.myTeamId)
@@ -669,10 +746,15 @@ export function runAiTurn(
   if (current.turnPhase === 'play') {
     const meltPlayer = getCurrentPlayer(current)
     const meltTeam = getTeam(current, meltPlayer.profile.teamId)
+    const humanGoOutApproved =
+      partnerIsHuman &&
+      goOutClearedThisResume &&
+      !partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)
     const shouldMeltdown =
       meltPlayer.isPlayingFoot &&
       canTeamGoOut(meltTeam.books, meltTeam.meldThresholdMet) &&
-      (goOutClearedThisResume || meltPlayer.hand.length > 1)
+      (!partnerIsHuman || humanGoOutApproved) &&
+      (goOutClearedThisResume || meltPlayer.hand.length > 1 || !partnerIsHuman)
 
     if (shouldMeltdown) {
       for (let guard = 0; guard < 24; guard++) {
@@ -765,65 +847,47 @@ export function runAiTurn(
   if (current.turnPhase === 'play') {
     const currentPlayer = getCurrentPlayer(current)
     const team = getTeam(current, currentPlayer.profile.teamId)
-    const lastFoot =
-      isLastFootCard(currentPlayer) &&
-      canTeamGoOut(team.books, team.meldThresholdMet)
 
     /*
-     * Human partner: meld playable foot cards first, then ask on the last discard
-     * card (or honor a Yes answered this turn). No on the last card still holds.
-     * A Yes from an earlier turn is stale once we draw again — re-ask.
+     * Human partner: on the last foot card, honor prior approval or hold —
+     * never ask here because discard would force go-out anyway.
      */
     if (partnerIsHuman) {
-      const midTurnResume = state.turnPhase === 'play'
-      /* Yes to the latest ask, answered while this turn is already in play. */
-      const lastCardApproved =
-        midTurnResume &&
-        hasExplicitGoOutApproval(messages, seatIndex, playerCount)
+      const lastFoot =
+        isLastFootCard(currentPlayer) &&
+        canTeamGoOut(team.books, team.meldThresholdMet)
 
-      if (awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx)) {
-        debug?.step('chat', 'Waiting for partner go-out yes/no.')
-        return {
-          state: current,
-          chatMessage,
-          awaitingPartner: true,
-          debugTrace: debug?.trace,
+      if (lastFoot) {
+        if (awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx)) {
+          debug?.step('chat', 'Waiting for partner go-out yes/no.')
+          return {
+            state: current,
+            chatMessage,
+            awaitingPartner: true,
+            debugTrace: debug?.trace,
+          }
         }
-      }
 
-      if (lastFoot && lastCardApproved) {
-        debug?.step('discard', 'Partner said yes — discarding last card to go out.')
-        /* Fall through to discard / go-out below. */
-      } else if (
-        lastFoot &&
-        partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount) &&
-        midTurnResume
-      ) {
-        /* Just said No to this ask — hold the last card until a later turn. */
-        debug?.step('discard', 'Partner said no to go-out — holding last card.')
-        const pass = passTurnKeepingLastFootCard(current)
-        return {
-          state: pass.error ? current : pass.state,
-          chatMessage,
-          debugTrace: debug?.trace,
-        }
-      } else if (lastFoot) {
-        const signal = createReadyGoOutSignal(
-          seatIndex,
-          currentPlayer.profile.name,
-          currentPlayer.profile.avatar,
-        )
-        debug?.step(
-          'chat',
-          partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)
-            ? 'Asking partner again before going out (last card).'
-            : 'Asking partner before going out (last card).',
-        )
-        return {
-          state: current,
-          chatMessage: signal,
-          awaitingPartner: true,
-          debugTrace: debug?.trace,
+        if (
+          shouldAiAttemptGoOut(current, seatIndex, messages, {
+            turnEnteredInPlayPhase,
+          })
+        ) {
+          debug?.step('discard', 'Partner cleared go-out — discarding last card.')
+          /* Fall through to discard / go-out below. */
+        } else {
+          debug?.step(
+            'discard',
+            partnerAdvisedAgainstGoOut(messages, seatIndex, playerCount)
+              ? 'Partner denied go-out — holding last card without re-asking.'
+              : 'No partner clearance yet — holding last foot card.',
+          )
+          const pass = passTurnKeepingLastFootCard(current)
+          return {
+            state: pass.error ? current : pass.state,
+            chatMessage,
+            debugTrace: debug?.trace,
+          }
         }
       }
     }

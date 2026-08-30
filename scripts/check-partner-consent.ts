@@ -314,7 +314,7 @@ const state = stubState()
 assert(canAiSendWildRequest(state, 2, []), 'AI can send wild request')
 assert(isAllowedChatMessage(state, ask, []), 'wild_request allowed by chat validation')
 
-/* Meld playable cards first, then ask on the last discard card. */
+/* Ask while 2+ cards remain so No still leaves meaningful plays. */
 const twoCardState = {
   ...state,
   players: state.players.map((p, i) =>
@@ -329,11 +329,11 @@ const twoCardState = {
 const twoCardAsk = runAiTurn(twoCardState, [])
 assert(
   twoCardAsk.chatMessage?.type === 'ready_go_out',
-  'AI asks to go out after melding down to the last card',
+  'AI asks to go out while 2+ foot cards remain',
 )
 assert(
-  twoCardAsk.state.players[2].hand.length === 1,
-  'AI melds extras and asks with the last foot card',
+  twoCardAsk.state.players[2].hand.length === 2,
+  'AI asks before melding down to the last card',
 )
 assert(twoCardAsk.awaitingPartner === true, 'AI pauses for human go-out reply')
 assert(twoCardAsk.state.wentOutTeamId === null, 'ask turn does not go out yet')
@@ -362,45 +362,41 @@ assert(
   'AI discards one unmeldable card and keeps playing',
 )
 
-/* Last card alone: ask so Yes discards to go out (No holds). */
-const oneCardAsk = runAiTurn(state, [])
+/* Last card alone: do not ask — pass and wait for proactive clearance. */
+const oneCardHold = runAiTurn(state, [])
 assert(
-  oneCardAsk.chatMessage?.type === 'ready_go_out',
-  'AI asks to go out on the last card when books are ready',
+  oneCardHold.chatMessage?.type !== 'ready_go_out',
+  'AI does not ask on the last foot card alone',
 )
-assert(oneCardAsk.awaitingPartner === true, 'last-card ask pauses for yes/no')
-assert(oneCardAsk.state.wentOutTeamId === null, 'last card alone does not go out until Yes')
+assert(oneCardHold.awaitingPartner !== true, 'no go-out pause on last card alone')
+assert(oneCardHold.state.wentOutTeamId === null, 'last card alone does not go out without clearance')
 assert(
-  oneCardAsk.state.players[2].hand.length === 1,
-  'AI still holds the last foot card while asking',
+  oneCardHold.state.players[2].hand.length === 1,
+  'AI holds the last foot card without asking',
 )
-assert(oneCardAsk.state.currentPlayerIndex === 2, 'AI stays on turn while asking on last card')
+assert(
+  oneCardHold.state.currentPlayerIndex !== 2,
+  'AI passes the turn when only the last card remains',
+)
 
-const lastCardYes = {
-  ...createApproveGoOutSignal(0, 'You', '🧑'),
-  timestamp: (oneCardAsk.chatMessage?.timestamp ?? 0) + 1,
-}
-const lastCardDone = runAiTurn(oneCardAsk.state, [oneCardAsk.chatMessage!, lastCardYes])
-assert(lastCardDone.state.phase === 'roundEnd', 'Yes on last-card ask goes out')
-assert(lastCardDone.state.wentOutTeamId === 0, 'correct team went out after last-card Yes')
-
-const lastCardNo = {
-  ...createDenyGoOutSignal(0, 'You', '🧑'),
-  timestamp: (oneCardAsk.chatMessage?.timestamp ?? 0) + 1,
-}
-const lastCardHeld = runAiTurn(oneCardAsk.state, [oneCardAsk.chatMessage!, lastCardNo])
-assert(lastCardHeld.state.phase === 'playing', 'No on last-card ask does not end the round')
-assert(lastCardHeld.state.wentOutTeamId === null, 'No leaves wentOutTeamId null')
-assert(
-  lastCardHeld.state.players[2].hand.length === 1,
-  'after No AI still holds the last foot card',
+const proactiveGoOut = createApproveGoOutSignal(
+  0,
+  'You',
+  '🧑',
+  PROACTIVE_GO_OUT_APPROVE_TEXT,
 )
-assert(
-  lastCardHeld.state.currentPlayerIndex !== 2,
-  'after No AI passes holding the last card',
-)
+const proactiveLastCard = runAiTurn(state, [proactiveGoOut])
+assert(proactiveLastCard.state.phase === 'roundEnd', 'You should go out! finishes on last card')
+assert(proactiveLastCard.state.wentOutTeamId === 0, 'proactive last-card go-out team')
 
 const goOutAsk = createReadyGoOutSignal(2, 'AI', '🤖')
+const oneCardYes = {
+  ...createApproveGoOutSignal(0, 'You', '🧑'),
+  timestamp: goOutAsk.timestamp + 1,
+}
+const priorAskLast = runAiTurn(state, [goOutAsk, oneCardYes])
+assert(priorAskLast.state.phase === 'roundEnd', 'Yes to an earlier ask goes out on last card')
+assert(priorAskLast.state.wentOutTeamId === 0, 'correct team after prior ask + Yes on last card')
 assert(
   !shouldAiAttemptGoOut(state, 2, [goOutAsk]),
   'AI does not go out while waiting on human',
@@ -410,15 +406,15 @@ assert(
   'AI does not go out before asking human',
 )
 
-/* Last-card ask: always pause (never go out silently). */
+/* 2-card ask: always pause before melding down (never go out silently). */
 const askTurn = runAiTurn(twoCardState, [])
-assert(askTurn.chatMessage?.type === 'ready_go_out', 'AI asks before going out on last card')
+assert(askTurn.chatMessage?.type === 'ready_go_out', 'AI asks before melding down to go out')
 assert(askTurn.awaitingPartner === true, 'AI pauses for yes/no after asking')
 assert(askTurn.state.phase === 'playing', 'round continues while waiting on ask')
 assert(askTurn.state.wentOutTeamId === null, 'AI does not go out on the ask turn')
 assert(
-  askTurn.state.players[2].hand.length === 1,
-  'AI holds only the last card while waiting',
+  askTurn.state.players[2].hand.length === 2,
+  'AI still holds 2+ cards while waiting on the ask',
 )
 
 const proactiveOnly = createApproveGoOutSignal(
@@ -432,8 +428,8 @@ assert(
   'You should go out! is standing approval',
 )
 assert(
-  !shouldAiAttemptGoOut(state, 2, [proactiveOnly]),
-  'standing approval alone cannot skip the ask',
+  shouldAiAttemptGoOut(state, 2, [proactiveOnly]),
+  'standing approval allows go-out on the last card alone',
 )
 
 const bypass = discardCard(state, state.players[2].hand[0].id, [])
@@ -460,8 +456,8 @@ const yesAfterLastAsk = {
   timestamp: (askTurn.chatMessage?.timestamp ?? 0) + 1,
 }
 const afterLastYes = runAiTurn(askTurn.state, [askTurn.chatMessage!, yesAfterLastAsk])
-assert(afterLastYes.state.phase === 'roundEnd', 'Yes after last-card ask goes out')
-assert(afterLastYes.state.wentOutTeamId === 0, 'correct team went out after last-card Yes')
+assert(afterLastYes.state.phase === 'roundEnd', 'Yes after 2-card ask goes out')
+assert(afterLastYes.state.wentOutTeamId === 0, 'correct team went out after 2-card Yes')
 
 /* Meldable 2-card hand: meld one, ask on last, then Yes goes out. */
 const yesAfterTwoCardAsk = {
@@ -485,8 +481,8 @@ assert(proactiveTurn.awaitingPartner === true, 'standing clearance still pauses 
 assert(proactiveTurn.state.phase === 'playing', 'does not finish until human answers the ask')
 assert(proactiveTurn.state.wentOutTeamId === null, 'no team went out on standing clearance alone')
 assert(
-  proactiveTurn.state.players[2].hand.length === 1,
-  'standing-clearance ask is after melding down to last card',
+  proactiveTurn.state.players[2].hand.length === 2,
+  'standing-clearance ask happens before melding down',
 )
 assert(
   !shouldAiAttemptGoOut(twoCardState, 2, [proactiveOnly, proactiveTurn.chatMessage!]),
@@ -544,7 +540,7 @@ assert(
   'after No AI ends its turn without going out',
 )
 
-/* Next turn after No: AI may ask again on the last card (No is not permanent). */
+/* Next turn after No: play on without re-asking until partner clears the denial. */
 const nextTurnAfterNo = stubState({
   currentPlayerIndex: 2,
   turnPhase: 'draw',
@@ -562,19 +558,37 @@ const nextTurnAfterNo = stubState({
       : p,
   ),
 })
-const reAskTurn = runAiTurn(nextTurnAfterNo, [goOutAsk, goOutNo])
+const afterNoDrawTurn = runAiTurn(nextTurnAfterNo, [goOutAsk, goOutNo])
 assert(
-  reAskTurn.chatMessage?.type === 'ready_go_out',
-  'AI asks to go out again on a later turn after No',
+  afterNoDrawTurn.chatMessage?.type !== 'ready_go_out',
+  'does not re-ask while partner denial is still active',
 )
 assert(
-  reAskTurn.state.players[2].hand.length === 1,
-  're-ask is after melding drawn cards down to last card',
+  afterNoDrawTurn.state.wentOutTeamId === null,
+  'does not go out after No on a later turn',
 )
-assert(reAskTurn.awaitingPartner === true, 're-ask pauses for yes/no again')
+
+/* Holding only the last card after No: pass without re-asking. */
+const holdOnlyLast = stubState({
+  currentPlayerIndex: 2,
+  turnPhase: 'play',
+  players: stubState().players.map((p, i) =>
+    i === 2
+      ? {
+          ...p,
+          hand: [card('hold4', '4')],
+          foot: [],
+          isPlayingFoot: true,
+          footOnHold: false,
+        }
+      : p,
+  ),
+})
+const holdAfterNo = runAiTurn(holdOnlyLast, [goOutAsk, goOutNo])
+assert(holdAfterNo.chatMessage?.type !== 'ready_go_out', 'no re-ask on last card alone after No')
 assert(
-  reAskTurn.state.wentOutTeamId === null,
-  're-ask does not go out until the human answers',
+  holdAfterNo.state.currentPlayerIndex !== 2,
+  'passes turn when holding the last card after No',
 )
 
 const goOutClear = {
@@ -624,8 +638,8 @@ assert(announceAgain.awaitingPartner === true, 'later turn pauses for a fresh Ye
 assert(announceAgain.state.phase === 'playing', 'later turn does not finish on a stale Yes')
 assert(announceAgain.state.wentOutTeamId === null, 'no silent go-out after a prior-turn Yes')
 assert(
-  announceAgain.state.players[2].hand.length === 1,
-  're-ask after stale Yes is on the last discard card',
+  announceAgain.state.players[2].hand.length >= 2,
+  're-ask after stale Yes happens before melding to the last card',
 )
 
 /* Prior Yes + already on last card (play phase): honor Yes and go out. */
