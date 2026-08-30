@@ -1573,6 +1573,7 @@ export function GameView({
         <div className="relative min-h-0 flex-1">
           <RoundTable
             game={game}
+            hideViewerSeat
             onDraw={handleDraw}
             canDraw={canDraw}
             mobile={mobileLayout}

@@ -55,11 +55,11 @@ function seatPositionStyle(
   }
 
   if (abbreviated && side === 'west') {
-    return { left: '3%', top: 'calc(50% - 6rem)' }
+    return { left: '0.25rem', top: 'calc(50% - 3.25rem)' }
   }
 
   if (abbreviated && side === 'east') {
-    return { right: '3%', left: 'auto', top: 'calc(50% - 6rem)' }
+    return { right: '0.25rem', left: 'auto', top: 'calc(50% - 3.25rem)' }
   }
 
   if (abbreviated && (side === 'nw' || side === 'ne')) {
@@ -78,9 +78,16 @@ function seatPositionStyle(
 
   if (isEastSide(side)) {
     return {
-      right: `${100 - coords.left}%`,
+      right: '0.25rem',
       top: `${coords.top}%`,
       left: 'auto',
+    }
+  }
+
+  if (side === 'west' || side === 'nw' || side === 'sw') {
+    return {
+      left: '0.25rem',
+      top: `${coords.top}%`,
     }
   }
 
