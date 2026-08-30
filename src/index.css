@@ -696,6 +696,7 @@
   .seat-chip {
     --seat-team: var(--accent);
     position: relative;
+    z-index: 25;
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -1178,6 +1179,61 @@
 
   .book-card-at-rest .playing-card {
     transition: none;
+  }
+
+  /* On-felt book zones — side columns clear seat chips; dense tiers scale down */
+  .table-book-zone-side {
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .table-book-side-grid {
+    max-height: 100%;
+    overflow: hidden;
+  }
+
+  .table-book-zone-compact .table-book-side-grid {
+    transform: scale(0.94);
+  }
+
+  .table-book-zone-west.table-book-zone-compact .table-book-side-grid {
+    transform-origin: left top;
+  }
+
+  .table-book-zone-east.table-book-zone-compact .table-book-side-grid {
+    transform-origin: right top;
+  }
+
+  .table-book-zone-dense .table-book-side-grid {
+    transform: scale(0.86);
+  }
+
+  .table-book-zone-west.table-book-zone-dense .table-book-side-grid {
+    transform-origin: left top;
+  }
+
+  .table-book-zone-east.table-book-zone-dense .table-book-side-grid {
+    transform-origin: right top;
+  }
+
+  .table-book-zone-north.table-book-zone-compact > div,
+  .table-book-zone-south.table-book-zone-compact > div {
+    transform: scale(0.94);
+  }
+
+  .table-book-zone-north.table-book-zone-dense > div,
+  .table-book-zone-south.table-book-zone-dense > div {
+    transform: scale(0.86);
+  }
+
+  .table-book-zone-north.table-book-zone-compact > div,
+  .table-book-zone-north.table-book-zone-dense > div {
+    transform-origin: center top;
+  }
+
+  .table-book-zone-south.table-book-zone-compact > div,
+  .table-book-zone-south.table-book-zone-dense > div {
+    transform-origin: center bottom;
   }
 
   /* South dock + responsive play shell */
