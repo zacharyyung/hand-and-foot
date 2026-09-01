@@ -4,6 +4,7 @@ import type { ChatMessage } from '../game/chat'
 import {
   createApproveGoOutSignal,
   createDenyGoOutSignal,
+  afterGoOutRequest,
   createReadyGoOutSignal,
   canInitiateGoOutSignal,
   canProactivelyApprovePartnerGoOut,
@@ -103,20 +104,18 @@ export function GameChat({
   function sendPartnerResponse(approve: boolean) {
     if (!viewerIsHuman || !partnerRequest) return
     playSound('chat')
-    onSend(
-      approve
-        ? createApproveGoOutSignal(
-            viewer.profile.seatIndex,
-            viewer.profile.name,
-            viewer.profile.avatar,
-          )
-        : createDenyGoOutSignal(
-            viewer.profile.seatIndex,
-            viewer.profile.name,
-            viewer.profile.avatar,
-          ),
-      game,
-    )
+    const response = approve
+      ? createApproveGoOutSignal(
+          viewer.profile.seatIndex,
+          viewer.profile.name,
+          viewer.profile.avatar,
+        )
+      : createDenyGoOutSignal(
+          viewer.profile.seatIndex,
+          viewer.profile.name,
+          viewer.profile.avatar,
+        )
+    onSend(afterGoOutRequest(response, partnerRequest), game)
   }
 
   function sendProactiveGoOutApprove() {

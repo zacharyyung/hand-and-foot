@@ -3,6 +3,7 @@
  * Run with: npx tsx scripts/check-partner-consent.ts
  */
 import {
+  awaitingPartnerGoOutResponse,
   awaitingPartnerWildResponse,
   canAiSendWildRequest,
   createApproveGoOutSignal,
@@ -21,6 +22,7 @@ import {
   pendingPartnerWildRequest,
   PROACTIVE_GO_OUT_APPROVE_TEXT,
   shouldAiAttemptGoOut,
+  wasPartnerGoOutDenied,
   wasPartnerWildDeniedForBook,
   type ChatMessage,
 } from '../src/game/chat'
@@ -522,6 +524,30 @@ assert(
   !shouldAiAttemptGoOut(state, 2, [goOutAsk, goOutNo]),
   'AI does not go out after human says no (even with many opponent cards)',
 )
+
+/* Same-ms timestamps must not leave the AI stuck waiting forever. */
+const sameTsDeny = {
+  ...createDenyGoOutSignal(0, 'You', '🧑'),
+  timestamp: goOutAsk.timestamp,
+}
+assert(
+  !awaitingPartnerGoOutResponse([goOutAsk, sameTsDeny], 2, 0),
+  'same-timestamp No still clears the go-out wait',
+)
+assert(
+  wasPartnerGoOutDenied([goOutAsk, sameTsDeny], 2, 0),
+  'same-timestamp No is recorded as a denial',
+)
+assert(
+  partnerAdvisedAgainstGoOut([goOutAsk, sameTsDeny], 2, 4),
+  'same-timestamp No blocks go-out attempts',
+)
+const afterSameTsNo = runAiTurn(twoCardAsk.state, [twoCardAsk.chatMessage!, sameTsDeny])
+assert(
+  afterSameTsNo.state.currentPlayerIndex !== 2,
+  'AI resumes and ends turn after same-timestamp No',
+)
+assert(afterSameTsNo.awaitingPartner !== true, 'same-timestamp No does not re-pause the AI')
 
 const afterNoTurn = runAiTurn(twoCardAsk.state, [twoCardAsk.chatMessage!, {
   ...createDenyGoOutSignal(0, 'You', '🧑'),

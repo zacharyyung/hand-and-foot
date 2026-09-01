@@ -90,8 +90,20 @@ export function wasPartnerGoOutDenied(
 ): boolean {
   const request = latestReadyGoOutFrom(messages, requesterSeat)
   if (!request) return false
-  if (awaitingPartnerGoOutResponse(messages, requesterSeat, responderSeat)) return false
-  return latestPartnerGoOutAdvice(messages, responderSeat) === 'deny'
+  if (!partnerRespondedToGoOutAsk(messages, request, responderSeat)) return false
+
+  const response = partnerResponseAfter(
+    messages,
+    responderSeat,
+    request.timestamp,
+    request,
+  )
+  if (!response) return false
+  if (response.type === 'deny_go_out') return true
+  if (response.type === 'partner_reply') {
+    return parsePartnerReplyIntent(response.text) === 'deny'
+  }
+  return false
 }
 
 /** Partner said no to the latest go-out ask — do not go out until they clear you. */
@@ -106,7 +118,7 @@ export function unresolvedPartnerDenial(
   const latest = latestReadyGoOutFrom(messages, requesterSeat)
   if (!latest) return null
 
-  return partnerResponseAfter(messages, partnerIdx, latest.timestamp)
+  return partnerResponseAfter(messages, partnerIdx, latest.timestamp, latest)
 }
 
 /** Only the partner of a pending go-out request may reply yes/no. */
@@ -256,6 +268,17 @@ export function createDenyGoOutSignal(
     text,
     timestamp: Date.now(),
     type: 'deny_go_out',
+  }
+}
+
+/** Ensure a yes/no reply sorts after the go-out ask in chat history. */
+export function afterGoOutRequest(
+  response: ChatMessage,
+  request: ChatMessage,
+): ChatMessage {
+  return {
+    ...response,
+    timestamp: Math.max(response.timestamp, request.timestamp + 1),
   }
 }
 
@@ -636,17 +659,61 @@ export function latestReadyGoOutFrom(
   return latest
 }
 
+function messageIndex(messages: ChatMessage[], id: string): number {
+  return messages.findIndex((m) => m.id === id)
+}
+
+/** Partner replied to this go-out ask — prefer chat order over timestamp alone. */
+function partnerRespondedToGoOutAsk(
+  messages: ChatMessage[],
+  request: ChatMessage,
+  responderSeat: number,
+): boolean {
+  const requestIdx = messageIndex(messages, request.id)
+  if (requestIdx !== -1) {
+    for (let i = requestIdx + 1; i < messages.length; i++) {
+      const msg = messages[i]
+      if (msg.senderSeatIndex === responderSeat && isGoOutResponse(msg.type)) {
+        return true
+      }
+    }
+    return false
+  }
+
+  return messages.some(
+    (m) =>
+      m.senderSeatIndex === responderSeat &&
+      isGoOutResponse(m.type) &&
+      m.timestamp >= request.timestamp,
+  )
+}
+
 /** Partner's yes/no after a teammate's "I can go out!" request. */
 export function partnerResponseAfter(
   messages: ChatMessage[],
   responderSeat: number,
   afterTimestamp: number,
+  request?: ChatMessage,
 ): ChatMessage | null {
+  if (request) {
+    const requestIdx = messageIndex(messages, request.id)
+    if (requestIdx !== -1) {
+      let latest: ChatMessage | null = null
+      for (let i = requestIdx + 1; i < messages.length; i++) {
+        const msg = messages[i]
+        if (msg.senderSeatIndex !== responderSeat) continue
+        if (!isGoOutResponse(msg.type)) continue
+        if (!latest || msg.timestamp > latest.timestamp) latest = msg
+      }
+      return latest
+    }
+  }
+
   let latest: ChatMessage | null = null
   for (const msg of messages) {
     if (msg.senderSeatIndex !== responderSeat) continue
     if (!isGoOutResponse(msg.type)) continue
-    if (msg.timestamp <= afterTimestamp) continue
+    if (msg.timestamp < afterTimestamp) continue
     if (!latest || msg.timestamp > latest.timestamp) latest = msg
   }
   return latest
@@ -661,13 +728,9 @@ export function pendingPartnerGoOutRequest(
   const partnerReady = latestReadyGoOutFrom(messages, partnerSeat)
   if (!partnerReady) return null
 
-  const responded = messages.some(
-    (m) =>
-      m.senderSeatIndex === responderSeat &&
-      isGoOutResponse(m.type) &&
-      m.timestamp > partnerReady.timestamp,
-  )
-  return responded ? null : partnerReady
+  return partnerRespondedToGoOutAsk(messages, partnerReady, responderSeat)
+    ? null
+    : partnerReady
 }
 
 /** Requester signaled go-out and is waiting for partner's yes/no. */
@@ -679,12 +742,7 @@ export function awaitingPartnerGoOutResponse(
   const request = latestReadyGoOutFrom(messages, requesterSeat)
   if (!request) return false
 
-  return !messages.some(
-    (m) =>
-      m.senderSeatIndex === partnerSeat &&
-      isGoOutResponse(m.type) &&
-      m.timestamp > request.timestamp,
-  )
+  return !partnerRespondedToGoOutAsk(messages, request, partnerSeat)
 }
 
 /** Opponents holding many cards — AI–AI teams may go out even if partner said no. */
@@ -727,8 +785,9 @@ function partnerApprovedGoOut(
   messages: ChatMessage[],
   partnerIdx: number,
   afterTimestamp: number,
+  request?: ChatMessage,
 ): boolean {
-  const response = partnerResponseAfter(messages, partnerIdx, afterTimestamp)
+  const response = partnerResponseAfter(messages, partnerIdx, afterTimestamp, request)
   if (response?.type === 'approve_go_out') return true
   if (response?.type === 'partner_reply') {
     return parsePartnerReplyIntent(response.text) === 'approve'
@@ -752,7 +811,7 @@ export function hasPartnerGoOutApproval(
 
   const myReady = latestReadyGoOutFrom(messages, seatIndex)
   if (!myReady) return false
-  return partnerApprovedGoOut(messages, partnerIdx, myReady.timestamp)
+  return partnerApprovedGoOut(messages, partnerIdx, myReady.timestamp, myReady)
 }
 
 /**
@@ -767,7 +826,7 @@ export function hasExplicitGoOutApproval(
   const partnerIdx = partnerSeat(seatIndex, playerCount)
   const myReady = latestReadyGoOutFrom(messages, seatIndex)
   if (!myReady) return false
-  return partnerApprovedGoOut(messages, partnerIdx, myReady.timestamp)
+  return partnerApprovedGoOut(messages, partnerIdx, myReady.timestamp, myReady)
 }
 
 /** @deprecated Partner clearance is advisory; use hasPartnerGoOutApproval or canGoOut. */
