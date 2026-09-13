@@ -1669,11 +1669,11 @@
 
   .book-mini-status {
     position: absolute;
-    top: -0.15rem;
-    right: -0.3rem;
+    top: 0;
+    right: 0;
     z-index: 4;
     padding: 0 0.15rem;
-    border-radius: 0.2rem;
+    border-radius: 0 0.2rem 0 0.2rem;
     background: rgba(0, 0, 0, 0.72);
     font-family: var(--font-display);
     font-size: 0.5rem;
