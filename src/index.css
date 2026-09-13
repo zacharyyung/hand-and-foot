@@ -1182,13 +1182,14 @@
   }
 
   /*
-   * On-felt book zones — BookMini tiles in a non-overlapping grid/wrap.
+   * On-felt book zones — BookMini tiles in a shrink-wrapped cluster per seat.
    * Density tiers shrink tile size (not transform-scale) so layout box matches
    * the visual and neighboring seats never collide.
    */
   .table-book-zone {
-    --book-mini-w: 1.875rem;
-    --book-mini-h: 2.875rem;
+    /* Slightly larger default so a 2–4 book cluster reads clearly under the seat. */
+    --book-mini-w: 2.125rem;
+    --book-mini-h: 3.25rem;
     pointer-events: none;
   }
 
@@ -1197,8 +1198,8 @@
   }
 
   .table-book-zone-compact {
-    --book-mini-w: 1.625rem;
-    --book-mini-h: 2.5rem;
+    --book-mini-w: 1.75rem;
+    --book-mini-h: 2.7rem;
   }
 
   .table-book-zone-dense {
@@ -1240,13 +1241,15 @@
     max-width: 100%;
   }
 
-  /* Prefer at most 5 books per row on north/south (10 → two clean rows). */
+  /* Shrink-wrap N/S clusters; cap at 5 tiles wide so 10 wrap into two rows. */
   .table-book-ns-grid {
-    max-width: calc(5 * var(--book-mini-w) + 4 * 0.375rem);
+    width: fit-content;
+    max-width: min(100%, calc(5 * var(--book-mini-w) + 4 * 0.25rem));
     margin-inline: auto;
   }
 
   .table-book-side-grid {
+    width: 100%;
     max-height: 100%;
   }
 
