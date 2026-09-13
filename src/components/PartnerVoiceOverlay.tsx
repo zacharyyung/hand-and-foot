@@ -4,6 +4,7 @@ import type { GameState } from '../game/deal'
 import {
   createApproveGoOutSignal,
   createDenyGoOutSignal,
+  afterGoOutRequest,
   pendingPartnerGoOutRequest,
   pendingPartnerWildRequest,
 } from '../game/chat'
@@ -63,12 +64,10 @@ export function PartnerVoiceOverlay({
     partnerVoiceService.unlock()
     partnerVoiceService.stop()
     playSound('chat')
-    onSend(
-      approve
-        ? createApproveGoOutSignal(viewerSeat, viewer.profile.name, viewer.profile.avatar)
-        : createDenyGoOutSignal(viewerSeat, viewer.profile.name, viewer.profile.avatar),
-      game,
-    )
+    const response = approve
+      ? createApproveGoOutSignal(viewerSeat, viewer.profile.name, viewer.profile.avatar)
+      : createDenyGoOutSignal(viewerSeat, viewer.profile.name, viewer.profile.avatar)
+    onSend(afterGoOutRequest(response, goOutRequest), game)
   }
 
   return (
