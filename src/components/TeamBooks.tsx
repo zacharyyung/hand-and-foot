@@ -360,17 +360,17 @@ function tableBookZoneClass(
       case 'south':
         return `table-book-zone table-book-zone-south bottom-[18%] left-1/2 w-[min(94%,22rem)] -translate-x-1/2${dense}`
       case 'west':
-        return `table-book-zone table-book-zone-side table-book-zone-west left-[10%] top-[18%] bottom-[24%] w-[4.5rem]${dense}`
+        return `table-book-zone table-book-zone-side table-book-zone-west left-[9%] top-[18%] bottom-[24%] w-[5.25rem]${dense}`
       case 'east':
-        return `table-book-zone table-book-zone-side table-book-zone-east right-[10%] top-[18%] bottom-[24%] w-[4.5rem]${dense}`
+        return `table-book-zone table-book-zone-side table-book-zone-east right-[9%] top-[18%] bottom-[24%] w-[5.25rem]${dense}`
       case 'nw':
-        return `table-book-zone table-book-zone-side table-book-zone-west left-[10%] top-[15%] w-[4.5rem] max-h-[36%]${dense}`
+        return `table-book-zone table-book-zone-side table-book-zone-west left-[9%] top-[15%] w-[5.25rem] max-h-[36%]${dense}`
       case 'ne':
-        return `table-book-zone table-book-zone-side table-book-zone-east right-[10%] top-[15%] w-[4.5rem] max-h-[36%]${dense}`
+        return `table-book-zone table-book-zone-side table-book-zone-east right-[9%] top-[15%] w-[5.25rem] max-h-[36%]${dense}`
       case 'sw':
-        return `table-book-zone table-book-zone-side table-book-zone-west left-[10%] bottom-[22%] w-[4.5rem] max-h-[36%]${dense}`
+        return `table-book-zone table-book-zone-side table-book-zone-west left-[9%] bottom-[22%] w-[5.25rem] max-h-[36%]${dense}`
       case 'se':
-        return `table-book-zone table-book-zone-side table-book-zone-east right-[10%] bottom-[22%] w-[4.5rem] max-h-[36%]${dense}`
+        return `table-book-zone table-book-zone-side table-book-zone-east right-[9%] bottom-[22%] w-[5.25rem] max-h-[36%]${dense}`
       default:
         return `table-book-zone table-book-zone-north left-1/2 top-[13%] w-[min(94%,22rem)] -translate-x-1/2${dense}`
     }
