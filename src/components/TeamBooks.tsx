@@ -356,47 +356,47 @@ function tableBookZoneClass(
   const sideWide = bookCount >= 7
 
   if (mobile) {
-    const sideW = sideWide ? 'w-[6.75rem]' : 'w-[5.25rem]'
+    const sideW = sideWide ? 'w-[6.5rem]' : 'w-[5rem]'
     switch (side) {
       case 'north':
         return `table-book-zone table-book-zone-north left-1/2 top-[11%] w-[min(58%,12.5rem)] -translate-x-1/2${dense}`
       case 'south':
         return `table-book-zone table-book-zone-south bottom-[22%] left-1/2 w-[min(58%,12.5rem)] -translate-x-1/2${dense}`
       case 'west':
-        return `table-book-zone table-book-zone-side table-book-zone-west left-[8%] top-[18%] bottom-[28%] ${sideW}${dense}`
+        return `table-book-zone table-book-zone-side table-book-zone-west left-[13%] top-[18%] bottom-[28%] ${sideW}${dense}`
       case 'east':
-        return `table-book-zone table-book-zone-side table-book-zone-east right-[8%] top-[18%] bottom-[28%] ${sideW}${dense}`
+        return `table-book-zone table-book-zone-side table-book-zone-east right-[13%] top-[18%] bottom-[28%] ${sideW}${dense}`
       case 'nw':
-        return `table-book-zone table-book-zone-side table-book-zone-west left-[8%] top-[14%] ${sideW} max-h-[38%]${dense}`
+        return `table-book-zone table-book-zone-side table-book-zone-west left-[13%] top-[14%] ${sideW} max-h-[38%]${dense}`
       case 'ne':
-        return `table-book-zone table-book-zone-side table-book-zone-east right-[8%] top-[14%] ${sideW} max-h-[38%]${dense}`
+        return `table-book-zone table-book-zone-side table-book-zone-east right-[13%] top-[14%] ${sideW} max-h-[38%]${dense}`
       case 'sw':
-        return `table-book-zone table-book-zone-side table-book-zone-west left-[8%] bottom-[26%] ${sideW} max-h-[38%]${dense}`
+        return `table-book-zone table-book-zone-side table-book-zone-west left-[13%] bottom-[26%] ${sideW} max-h-[38%]${dense}`
       case 'se':
-        return `table-book-zone table-book-zone-side table-book-zone-east right-[8%] bottom-[26%] ${sideW} max-h-[38%]${dense}`
+        return `table-book-zone table-book-zone-side table-book-zone-east right-[13%] bottom-[26%] ${sideW} max-h-[38%]${dense}`
       default:
         return `table-book-zone table-book-zone-north left-1/2 top-[11%] w-[min(58%,12.5rem)] -translate-x-1/2${dense}`
     }
   }
 
-  const deskSideW = sideWide ? 'w-[min(9.5rem,20%)]' : 'w-[min(7.5rem,16%)]'
+  const deskSideW = sideWide ? 'w-[min(9.25rem,19%)]' : 'w-[min(7.25rem,15%)]'
   switch (side) {
     case 'north':
       return `table-book-zone table-book-zone-north left-1/2 top-[8%] w-[min(38%,20rem)] -translate-x-1/2${dense}`
     case 'south':
       return `table-book-zone table-book-zone-south bottom-[max(14%,4.75rem)] left-1/2 w-[min(38%,20rem)] -translate-x-1/2${dense}`
     case 'west':
-      return `table-book-zone table-book-zone-side table-book-zone-west left-[9.5%] top-[16%] bottom-[24%] ${deskSideW}${dense}`
+      return `table-book-zone table-book-zone-side table-book-zone-west left-[12%] top-[16%] bottom-[24%] ${deskSideW}${dense}`
     case 'east':
-      return `table-book-zone table-book-zone-side table-book-zone-east right-[9.5%] top-[16%] bottom-[24%] ${deskSideW}${dense}`
+      return `table-book-zone table-book-zone-side table-book-zone-east right-[12%] top-[16%] bottom-[24%] ${deskSideW}${dense}`
     case 'nw':
-      return `table-book-zone table-book-zone-side table-book-zone-west left-[9.5%] top-[12%] ${deskSideW} max-h-[40%]${dense}`
+      return `table-book-zone table-book-zone-side table-book-zone-west left-[12%] top-[12%] ${deskSideW} max-h-[40%]${dense}`
     case 'ne':
-      return `table-book-zone table-book-zone-side table-book-zone-east right-[9.5%] top-[12%] ${deskSideW} max-h-[40%]${dense}`
+      return `table-book-zone table-book-zone-side table-book-zone-east right-[12%] top-[12%] ${deskSideW} max-h-[40%]${dense}`
     case 'sw':
-      return `table-book-zone table-book-zone-side table-book-zone-west left-[9.5%] bottom-[22%] ${deskSideW} max-h-[40%]${dense}`
+      return `table-book-zone table-book-zone-side table-book-zone-west left-[12%] bottom-[22%] ${deskSideW} max-h-[40%]${dense}`
     case 'se':
-      return `table-book-zone table-book-zone-side table-book-zone-east right-[9.5%] bottom-[22%] ${deskSideW} max-h-[40%]${dense}`
+      return `table-book-zone table-book-zone-side table-book-zone-east right-[12%] bottom-[22%] ${deskSideW} max-h-[40%]${dense}`
     default:
       return `table-book-zone table-book-zone-north left-1/2 top-[8%] w-[min(38%,20rem)] -translate-x-1/2${dense}`
   }
