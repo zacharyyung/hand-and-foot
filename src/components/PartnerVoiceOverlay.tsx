@@ -57,6 +57,7 @@ export function PartnerVoiceOverlay({
 
   if (!goOutRequest || !viewerIsHuman) return null
 
+  const activeGoOutRequest = goOutRequest
   const teamColor = TEAM_COLORS[partner.profile.teamId]
 
   function respondGoOut(approve: boolean) {
@@ -67,7 +68,7 @@ export function PartnerVoiceOverlay({
     const response = approve
       ? createApproveGoOutSignal(viewerSeat, viewer.profile.name, viewer.profile.avatar)
       : createDenyGoOutSignal(viewerSeat, viewer.profile.name, viewer.profile.avatar)
-    onSend(afterGoOutRequest(response, goOutRequest), game)
+    onSend(afterGoOutRequest(response, activeGoOutRequest), game)
   }
 
   return (
