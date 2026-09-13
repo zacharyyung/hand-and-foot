@@ -226,13 +226,14 @@ export function TeamBooks({
   }
 
   if (compact) {
+    /* On-felt books always use BookMini tiles so up to 9 fit without fan overlap. */
     return (
       <>
         {teamBooks.map((book) => (
           <BookDisplay
             key={book.id}
             book={book}
-            mobile={mobile}
+            mobile
             side={side}
             getCardMotion={getCardMotion}
             isCardHidden={isCardHidden}
@@ -333,56 +334,68 @@ export function TableBookZone({
   )
 }
 
+function tableBookDensityClass(bookCount: number): string {
+  if (bookCount >= 8) return ' table-book-zone-xdense'
+  if (bookCount >= 6) return ' table-book-zone-dense'
+  if (bookCount >= 4) return ' table-book-zone-compact'
+  return ''
+}
+
+/**
+ * On-felt book bands sized so 9 BookMini tiles fit without overlapping seats,
+ * stock/discard, or each other:
+ * north/south → up to 3 per row × 3 rows (or a short centered row when few);
+ * east/west → 2 cols × 5 rows, kept near the felt edge.
+ */
 function tableBookZoneClass(
   side: CompassSide,
   mobile = false,
   bookCount = 0,
 ): string {
-  const dense =
-    bookCount >= 7 ? ' table-book-zone-dense' : bookCount >= 5 ? ' table-book-zone-compact' : ''
+  const dense = tableBookDensityClass(bookCount)
 
   if (mobile) {
     switch (side) {
       case 'north':
-        return `table-book-zone-north left-1/2 top-[17%] w-[min(88%,18rem)] -translate-x-1/2${dense}`
+        return `table-book-zone table-book-zone-north left-1/2 top-[12%] w-[min(70%,14rem)] -translate-x-1/2${dense}`
       case 'south':
-        return `table-book-zone-south bottom-[24%] left-1/2 w-[min(88%,18rem)] -translate-x-1/2${dense}`
+        return `table-book-zone table-book-zone-south bottom-[20%] left-1/2 w-[min(70%,14rem)] -translate-x-1/2${dense}`
       case 'west':
-        return `table-book-zone-side table-book-zone-west left-[max(3.35rem,11.5rem)] top-[17%] bottom-[26%] w-[5.65rem]${dense}`
+        return `table-book-zone table-book-zone-side table-book-zone-west left-[9%] top-[20%] bottom-[26%] w-[4.75rem]${dense}`
       case 'east':
-        return `table-book-zone-side table-book-zone-east right-[max(3.35rem,11.5rem)] top-[17%] bottom-[26%] w-[5.65rem]${dense}`
+        return `table-book-zone table-book-zone-side table-book-zone-east right-[9%] top-[20%] bottom-[26%] w-[4.75rem]${dense}`
       case 'nw':
-        return `table-book-zone-side table-book-zone-west left-[max(3.35rem,11.5rem)] top-[16%] w-[5.65rem] max-h-[34%]${dense}`
+        return `table-book-zone table-book-zone-side table-book-zone-west left-[9%] top-[16%] w-[4.75rem] max-h-[34%]${dense}`
       case 'ne':
-        return `table-book-zone-side table-book-zone-east right-[max(3.35rem,11.5rem)] top-[16%] w-[5.65rem] max-h-[34%]${dense}`
+        return `table-book-zone table-book-zone-side table-book-zone-east right-[9%] top-[16%] w-[4.75rem] max-h-[34%]${dense}`
       case 'sw':
-        return `table-book-zone-side table-book-zone-west left-[max(3.35rem,11.5rem)] bottom-[26%] w-[5.65rem] max-h-[34%]${dense}`
+        return `table-book-zone table-book-zone-side table-book-zone-west left-[9%] bottom-[24%] w-[4.75rem] max-h-[34%]${dense}`
       case 'se':
-        return `table-book-zone-side table-book-zone-east right-[max(3.35rem,11.5rem)] bottom-[26%] w-[5.65rem] max-h-[34%]${dense}`
+        return `table-book-zone table-book-zone-side table-book-zone-east right-[9%] bottom-[24%] w-[4.75rem] max-h-[34%]${dense}`
       default:
-        return `table-book-zone-north left-1/2 top-[17%] w-[min(88%,18rem)] -translate-x-1/2${dense}`
+        return `table-book-zone table-book-zone-north left-1/2 top-[12%] w-[min(70%,14rem)] -translate-x-1/2${dense}`
     }
   }
 
   switch (side) {
     case 'north':
-      return `table-book-zone-north left-1/2 top-[10%] w-[min(56%,34rem)] -translate-x-1/2${dense}`
+      return `table-book-zone table-book-zone-north left-1/2 top-[9%] w-[min(42%,22rem)] -translate-x-1/2${dense}`
     case 'south':
-      return `table-book-zone-south bottom-[max(15%,4.75rem)] left-1/2 w-[min(56%,34rem)] -translate-x-1/2${dense}`
+      return `table-book-zone table-book-zone-south bottom-[max(13%,4.5rem)] left-1/2 w-[min(42%,22rem)] -translate-x-1/2${dense}`
     case 'west':
-      return `table-book-zone-side table-book-zone-west left-[max(3.35rem,11.5rem)] top-[18%] bottom-[27%] w-[min(10.5rem,21%)]${dense}`
+      return `table-book-zone table-book-zone-side table-book-zone-west left-[10%] top-[17%] bottom-[23%] w-[min(7.25rem,15%)]${dense}`
     case 'east':
-      return `table-book-zone-side table-book-zone-east right-[max(3.35rem,11.5rem)] top-[18%] bottom-[27%] w-[min(10.5rem,21%)]${dense}`
+      return `table-book-zone table-book-zone-side table-book-zone-east right-[10%] top-[17%] bottom-[23%] w-[min(7.25rem,15%)]${dense}`
     case 'nw':
-      return `table-book-zone-side table-book-zone-west left-[max(3.35rem,11.5rem)] top-[14%] w-[min(10.5rem,21%)] max-h-[36%]${dense}`
+      return `table-book-zone table-book-zone-side table-book-zone-west left-[10%] top-[13%] w-[min(7.25rem,15%)] max-h-[36%]${dense}`
     case 'ne':
-      return `table-book-zone-side table-book-zone-east right-[max(3.35rem,11.5rem)] top-[14%] w-[min(10.5rem,21%)] max-h-[36%]${dense}`
+      return `table-book-zone table-book-zone-side table-book-zone-east right-[10%] top-[13%] w-[min(7.25rem,15%)] max-h-[36%]${dense}`
     case 'sw':
-      return `table-book-zone-side table-book-zone-west left-[max(3.35rem,11.5rem)] bottom-[27%] w-[min(10.5rem,21%)] max-h-[36%]${dense}`
+      return `table-book-zone table-book-zone-side table-book-zone-west left-[10%] bottom-[21%] w-[min(7.25rem,15%)] max-h-[36%]${dense}`
     case 'se':
-      return `table-book-zone-side table-book-zone-east right-[max(3.35rem,11.5rem)] bottom-[27%] w-[min(10.5rem,21%)] max-h-[36%]${dense}`
+      return `table-book-zone table-book-zone-side table-book-zone-east right-[10%] bottom-[21%] w-[min(7.25rem,15%)] max-h-[36%]${dense}`
     default:
-      return `table-book-zone-north left-1/2 top-[10%] -translate-x-1/2${dense}`
+      return `table-book-zone table-book-zone-north left-1/2 top-[9%] w-[min(42%,22rem)] -translate-x-1/2${dense}`
   }
 }
 
@@ -392,33 +405,35 @@ function tableBookFlexClass(
   bookCount = 0,
 ): string {
   const gap =
-    bookCount >= 7
-      ? mobile
-        ? 'gap-x-0.5 gap-y-0.5'
-        : 'gap-x-1.5 gap-y-1.5'
-      : bookCount >= 5
-        ? mobile
-          ? 'gap-x-0.5 gap-y-1'
-          : 'gap-x-2 gap-y-1.5'
-        : mobile
-          ? 'gap-x-1 gap-y-1'
-          : 'gap-x-2.5 gap-y-2'
+    bookCount >= 8
+      ? 'gap-x-1 gap-y-1'
+      : bookCount >= 6
+        ? 'gap-x-1 gap-y-1'
+        : bookCount >= 4
+          ? mobile
+            ? 'gap-x-1.5 gap-y-1'
+            : 'gap-x-2 gap-y-1.5'
+          : mobile
+            ? 'gap-x-2 gap-y-1.5'
+            : 'gap-x-2.5 gap-y-2'
 
   const isWestSide = side === 'west' || side === 'nw' || side === 'sw'
   const isEastSide = side === 'east' || side === 'ne' || side === 'se'
 
   if (isWestSide || isEastSide) {
-    const cols = bookCount >= 7 ? 'grid-cols-2' : mobile ? 'grid-cols-2' : 'grid-cols-2'
     const align = isWestSide ? 'justify-items-start' : 'justify-items-end'
-    return `table-book-side-grid grid ${cols} ${gap} content-start items-start ${align}`
+    return `table-book-grid table-book-side-grid grid grid-cols-2 ${gap} content-start items-start ${align}`
   }
 
-  switch (side) {
-    case 'north':
-      return `flex flex-row flex-wrap items-end justify-center ${gap}`
-    case 'south':
-      return `flex flex-row flex-wrap items-start justify-center ${gap}`
-    default:
-      return `flex flex-row flex-wrap justify-center ${gap}`
+  /*
+   * North/south: few books stay in a centered flex row; 4–9 use a 3-column
+   * grid so nine tiles form a clean 3×3 that stays clear of side seats and
+   * the stock/discard.
+   */
+  if (bookCount <= 3) {
+    const align = side === 'south' ? 'items-start' : 'items-end'
+    return `table-book-grid table-book-ns-grid flex max-w-full flex-row flex-wrap justify-center ${align} ${gap}`
   }
+
+  return `table-book-grid table-book-ns-grid grid grid-cols-3 ${gap} justify-items-center content-start`
 }
