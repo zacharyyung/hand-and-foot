@@ -62,32 +62,38 @@ export function RoundTable({
             aria-hidden
           />
 
-          {/* Books — fully inside the felt, clipped by overflow */}
-          {game.players.map((player, seatIndex) => {
-            const offset = seatOffset(viewerSeat, seatIndex, playerCount)
-            const { side } = seatCoordinates(offset, playerCount)
-            const team = getTeam(game, player.profile.teamId)
-            const playerBooks = team.books.filter(
-              (b) => b.startedBySeatIndex === player.profile.seatIndex,
-            )
-            if (playerBooks.length === 0) return null
+          {/*
+            Books live in an inset clip frame so absolute % positions are
+            measured from inside the felt — never on the brown rail.
+            Board padding alone does not inset absolute children.
+          */}
+          <div className="round-table-books pointer-events-none absolute inset-[0.55rem] z-[15] overflow-hidden sm:inset-3 md:inset-3.5">
+            {game.players.map((player, seatIndex) => {
+              const offset = seatOffset(viewerSeat, seatIndex, playerCount)
+              const { side } = seatCoordinates(offset, playerCount)
+              const team = getTeam(game, player.profile.teamId)
+              const playerBooks = team.books.filter(
+                (b) => b.startedBySeatIndex === player.profile.seatIndex,
+              )
+              if (playerBooks.length === 0) return null
 
-            return (
-              <TableBookZone
-                key={`books-${seatIndex}`}
-                books={playerBooks}
-                teamId={team.id}
-                seatIndex={seatIndex}
-                side={side}
-                myTeamId={myTeamId}
-                mobile={mobile}
-                getCardMotion={getCardMotion}
-                isCardHidden={isCardInFlight}
-                dirtyBookConsent={dirtyBookConsent}
-                dirtyBookWarning={dirtyBookWarning}
-              />
-            )
-          })}
+              return (
+                <TableBookZone
+                  key={`books-${seatIndex}`}
+                  books={playerBooks}
+                  teamId={team.id}
+                  seatIndex={seatIndex}
+                  side={side}
+                  myTeamId={myTeamId}
+                  mobile={mobile}
+                  getCardMotion={getCardMotion}
+                  isCardHidden={isCardInFlight}
+                  dirtyBookConsent={dirtyBookConsent}
+                  dirtyBookWarning={dirtyBookWarning}
+                />
+              )
+            })}
+          </div>
         </div>
 
         <div className={`absolute left-1/2 top-1/2 z-40 flex -translate-x-1/2 -translate-y-1/2 items-end ${mobile ? 'gap-2.5' : 'gap-4 sm:gap-7 md:gap-10 lg:gap-14'}`}>

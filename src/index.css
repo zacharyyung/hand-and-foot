@@ -1193,8 +1193,14 @@
     pointer-events: none;
   }
 
+  /* Clip stack-layer offsets so tiles never paint onto the brown rail. */
   .table-book-zone-side {
-    overflow: visible;
+    overflow: hidden;
+  }
+
+  .round-table-books {
+    /* Extra safety beyond Tailwind inset — clears the inner rail face. */
+    border-radius: inherit;
   }
 
   .table-book-zone-compact {
@@ -1505,8 +1511,11 @@
   .game-play-shell[data-layout='mobile'] .round-table-board {
     inset: 18% 15% !important;
     border-radius: 1.25rem !important;
-    /* Keep book tiles off the inner face of the brown rail. */
-    padding: 0.35rem;
+  }
+
+  /* Mobile books frame — clear the inner face of the ~9–11px wood rail. */
+  .game-play-shell[data-layout='mobile'] .round-table-books {
+    inset: 0.5rem !important;
   }
 
   .game-play-shell[data-layout='mobile'] .seat-chip-abbreviated {
