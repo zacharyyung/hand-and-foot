@@ -1187,8 +1187,8 @@
    * the visual and neighboring seats never collide.
    */
   .table-book-zone {
-    --book-mini-w: 1.875rem;
-    --book-mini-h: 2.875rem;
+    --book-mini-w: 1.75rem;
+    --book-mini-h: 2.65rem;
     --book-mini-gap: 0.375rem;
     pointer-events: none;
   }
@@ -1198,25 +1198,23 @@
   }
 
   .table-book-zone-compact {
-    --book-mini-w: 1.7rem;
-    --book-mini-h: 2.6rem;
+    --book-mini-w: 1.55rem;
+    --book-mini-h: 2.35rem;
   }
 
   .table-book-zone-dense {
-    --book-mini-w: 1.55rem;
-    --book-mini-h: 2.375rem;
-  }
-
-  .table-book-zone-xdense {
     --book-mini-w: 1.4rem;
     --book-mini-h: 2.15rem;
   }
 
+  .table-book-zone-xdense {
+    --book-mini-w: 1.25rem;
+    --book-mini-h: 1.95rem;
+  }
+
   .table-book-zone .book-mini {
     width: var(--book-mini-w);
-    /* Room for the 2px stack-layer peek without colliding with neighbors. */
-    margin-right: 2px;
-    margin-bottom: 2px;
+    box-sizing: border-box;
   }
 
   .table-book-zone .book-mini-layer--1 {
@@ -1230,12 +1228,19 @@
   .table-book-zone .book-mini-stack {
     width: var(--book-mini-w);
     height: var(--book-mini-h);
+    overflow: hidden;
+    border-radius: 0.2rem;
   }
 
   .table-book-zone .book-mini-stack .playing-card,
   .table-book-zone .book-mini-face .playing-card {
     width: var(--book-mini-w) !important;
     height: var(--book-mini-h) !important;
+  }
+
+  .table-book-zone .book-mini-meta {
+    font-size: 0.45rem;
+    margin-top: 0.1rem;
   }
 
   .table-book-grid {
@@ -1249,8 +1254,12 @@
     margin-inline: auto;
   }
 
+  /* Side grids size to content — never compress into overlapping rows. */
   .table-book-side-grid {
-    max-height: 100%;
+    width: max-content;
+    max-width: 100%;
+    height: max-content;
+    max-height: none;
   }
 
   /* South dock + responsive play shell */

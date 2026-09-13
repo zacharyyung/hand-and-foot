@@ -343,9 +343,9 @@ function tableBookDensityClass(bookCount: number): string {
 
 /**
  * On-felt book bands sized so 9 BookMini tiles fit without overlapping seats,
- * stock/discard, or each other:
- * north/south → up to 3 per row × 3 rows (or a short centered row when few);
- * east/west → 2 cols × 5 rows, kept near the felt edge.
+ * stock/discard, or each other.
+ * North/south → 3×3 (or a short centered row when ≤3).
+ * East/west → 2 cols normally; 3×3 when 7+ so the column stays short and clear.
  */
 function tableBookZoneClass(
   side: CompassSide,
@@ -353,49 +353,52 @@ function tableBookZoneClass(
   bookCount = 0,
 ): string {
   const dense = tableBookDensityClass(bookCount)
+  const sideWide = bookCount >= 7
 
   if (mobile) {
+    const sideW = sideWide ? 'w-[6.75rem]' : 'w-[5.25rem]'
     switch (side) {
       case 'north':
-        return `table-book-zone table-book-zone-north left-1/2 top-[12%] w-[min(70%,14rem)] -translate-x-1/2${dense}`
+        return `table-book-zone table-book-zone-north left-1/2 top-[11%] w-[min(58%,12.5rem)] -translate-x-1/2${dense}`
       case 'south':
-        return `table-book-zone table-book-zone-south bottom-[20%] left-1/2 w-[min(70%,14rem)] -translate-x-1/2${dense}`
+        return `table-book-zone table-book-zone-south bottom-[22%] left-1/2 w-[min(58%,12.5rem)] -translate-x-1/2${dense}`
       case 'west':
-        return `table-book-zone table-book-zone-side table-book-zone-west left-[9%] top-[20%] bottom-[26%] w-[4.75rem]${dense}`
+        return `table-book-zone table-book-zone-side table-book-zone-west left-[8%] top-[18%] bottom-[28%] ${sideW}${dense}`
       case 'east':
-        return `table-book-zone table-book-zone-side table-book-zone-east right-[9%] top-[20%] bottom-[26%] w-[4.75rem]${dense}`
+        return `table-book-zone table-book-zone-side table-book-zone-east right-[8%] top-[18%] bottom-[28%] ${sideW}${dense}`
       case 'nw':
-        return `table-book-zone table-book-zone-side table-book-zone-west left-[9%] top-[16%] w-[4.75rem] max-h-[34%]${dense}`
+        return `table-book-zone table-book-zone-side table-book-zone-west left-[8%] top-[14%] ${sideW} max-h-[38%]${dense}`
       case 'ne':
-        return `table-book-zone table-book-zone-side table-book-zone-east right-[9%] top-[16%] w-[4.75rem] max-h-[34%]${dense}`
+        return `table-book-zone table-book-zone-side table-book-zone-east right-[8%] top-[14%] ${sideW} max-h-[38%]${dense}`
       case 'sw':
-        return `table-book-zone table-book-zone-side table-book-zone-west left-[9%] bottom-[24%] w-[4.75rem] max-h-[34%]${dense}`
+        return `table-book-zone table-book-zone-side table-book-zone-west left-[8%] bottom-[26%] ${sideW} max-h-[38%]${dense}`
       case 'se':
-        return `table-book-zone table-book-zone-side table-book-zone-east right-[9%] bottom-[24%] w-[4.75rem] max-h-[34%]${dense}`
+        return `table-book-zone table-book-zone-side table-book-zone-east right-[8%] bottom-[26%] ${sideW} max-h-[38%]${dense}`
       default:
-        return `table-book-zone table-book-zone-north left-1/2 top-[12%] w-[min(70%,14rem)] -translate-x-1/2${dense}`
+        return `table-book-zone table-book-zone-north left-1/2 top-[11%] w-[min(58%,12.5rem)] -translate-x-1/2${dense}`
     }
   }
 
+  const deskSideW = sideWide ? 'w-[min(9.5rem,20%)]' : 'w-[min(7.5rem,16%)]'
   switch (side) {
     case 'north':
-      return `table-book-zone table-book-zone-north left-1/2 top-[9%] w-[min(42%,22rem)] -translate-x-1/2${dense}`
+      return `table-book-zone table-book-zone-north left-1/2 top-[8%] w-[min(38%,20rem)] -translate-x-1/2${dense}`
     case 'south':
-      return `table-book-zone table-book-zone-south bottom-[max(13%,4.5rem)] left-1/2 w-[min(42%,22rem)] -translate-x-1/2${dense}`
+      return `table-book-zone table-book-zone-south bottom-[max(14%,4.75rem)] left-1/2 w-[min(38%,20rem)] -translate-x-1/2${dense}`
     case 'west':
-      return `table-book-zone table-book-zone-side table-book-zone-west left-[10%] top-[17%] bottom-[23%] w-[min(7.25rem,15%)]${dense}`
+      return `table-book-zone table-book-zone-side table-book-zone-west left-[9.5%] top-[16%] bottom-[24%] ${deskSideW}${dense}`
     case 'east':
-      return `table-book-zone table-book-zone-side table-book-zone-east right-[10%] top-[17%] bottom-[23%] w-[min(7.25rem,15%)]${dense}`
+      return `table-book-zone table-book-zone-side table-book-zone-east right-[9.5%] top-[16%] bottom-[24%] ${deskSideW}${dense}`
     case 'nw':
-      return `table-book-zone table-book-zone-side table-book-zone-west left-[10%] top-[13%] w-[min(7.25rem,15%)] max-h-[36%]${dense}`
+      return `table-book-zone table-book-zone-side table-book-zone-west left-[9.5%] top-[12%] ${deskSideW} max-h-[40%]${dense}`
     case 'ne':
-      return `table-book-zone table-book-zone-side table-book-zone-east right-[10%] top-[13%] w-[min(7.25rem,15%)] max-h-[36%]${dense}`
+      return `table-book-zone table-book-zone-side table-book-zone-east right-[9.5%] top-[12%] ${deskSideW} max-h-[40%]${dense}`
     case 'sw':
-      return `table-book-zone table-book-zone-side table-book-zone-west left-[10%] bottom-[21%] w-[min(7.25rem,15%)] max-h-[36%]${dense}`
+      return `table-book-zone table-book-zone-side table-book-zone-west left-[9.5%] bottom-[22%] ${deskSideW} max-h-[40%]${dense}`
     case 'se':
-      return `table-book-zone table-book-zone-side table-book-zone-east right-[10%] bottom-[21%] w-[min(7.25rem,15%)] max-h-[36%]${dense}`
+      return `table-book-zone table-book-zone-side table-book-zone-east right-[9.5%] bottom-[22%] ${deskSideW} max-h-[40%]${dense}`
     default:
-      return `table-book-zone table-book-zone-north left-1/2 top-[9%] w-[min(42%,22rem)] -translate-x-1/2${dense}`
+      return `table-book-zone table-book-zone-north left-1/2 top-[8%] w-[min(38%,20rem)] -translate-x-1/2${dense}`
   }
 }
 
@@ -406,23 +409,24 @@ function tableBookFlexClass(
 ): string {
   const gap =
     bookCount >= 8
-      ? 'gap-x-1 gap-y-1'
+      ? 'gap-x-1.5 gap-y-1.5'
       : bookCount >= 6
-        ? 'gap-x-1 gap-y-1'
+        ? 'gap-x-1.5 gap-y-1.5'
         : bookCount >= 4
           ? mobile
-            ? 'gap-x-1.5 gap-y-1'
-            : 'gap-x-2 gap-y-1.5'
-          : mobile
             ? 'gap-x-2 gap-y-1.5'
             : 'gap-x-2.5 gap-y-2'
+          : mobile
+            ? 'gap-x-2.5 gap-y-2'
+            : 'gap-x-3 gap-y-2'
 
   const isWestSide = side === 'west' || side === 'nw' || side === 'sw'
   const isEastSide = side === 'east' || side === 'ne' || side === 'se'
 
   if (isWestSide || isEastSide) {
+    const cols = bookCount >= 7 ? 'grid-cols-3' : 'grid-cols-2'
     const align = isWestSide ? 'justify-items-start' : 'justify-items-end'
-    return `table-book-grid table-book-side-grid grid grid-cols-2 ${gap} content-start items-start ${align}`
+    return `table-book-grid table-book-side-grid grid ${cols} ${gap} content-start items-start ${align}`
   }
 
   /*
