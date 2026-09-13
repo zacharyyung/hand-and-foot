@@ -1182,15 +1182,20 @@
   }
 
   /*
-   * On-felt book zones — BookMini tiles in a shrink-wrapped cluster per seat.
-   * Density tiers shrink tile size (not transform-scale) so layout box matches
-   * the visual and neighboring seats never collide.
+   * On-felt books match south-hand card size:
+   *   mobile → tiny (2.5 × 3.75rem)
+   *   desktop → small at sm+ (2.75 × 4rem = w-11 / h-16)
+   * Density class names remain for gap tuning in TS only.
    */
   .table-book-zone {
-    /* Slightly larger default so a 2–4 book cluster reads clearly under the seat. */
-    --book-mini-w: 2.125rem;
-    --book-mini-h: 3.25rem;
+    --book-mini-w: 2.5rem;
+    --book-mini-h: 3.75rem;
     pointer-events: none;
+  }
+
+  .game-play-shell:not([data-layout='mobile']) .table-book-zone {
+    --book-mini-w: 2.75rem;
+    --book-mini-h: 4rem;
   }
 
   /* Clip stack-layer offsets so tiles never paint onto the brown rail. */
@@ -1201,21 +1206,6 @@
   .round-table-books {
     /* Extra safety beyond Tailwind inset — clears the inner rail face. */
     border-radius: inherit;
-  }
-
-  .table-book-zone-compact {
-    --book-mini-w: 1.75rem;
-    --book-mini-h: 2.7rem;
-  }
-
-  .table-book-zone-dense {
-    --book-mini-w: 1.5rem;
-    --book-mini-h: 2.3rem;
-  }
-
-  .table-book-zone-xdense {
-    --book-mini-w: 1.375rem;
-    --book-mini-h: 2.125rem;
   }
 
   .table-book-zone .book-mini {
@@ -1610,6 +1600,36 @@
     position: relative;
     width: 1.875rem;
     height: 2.875rem;
+  }
+
+  /* Hand-matched book tiles (on-felt) — same footprint as south hand cards. */
+  .book-mini-tiny {
+    width: 2.5rem;
+  }
+
+  .book-mini-tiny .book-mini-stack {
+    width: 2.5rem;
+    height: 3.75rem;
+  }
+
+  .book-mini-small {
+    width: 2.75rem;
+  }
+
+  .book-mini-small .book-mini-stack {
+    width: 2.75rem;
+    height: 4rem;
+  }
+
+  @media (min-width: 640px) {
+    .book-mini-small {
+      width: 2.75rem;
+    }
+
+    .book-mini-small .book-mini-stack {
+      width: 2.75rem;
+      height: 4rem;
+    }
   }
 
   .book-mini-layer {

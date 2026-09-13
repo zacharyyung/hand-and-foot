@@ -22,12 +22,19 @@ interface BookMiniProps {
   completed?: boolean
   clean?: boolean
   wildCount?: number
+  /**
+   * Match south-hand / stock / discard card tier:
+   *   mobile → tiny · desktop → small
+   * Omit both for staging micro chips.
+   */
+  tiny?: boolean
+  small?: boolean
   getCardMotion?: (cardId: string) => CardMotionKind | undefined
   isCardHidden?: (cardId: string) => boolean
   className?: string
 }
 
-/** Compact single-card book tile for phone layouts — tactile but space-efficient. */
+/** Single-card book tile — hand-sized when tiny/small is set; micro for staging. */
 export function BookMini({
   cards,
   bookId,
@@ -35,6 +42,8 @@ export function BookMini({
   completed = false,
   clean = true,
   wildCount = 0,
+  tiny = false,
+  small = false,
   getCardMotion,
   isCardHidden,
   className = '',
@@ -44,21 +53,23 @@ export function BookMini({
   const face = bookFaceCard(cards)
   const layers = stackLayers(cards.length)
   const faceHidden = isCardHidden?.(face.id)
+  const micro = !tiny && !small
+  const tierClass = tiny ? 'book-mini-tiny' : small ? 'book-mini-small' : 'book-mini-micro'
 
   return (
     <div
-      className={`book-mini ${completed ? 'book-mini-complete' : ''} ${className}`}
+      className={`book-mini ${tierClass} ${completed ? 'book-mini-complete' : ''} ${className}`}
       title={`${face.rank}s · ${cards.length} cards${wildCount > 0 ? ` · ${wildCount} wild` : ''}${completed ? (clean ? ' · clean' : ' · dirty') : ''}`}
     >
       <div className="book-mini-stack">
         {layers >= 2 && (
           <div className="book-mini-layer book-mini-layer--2" aria-hidden>
-            <Card faceDown micro />
+            <Card faceDown micro={micro} tiny={tiny} small={small && !tiny} />
           </div>
         )}
         {layers >= 1 && (
           <div className="book-mini-layer book-mini-layer--1" aria-hidden>
-            <Card faceDown micro />
+            <Card faceDown micro={micro} tiny={tiny} small={small && !tiny} />
           </div>
         )}
         <div className="book-mini-face">
@@ -71,7 +82,7 @@ export function BookMini({
             motion={faceHidden ? undefined : getCardMotion?.(face.id)}
             className={faceHidden ? 'opacity-0' : 'block'}
           >
-            <Card card={face} micro />
+            <Card card={face} micro={micro} tiny={tiny} small={small && !tiny} />
           </AnimatedCardShell>
         </div>
       </div>
