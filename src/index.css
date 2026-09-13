@@ -1181,59 +1181,73 @@
     transition: none;
   }
 
-  /* On-felt book zones — side columns clear seat chips; dense tiers scale down */
-  .table-book-zone-side {
-    overflow: hidden;
+  /*
+   * On-felt book zones — BookMini tiles in a non-overlapping grid/wrap.
+   * Density tiers shrink tile size (not transform-scale) so layout box matches
+   * the visual and neighboring seats never collide.
+   */
+  .table-book-zone {
+    --book-mini-w: 1.875rem;
+    --book-mini-h: 2.875rem;
     pointer-events: none;
+  }
+
+  .table-book-zone-side {
+    overflow: visible;
+  }
+
+  .table-book-zone-compact {
+    --book-mini-w: 1.625rem;
+    --book-mini-h: 2.5rem;
+  }
+
+  .table-book-zone-dense {
+    --book-mini-w: 1.5rem;
+    --book-mini-h: 2.3rem;
+  }
+
+  .table-book-zone-xdense {
+    --book-mini-w: 1.375rem;
+    --book-mini-h: 2.125rem;
+  }
+
+  .table-book-zone .book-mini {
+    width: var(--book-mini-w);
+    /* Keep stack-layer offsets inside the tile so neighbors never collide. */
+    overflow: visible;
+  }
+
+  .table-book-zone .book-mini-layer--1 {
+    transform: translate(1px, 1px);
+  }
+
+  .table-book-zone .book-mini-layer--2 {
+    transform: translate(2px, 2px);
+  }
+
+  .table-book-zone .book-mini-stack {
+    width: var(--book-mini-w);
+    height: var(--book-mini-h);
+  }
+
+  .table-book-zone .book-mini-stack .playing-card,
+  .table-book-zone .book-mini-face .playing-card {
+    width: var(--book-mini-w) !important;
+    height: var(--book-mini-h) !important;
+  }
+
+  .table-book-grid {
+    max-width: 100%;
+  }
+
+  /* Prefer at most 5 books per row on north/south (10 → two clean rows). */
+  .table-book-ns-grid {
+    max-width: calc(5 * var(--book-mini-w) + 4 * 0.375rem);
+    margin-inline: auto;
   }
 
   .table-book-side-grid {
     max-height: 100%;
-    overflow: hidden;
-  }
-
-  .table-book-zone-compact .table-book-side-grid {
-    transform: scale(0.94);
-  }
-
-  .table-book-zone-west.table-book-zone-compact .table-book-side-grid {
-    transform-origin: left top;
-  }
-
-  .table-book-zone-east.table-book-zone-compact .table-book-side-grid {
-    transform-origin: right top;
-  }
-
-  .table-book-zone-dense .table-book-side-grid {
-    transform: scale(0.86);
-  }
-
-  .table-book-zone-west.table-book-zone-dense .table-book-side-grid {
-    transform-origin: left top;
-  }
-
-  .table-book-zone-east.table-book-zone-dense .table-book-side-grid {
-    transform-origin: right top;
-  }
-
-  .table-book-zone-north.table-book-zone-compact > div,
-  .table-book-zone-south.table-book-zone-compact > div {
-    transform: scale(0.94);
-  }
-
-  .table-book-zone-north.table-book-zone-dense > div,
-  .table-book-zone-south.table-book-zone-dense > div {
-    transform: scale(0.86);
-  }
-
-  .table-book-zone-north.table-book-zone-compact > div,
-  .table-book-zone-north.table-book-zone-dense > div {
-    transform-origin: center top;
-  }
-
-  .table-book-zone-south.table-book-zone-compact > div,
-  .table-book-zone-south.table-book-zone-dense > div {
-    transform-origin: center bottom;
   }
 
   /* South dock + responsive play shell */
