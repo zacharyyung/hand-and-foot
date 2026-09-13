@@ -25,7 +25,7 @@ function seatAnchorClass(side: CompassSide, abbreviated = false): string {
       return '-translate-x-1/2'
     case 'west':
     case 'east':
-      return abbreviated ? '' : '-translate-y-1/2'
+      return '-translate-y-1/2'
     case 'nw':
       return abbreviated ? '' : ''
     case 'ne':
@@ -54,12 +54,13 @@ function seatPositionStyle(
       : { left: '50%', bottom: '0.25rem', top: 'auto' }
   }
 
+  /* Park side chips in the outer rail, fully outside the felt (matches north). */
   if (abbreviated && side === 'west') {
-    return { left: '0.25rem', top: 'calc(50% - 3.25rem)' }
+    return { left: '0.2rem', top: '50%' }
   }
 
   if (abbreviated && side === 'east') {
-    return { right: '0.25rem', left: 'auto', top: 'calc(50% - 3.25rem)' }
+    return { right: '0.2rem', left: 'auto', top: '50%' }
   }
 
   if (abbreviated && (side === 'nw' || side === 'ne')) {
@@ -139,6 +140,7 @@ export function SeatPanel({
           ]
             .filter(Boolean)
             .join(' ')}
+          data-seat-side={side}
           style={chipStyle}
           title={`${player.profile.name} · ${role === 'you' ? 'You' : role === 'partner' ? 'Partner' : 'Opponent'} · Team ${player.profile.teamId + 1}`}
         >
