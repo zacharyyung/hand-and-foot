@@ -409,16 +409,16 @@ function tableBookFlexClass(
 ): string {
   const gap =
     bookCount >= 8
-      ? 'gap-x-1.5 gap-y-1.5'
+      ? 'gap-x-1.5 gap-y-2'
       : bookCount >= 6
-        ? 'gap-x-1.5 gap-y-1.5'
+        ? 'gap-x-2 gap-y-2'
         : bookCount >= 4
           ? mobile
-            ? 'gap-x-2 gap-y-1.5'
-            : 'gap-x-2.5 gap-y-2'
+            ? 'gap-x-2 gap-y-2'
+            : 'gap-x-2.5 gap-y-2.5'
           : mobile
             ? 'gap-x-2.5 gap-y-2'
-            : 'gap-x-3 gap-y-2'
+            : 'gap-x-3 gap-y-2.5'
 
   const isWestSide = side === 'west' || side === 'nw' || side === 'sw'
   const isEastSide = side === 'east' || side === 'ne' || side === 'se'
