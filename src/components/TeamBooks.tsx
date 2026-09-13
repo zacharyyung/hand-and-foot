@@ -342,10 +342,10 @@ function tableBookDensityClass(bookCount: number): string {
 }
 
 /**
- * On-felt book bands — shrink-wrapped clusters owned by each seat:
- * north/south sit centered under the avatar (not stretched across the felt);
- * east/west sit mid-rail beside the avatar (not pinned to the top corners).
- * Up to 10 BookMini tiles: 5×2 on N/S, 2×5 on E/W.
+ * On-felt book bands — shrink-wrapped clusters owned by each seat.
+ * Zones are positioned *inside* the felt board element, so percentages are
+ * relative to the felt itself (not the outer shell). Overflow on the board
+ * clips any spill past the brown rail. Up to 10 BookMini tiles: 5×2 / 2×5.
  */
 function tableBookZoneClass(
   side: CompassSide,
@@ -355,47 +355,48 @@ function tableBookZoneClass(
   const dense = tableBookDensityClass(bookCount)
 
   if (mobile) {
+    /* Insets from the felt edge — stay clear of the inner rail shadow. */
     switch (side) {
       case 'north':
-        return `table-book-zone table-book-zone-north left-1/2 top-[12%] w-fit max-w-[min(92%,20rem)] -translate-x-1/2${dense}`
+        return `table-book-zone table-book-zone-north left-1/2 top-[3.5%] w-fit max-w-[min(88%,16rem)] -translate-x-1/2${dense}`
       case 'south':
-        return `table-book-zone table-book-zone-south bottom-[17%] left-1/2 w-fit max-w-[min(92%,20rem)] -translate-x-1/2${dense}`
+        return `table-book-zone table-book-zone-south bottom-[4%] left-1/2 w-fit max-w-[min(88%,16rem)] -translate-x-1/2${dense}`
       case 'west':
-        return `table-book-zone table-book-zone-side table-book-zone-west left-[17%] top-1/2 w-[5.5rem] max-h-[50%] -translate-y-1/2${dense}`
+        return `table-book-zone table-book-zone-side table-book-zone-west left-[2.5%] top-1/2 w-[5.25rem] max-h-[72%] -translate-y-1/2${dense}`
       case 'east':
-        return `table-book-zone table-book-zone-side table-book-zone-east right-[17%] top-1/2 w-[5.5rem] max-h-[50%] -translate-y-1/2${dense}`
+        return `table-book-zone table-book-zone-side table-book-zone-east right-[2.5%] top-1/2 w-[5.25rem] max-h-[72%] -translate-y-1/2${dense}`
       case 'nw':
-        return `table-book-zone table-book-zone-side table-book-zone-west left-[17%] top-[22%] w-[5.5rem]${dense}`
+        return `table-book-zone table-book-zone-side table-book-zone-west left-[2.5%] top-[8%] w-[5.25rem]${dense}`
       case 'ne':
-        return `table-book-zone table-book-zone-side table-book-zone-east right-[17%] top-[22%] w-[5.5rem]${dense}`
+        return `table-book-zone table-book-zone-side table-book-zone-east right-[2.5%] top-[8%] w-[5.25rem]${dense}`
       case 'sw':
-        return `table-book-zone table-book-zone-side table-book-zone-west left-[17%] bottom-[28%] w-[5.5rem]${dense}`
+        return `table-book-zone table-book-zone-side table-book-zone-west left-[2.5%] bottom-[10%] w-[5.25rem]${dense}`
       case 'se':
-        return `table-book-zone table-book-zone-side table-book-zone-east right-[17%] bottom-[28%] w-[5.5rem]${dense}`
+        return `table-book-zone table-book-zone-side table-book-zone-east right-[2.5%] bottom-[10%] w-[5.25rem]${dense}`
       default:
-        return `table-book-zone table-book-zone-north left-1/2 top-[12%] w-fit max-w-[min(92%,20rem)] -translate-x-1/2${dense}`
+        return `table-book-zone table-book-zone-north left-1/2 top-[3.5%] w-fit max-w-[min(88%,16rem)] -translate-x-1/2${dense}`
     }
   }
 
   switch (side) {
     case 'north':
-      return `table-book-zone table-book-zone-north left-1/2 top-[8%] w-fit max-w-[min(70%,36rem)] -translate-x-1/2${dense}`
+      return `table-book-zone table-book-zone-north left-1/2 top-[3%] w-fit max-w-[min(80%,32rem)] -translate-x-1/2${dense}`
     case 'south':
-      return `table-book-zone table-book-zone-south bottom-[max(11%,4rem)] left-1/2 w-fit max-w-[min(70%,36rem)] -translate-x-1/2${dense}`
+      return `table-book-zone table-book-zone-south bottom-[3.5%] left-1/2 w-fit max-w-[min(80%,32rem)] -translate-x-1/2${dense}`
     case 'west':
-      return `table-book-zone table-book-zone-side table-book-zone-west left-[10%] top-1/2 w-[min(7.75rem,17%)] max-h-[52%] -translate-y-1/2${dense}`
+      return `table-book-zone table-book-zone-side table-book-zone-west left-[2%] top-1/2 w-[min(7.25rem,18%)] max-h-[70%] -translate-y-1/2${dense}`
     case 'east':
-      return `table-book-zone table-book-zone-side table-book-zone-east right-[10%] top-1/2 w-[min(7.75rem,17%)] max-h-[52%] -translate-y-1/2${dense}`
+      return `table-book-zone table-book-zone-side table-book-zone-east right-[2%] top-1/2 w-[min(7.25rem,18%)] max-h-[70%] -translate-y-1/2${dense}`
     case 'nw':
-      return `table-book-zone table-book-zone-side table-book-zone-west left-[10%] top-[18%] w-[min(7.75rem,17%)]${dense}`
+      return `table-book-zone table-book-zone-side table-book-zone-west left-[2%] top-[6%] w-[min(7.25rem,18%)]${dense}`
     case 'ne':
-      return `table-book-zone table-book-zone-side table-book-zone-east right-[10%] top-[18%] w-[min(7.75rem,17%)]${dense}`
+      return `table-book-zone table-book-zone-side table-book-zone-east right-[2%] top-[6%] w-[min(7.25rem,18%)]${dense}`
     case 'sw':
-      return `table-book-zone table-book-zone-side table-book-zone-west left-[10%] bottom-[24%] w-[min(7.75rem,17%)]${dense}`
+      return `table-book-zone table-book-zone-side table-book-zone-west left-[2%] bottom-[8%] w-[min(7.25rem,18%)]${dense}`
     case 'se':
-      return `table-book-zone table-book-zone-side table-book-zone-east right-[10%] bottom-[24%] w-[min(7.75rem,17%)]${dense}`
+      return `table-book-zone table-book-zone-side table-book-zone-east right-[2%] bottom-[8%] w-[min(7.25rem,18%)]${dense}`
     default:
-      return `table-book-zone table-book-zone-north left-1/2 top-[8%] w-fit max-w-[min(70%,36rem)] -translate-x-1/2${dense}`
+      return `table-book-zone table-book-zone-north left-1/2 top-[3%] w-fit max-w-[min(80%,32rem)] -translate-x-1/2${dense}`
   }
 }
 

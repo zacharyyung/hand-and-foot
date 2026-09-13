@@ -1505,6 +1505,8 @@
   .game-play-shell[data-layout='mobile'] .round-table-board {
     inset: 18% 15% !important;
     border-radius: 1.25rem !important;
+    /* Keep book tiles off the inner face of the brown rail. */
+    padding: 0.35rem;
   }
 
   .game-play-shell[data-layout='mobile'] .seat-chip-abbreviated {
