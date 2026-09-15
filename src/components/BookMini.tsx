@@ -23,9 +23,8 @@ interface BookMiniProps {
   clean?: boolean
   wildCount?: number
   /**
-   * Match south-hand / stock / discard card tier:
-   *   mobile → tiny · desktop → small
-   * Omit both for staging micro chips.
+   * Optional larger tiers (rarely used). On-felt books and staging omit both
+   * so they render as compact micro chips, smaller than the south hand.
    */
   tiny?: boolean
   small?: boolean
@@ -34,7 +33,7 @@ interface BookMiniProps {
   className?: string
 }
 
-/** Single-card book tile — hand-sized when tiny/small is set; micro for staging. */
+/** Single-card book tile — compact micro by default (smaller than the hand). */
 export function BookMini({
   cards,
   bookId,

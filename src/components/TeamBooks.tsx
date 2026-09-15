@@ -76,8 +76,6 @@ function BookDisplay({
   getCardMotion,
   isCardHidden,
   mobile = false,
-  /** Phone layout → tiny cards; desktop → small (match south hand). */
-  layoutMobile = false,
   side,
   dirtyBookConsent = null,
   dirtyBookWarning = null,
@@ -86,7 +84,6 @@ function BookDisplay({
   getCardMotion?: (cardId: string) => CardMotionKind | undefined
   isCardHidden?: (cardId: string) => boolean
   mobile?: boolean
-  layoutMobile?: boolean
   side?: CompassSide
   dirtyBookConsent?: DirtyBookConsent | null
   dirtyBookWarning?: DirtyBookSelfWarning | null
@@ -119,8 +116,6 @@ function BookDisplay({
           completed={completed}
           clean={clean}
           wildCount={wilds}
-          tiny={layoutMobile}
-          small={!layoutMobile}
           getCardMotion={getCardMotion}
           isCardHidden={isCardHidden}
         />
@@ -231,7 +226,7 @@ export function TeamBooks({
   }
 
   if (compact) {
-    /* On-felt books always use BookMini tiles so up to 9 fit without fan overlap. */
+    /* On-felt books use compact micro BookMini tiles so up to 9 fit cleanly. */
     return (
       <>
         {teamBooks.map((book) => (
@@ -239,7 +234,6 @@ export function TeamBooks({
             key={book.id}
             book={book}
             mobile
-            layoutMobile={mobile}
             side={side}
             getCardMotion={getCardMotion}
             isCardHidden={isCardHidden}
@@ -265,7 +259,6 @@ export function TeamBooks({
             key={book.id}
             book={book}
             mobile={mobile}
-            layoutMobile={mobile}
             side={side}
             getCardMotion={getCardMotion}
             isCardHidden={isCardHidden}

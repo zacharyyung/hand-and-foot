@@ -2,16 +2,17 @@
  * Pixel sizes for card tiers — keep Card.tsx Tailwind classes,
  * fan layouts, pile shells, and on-felt books in sync with these values.
  *
- * South hand, stock/discard, and table books share:
+ * South hand + stock/discard:
  *   mobile → tiny · desktop → small
- * Staging chips stay on micro.
+ * On-felt books + staging chips:
+ *   micro (smaller than the hand so 9 books/seat stay readable)
  */
 export const CARD_SIZE_PX = {
-  /** Staging chips only */
+  /** Staging chips + on-felt books */
   micro: { w: 30, h: 46 },
-  /** South hand + stock/discard + on-felt books (phone) */
+  /** South hand + stock/discard (phone) */
   tiny: { w: 40, h: 60 },
-  /** South hand + stock/discard + on-felt books (desktop) */
+  /** South hand + stock/discard (desktop) */
   small: { w: 46, h: 66 },
   large: { w: 64, h: 96 },
 } as const
