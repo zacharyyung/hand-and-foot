@@ -64,7 +64,7 @@ interface SetupScreenProps {
 
 export function createDefaultHumanPlayers(count: number): SetupHuman[] {
   return Array.from({ length: count }, (_, i) => ({
-    name: `Player ${i + 1}`,
+    name: '',
     age: 0,
     avatar: HUMAN_AVATARS[i % HUMAN_AVATARS.length],
   }))
