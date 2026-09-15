@@ -1230,10 +1230,11 @@
   }
 
   /* Clip stack-layer offsets so tiles never paint onto the brown rail.
-     Status chips sit inside the card face, so this won't cut C/D marks. */
+     Status chips only seep ~10% past the corner — padding keeps them visible. */
   .table-book-zone-side {
     overflow: hidden;
-    padding-block: 0.15rem;
+    padding-block: 0.2rem;
+    padding-inline: 0.15rem;
   }
 
   .round-table-books {
@@ -1247,9 +1248,9 @@
     overflow: visible;
   }
 
-  /* Keep N/S bands clear of the overflow edge so corner C/D chips stay visible. */
+  /* Room for the ~10% C/D corner seep without clipping at the felt frame. */
   .table-book-zone-north {
-    padding-top: 0.2rem;
+    padding-top: 0.28rem;
   }
 
   .table-book-zone-south {
@@ -1646,6 +1647,7 @@
     position: relative;
     width: 1.875rem;
     height: 2.875rem;
+    overflow: visible;
   }
 
   /* Hand-matched book tiles (on-felt) — same footprint as south hand cards. */
@@ -1700,6 +1702,7 @@
   .book-mini-face {
     position: relative;
     z-index: 2;
+    overflow: visible;
   }
 
   .book-mini-complete .book-mini-face .playing-card {
@@ -1757,12 +1760,11 @@
     border-right-color: rgba(0, 0, 0, 0.12);
   }
 
-  /* Keep C/D marks fully inside the card face — hanging outside the tile
-     gets clipped by .round-table-books overflow on the felt edges. */
+  /* Sit on the top-right corner: ~90% on the card, ~10% seeping past the edge. */
   .book-mini-status {
     position: absolute;
-    top: 0.1rem;
-    right: 0.1rem;
+    top: 0;
+    right: 0;
     z-index: 4;
     padding: 0 0.12rem;
     border-radius: 0.15rem;
@@ -1772,6 +1774,7 @@
     font-weight: 700;
     line-height: 1.15;
     pointer-events: none;
+    transform: translate(12%, -12%);
   }
 
   .book-mini-status-clean {
