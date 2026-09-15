@@ -331,6 +331,71 @@ export function pickNextMeldDownToLastCard(
 }
 
 /**
+ * Next dump that does not need partner wild consent — naturals always, wilds only
+ * onto already-dirty books. Used before a go-out ask so playable cards are not
+ * left sitting in hand while the partner is prompted.
+ */
+export function pickNextSafeDumpBeforeGoOutAsk(
+  hand: Card[],
+  teamBooks: Book[],
+  booksWithWildAddedThisTurn: string[] = [],
+  meldThresholdMet = true,
+): MeldDownStep | null {
+  if (hand.length < 2) return null
+
+  const addActions = findAddToBookActions(
+    hand,
+    teamBooks,
+    true,
+    booksWithWildAddedThisTurn,
+    meldThresholdMet,
+  ).filter((a) => {
+    if (hand.length - a.cardIds.length < 1) return false
+    const cards = hand.filter((c) => a.cardIds.includes(c.id))
+    const book = teamBooks.find((b) => b.id === a.bookId)
+    if (!book) return false
+    const wilds = countWildsInCards(cards)
+    if (wilds > 0) {
+      /* Clean books need partner approval — leave those for the consent flow. */
+      if (isCleanBook(book)) return false
+      if (wouldDestroyOnlyCompletedCleanBook(book, cards, teamBooks)) return false
+    }
+    return true
+  })
+
+  /* Prefer pure natural dumps so strategic wilds stay in hand. */
+  const naturalAdds = addActions.filter((a) => {
+    const cards = hand.filter((c) => a.cardIds.includes(c.id))
+    return countWildsInCards(cards) === 0
+  })
+  const chosenAdds = naturalAdds.length > 0 ? naturalAdds : addActions
+  if (chosenAdds.length > 0) {
+    const best = chosenAdds[0]!
+    return { type: 'addToBook', bookId: best.bookId, cardIds: best.cardIds }
+  }
+
+  const startActions = findStartBookActions(
+    hand,
+    teamBooks,
+    true,
+    meldThresholdMet,
+  ).filter((a): a is Extract<AiAction, { type: 'startBook' }> => {
+    if (a.type !== 'startBook' || hand.length - a.cardIds.length < 1) return false
+    const cards = hand.filter((c) => a.cardIds.includes(c.id))
+    /* New books that open with a wild still need strategic / consent handling. */
+    return countWildsInCards(cards) === 0
+  })
+
+  if (startActions.length === 0) return null
+
+  const bestStart = startActions[0]!
+  const cards = hand.filter((c) => bestStart.cardIds.includes(c.id))
+  const check = canStartBook(cards, teamBooks)
+  if (!check.ok) return null
+  return { type: 'startBook', cardIds: bestStart.cardIds }
+}
+
+/**
  * True when the AI can meld down to exactly one foot card this turn (so a partner
  * Yes can finish with a go-out discard). Used to ask before the forced last card.
  *

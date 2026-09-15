@@ -40,6 +40,7 @@ import {
   findAddToBookActions,
   canMeldDownToLastCard,
   pickNextMeldDownToLastCard,
+  pickNextSafeDumpBeforeGoOutAsk,
 } from './decisions'
 import { AiDebugCollector } from './debugTrace'
 import { buildAiPublicState } from './publicState'
@@ -224,8 +225,9 @@ export function stripWildAddsSince(
 }
 
 /**
- * Ask the human partner while 2+ foot cards remain and a Yes could finish go-out
- * this turn. Never ask on the last card alone — discard would force go-out anyway.
+ * Ask the human partner when 2+ foot cards remain that still need a Yes to finish
+ * (typically wild-gated leftovers after safe dumps). Never ask on the last card
+ * alone — discard would force go-out anyway.
  */
 function shouldAskHumanPartnerBeforeGoOut(
   state: GameState,
@@ -278,6 +280,59 @@ function pauseForPartnerGoOutAsk(
     awaitingPartner: true,
     debugTrace: debug?.trace,
   }
+}
+
+/**
+ * Put down every natural (and auto-legal dirty-book wild) before asking to go out.
+ * Clean-book wilds still need partner consent and stay in hand until then.
+ */
+function dumpSafePlayablesBeforeGoOutAsk(
+  state: GameState,
+  seatIndex: number,
+  debug?: AiDebugCollector,
+): GameState {
+  let current = state
+  for (let guard = 0; guard < 24; guard++) {
+    const player = current.players[seatIndex]
+    if (!player?.isPlayingFoot || player.hand.length <= 1) break
+
+    const team = getTeam(current, player.profile.teamId)
+    if (!canTeamGoOut(team.books, team.meldThresholdMet)) break
+
+    const step = pickNextSafeDumpBeforeGoOutAsk(
+      player.hand,
+      team.books,
+      current.booksWithWildAddedThisTurn,
+      team.meldThresholdMet,
+    )
+    if (!step) break
+
+    if (step.type === 'addToBook') {
+      debug?.step(
+        'add',
+        `Dump before go-out ask: ${labelCards(player.hand, step.cardIds)}`,
+      )
+      const result = addToBook(current, step.bookId, step.cardIds)
+      if (result.error) {
+        debug?.step('add', `Pre-ask dump failed: ${result.error}`)
+        break
+      }
+      current = result.state
+      continue
+    }
+
+    debug?.step(
+      'start',
+      `Dump before go-out ask (new book): ${labelCards(player.hand, step.cardIds)}`,
+    )
+    const result = startBook(current, step.cardIds)
+    if (result.error) {
+      debug?.step('start', `Pre-ask dump start failed: ${result.error}`)
+      break
+    }
+    current = result.state
+  }
+  return current
 }
 
 export function runAiTurn(
@@ -351,8 +406,8 @@ export function runAiTurn(
   const baselineForWildAsk = current
 
   /*
-   * Stay paused while the human answers a go-out Yes/No. The ask happens while
-   * 2+ foot cards remain so No still leaves meaningful plays this turn.
+   * Stay paused while the human answers a go-out Yes/No. Playable naturals are
+   * dumped first; the ask is reserved for leftover wild-gated cards.
    */
   if (partnerIsHuman && current.turnPhase === 'play') {
     if (awaitingPartnerGoOutResponse(messages, seatIndex, partnerIdx)) {
@@ -363,6 +418,14 @@ export function runAiTurn(
         debugTrace: debug?.trace,
       }
     }
+  }
+
+  /*
+   * Dump every natural (and auto-legal dirty wild) before asking to go out so
+   * the partner never sees playable cards still sitting in the AI hand.
+   */
+  if (partnerIsHuman && current.turnPhase === 'play') {
+    current = dumpSafePlayablesBeforeGoOutAsk(current, seatIndex, debug)
   }
 
   if (
@@ -400,6 +463,10 @@ export function runAiTurn(
   for (let i = 0; i < maxPlays; i++) {
     if (current.turnPhase !== 'play') break
     if (canPlayerGoOut(current, messages)) break
+
+    if (partnerIsHuman) {
+      current = dumpSafePlayablesBeforeGoOutAsk(current, seatIndex, debug)
+    }
 
     if (
       partnerIsHuman &&
@@ -735,6 +802,14 @@ export function runAiTurn(
       debug?.step('meld', 'Random end-turn skip (normal mode).')
       break
     }
+  }
+
+  /*
+   * Always shed leftover naturals once the team can go out — even before the
+   * partner answers — so the debug panel never shows stranded playable cards.
+   */
+  if (partnerIsHuman && current.turnPhase === 'play') {
+    current = dumpSafePlayablesBeforeGoOutAsk(current, seatIndex, debug)
   }
 
   /*
