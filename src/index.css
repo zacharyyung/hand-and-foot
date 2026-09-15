@@ -1398,7 +1398,7 @@
   }
 
   .game-play-shell[data-layout='compact'] .round-table-board {
-    inset: 16% 11% !important;
+    inset: 12% 6% !important;
   }
 
   .game-play-shell[data-layout='compact'] .btn-table,
@@ -1432,7 +1432,7 @@
   }
 
   .game-play-shell[data-layout='tight'] .round-table-board {
-    inset: 18% 12% !important;
+    inset: 13% 6.5% !important;
   }
 
   .game-play-shell[data-layout='tight'] .dock-control {
@@ -1528,12 +1528,14 @@
   }
 
   /*
-   * Side gutters must fit abbreviated seat chips outside the brown rail
-   * (~3.6rem wide). 15% of a ~390px phone ≈ 58px — clears chips + a hairline.
+   * Side gutters only need a slim lane for abbreviated seat chips (~2.85rem).
+   * Prior 18%/15% left a cavernous gap and shoved west/east books into stock.
+   * ~8% of a 390px phone ≈ 31px — chips sit on the outer rail with a hair of
+   * overlap on the brown edge (z-25 keeps them readable).
    */
   .game-play-shell[data-layout='mobile'] .round-table-board {
-    inset: 18% 15% !important;
-    border-radius: 1.25rem !important;
+    inset: 11% 8% !important;
+    border-radius: 1.35rem !important;
   }
 
   /* Mobile books frame — clear the inner face of the ~9–11px wood rail. */

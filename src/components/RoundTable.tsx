@@ -50,7 +50,7 @@ export function RoundTable({
           would spill across the brown rail.
         */}
         <div
-          className="round-table-board table-rail table-surface felt-texture absolute overflow-hidden rounded-[1.75rem] sm:rounded-[2rem] md:rounded-[2.25rem] inset-[11%_9%] sm:inset-[10%_8%] md:inset-[9%_7%] lg:inset-[8%_6%]"
+          className="round-table-board table-rail table-surface felt-texture absolute overflow-hidden rounded-[1.75rem] sm:rounded-[2rem] md:rounded-[2.25rem] inset-[8%_5%] sm:inset-[7%_4.5%] md:inset-[6.5%_4%] lg:inset-[6%_3.5%]"
         >
           {/* Soft center light pool under stock/discard */}
           <div
