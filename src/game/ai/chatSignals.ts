@@ -280,11 +280,10 @@ export function partnerGoOutSignaledInChat(
   state: GameState,
   myTeamId: number,
 ): boolean {
-  return messages.some(
-    (m) =>
-      m.type === 'ready_go_out' &&
-      state.players[m.senderSeatIndex]?.profile.teamId === myTeamId,
-  )
+  return messages.some((m) => {
+    if (!m || m.type !== 'ready_go_out') return false
+    return state.players[m.senderSeatIndex]?.profile.teamId === myTeamId
+  })
 }
 
 /**

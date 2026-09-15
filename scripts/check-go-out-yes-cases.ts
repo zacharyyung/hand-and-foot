@@ -13,6 +13,7 @@ import {
   createWildApproveSignal,
   createWildDenySignal,
   hasExplicitGoOutApproval,
+  PROACTIVE_GO_OUT_APPROVE_TEXT,
 } from '../src/game/chat'
 import type { Book } from '../src/game/books'
 import type { Card } from '../src/game/cards'
@@ -132,6 +133,18 @@ function goOutState(aiHand: Card[], teamBooks: Book[], opts: Partial<GameState> 
   } as GameState
 }
 
+/** Naturals dump first; standing clearance finishes on the last card. */
+function dumpThenProactive(hand: Card[], books: Book[]) {
+  const proactive = createApproveGoOutSignal(
+    0,
+    'You',
+    'Y',
+    PROACTIVE_GO_OUT_APPROVE_TEXT,
+  )
+  return runAiTurn(goOutState(hand, books), [proactive])
+}
+
+/** Wild-gated path: ask while 2+ remain, then Yes (+ wild consent) finishes. */
 function askThenYes(hand: Card[], books: Book[]) {
   let ask = runAiTurn(goOutState(hand, books), [])
   const thread: import('../src/game/chat').ChatMessage[] = []
@@ -149,7 +162,7 @@ function askThenYes(hand: Card[], books: Book[]) {
 
   assert(ask.chatMessage?.type === 'ready_go_out', 'expected go-out ask')
   assert(ask.awaitingPartner === true, 'expected pause')
-  assert(ask.state.players[2].hand.length >= 2, 'expected ask before meltdown to last card')
+  assert(ask.state.players[2].hand.length >= 2, 'expected ask while wild-gated cards remain')
   const yes = {
     ...createApproveGoOutSignal(0, 'You', 'Y'),
     timestamp: ask.chatMessage!.timestamp + 1,
@@ -170,7 +183,7 @@ function askThenYes(hand: Card[], books: Book[]) {
   return after
 }
 
-/* --- Natural meltdown Yes cases --- */
+/* --- Natural meltdown: dump playables, then standing clearance finishes --- */
 for (const [name, hand] of [
   ['A+discard', [card('a1', 'A'), card('d1', '4')]],
   ['K+discard', [card('k1', 'K'), card('d1', '4')]],
@@ -195,8 +208,14 @@ for (const [name, hand] of [
     ],
   ],
 ] as Array<[string, Card[]]>) {
-  const done = askThenYes(hand, [cleanA, dirtyK])
-  assert(done.state.phase === 'roundEnd', `${name}: Yes must end the round`)
+  const dumped = runAiTurn(goOutState(hand, [cleanA, dirtyK]), [])
+  assert(
+    dumped.chatMessage?.type !== 'ready_go_out',
+    `${name}: dump playables instead of asking`,
+  )
+  assert(dumped.state.players[2].hand.length === 1, `${name}: dumps down to last card`)
+  const done = dumpThenProactive(hand, [cleanA, dirtyK])
+  assert(done.state.phase === 'roundEnd', `${name}: standing clearance must end the round`)
   assert(done.state.wentOutTeamId === 0, `${name}: correct team`)
 }
 
@@ -212,9 +231,12 @@ for (const [name, hand] of [
 
 /* --- No must not end the round --- */
 {
-  const ask = runAiTurn(goOutState([card('a1', 'A'), card('d1', '4')], [cleanA, dirtyK]), [])
+  const ask = runAiTurn(
+    goOutState([card('j0', 'Joker', 'joker'), card('d0', '4')], [cleanA, cleanQ, dirtyK]),
+    [],
+  )
   assert(ask.chatMessage?.type === 'ready_go_out', 'No-case: ask first')
-  assert(ask.state.players[2].hand.length === 2, 'No-case: ask before meltdown')
+  assert(ask.state.players[2].hand.length >= 2, 'No-case: still has wild-gated cards while asking')
   const no = {
     ...createDenyGoOutSignal(0, 'You', 'Y'),
     timestamp: ask.chatMessage!.timestamp + 1,
@@ -286,17 +308,23 @@ for (const [name, hand] of [
     timestamp: priorAsk.timestamp + 1,
   }
   assert(hasExplicitGoOutApproval([priorAsk, priorYes], 2, 4), 'stale Yes is explicit')
+  /* Draw a wild that needs clean-book consent so dump cannot clear the ask. */
   const turn = runAiTurn(
-    goOutState([card('last', '4')], [cleanA, dirtyK], {
+    goOutState([card('last', '4')], [cleanA, cleanQ, dirtyK], {
       turnPhase: 'draw',
-      stock: [card('sa', 'A'), card('sa2', 'A', 'diamonds'), card('sx', '6'), card('sy', '7')],
+      stock: [
+        card('sj', 'Joker', 'joker'),
+        card('sk', 'K'),
+        card('sx', '6'),
+        card('sy', '7'),
+      ],
     }),
     [priorAsk, priorYes],
   )
   assert(turn.state.phase === 'playing', 'stale Yes on new turn does not silent go-out')
   assert(turn.chatMessage?.type === 'ready_go_out', 'stale Yes leads to re-ask before meltdown')
   assert(turn.awaitingPartner === true, 'stale Yes re-ask pauses')
-  assert(turn.state.players[2].hand.length >= 2, 're-ask happens while 2+ cards remain')
+  assert(turn.state.players[2].hand.length >= 2, 're-ask happens while wild-gated cards remain')
   assert(turn.state.wentOutTeamId == null, 'no went-out on stale Yes draw turn')
 }
 

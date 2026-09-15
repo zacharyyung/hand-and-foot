@@ -64,7 +64,7 @@ interface SetupScreenProps {
 
 export function createDefaultHumanPlayers(count: number): SetupHuman[] {
   return Array.from({ length: count }, (_, i) => ({
-    name: '',
+    name: `Player ${i + 1}`,
     age: 0,
     avatar: HUMAN_AVATARS[i % HUMAN_AVATARS.length],
   }))
@@ -78,8 +78,9 @@ export function buildSetupPlayers(
   return Array.from({ length: playerCount }, (_, i) => {
     if (i < humanPlayers.length) {
       const human = humanPlayers[i]
+      const trimmed = human.name.trim()
       return {
-        name: human.name,
+        name: trimmed.length > 0 ? trimmed : `Player ${i + 1}`,
         age: humanPlayers.length >= 2 ? human.age : 0,
         avatar: human.avatar,
         isHuman: true,
@@ -137,7 +138,7 @@ export function SetupScreen({
   const askAge = humanCount >= 2
 
   const humansValid = humanPlayers.every(
-    (p) => p.name.trim().length > 0 && (!askAge || p.age > 0),
+    (p) => !askAge || p.age > 0,
   )
   const canStart = humanPlayers.length > 0 && humansValid
 

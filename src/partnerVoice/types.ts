@@ -6,7 +6,7 @@ export interface PartnerVoiceSettings {
 }
 
 export const DEFAULT_PARTNER_VOICE_SETTINGS: PartnerVoiceSettings = {
-  enabled: true,
+  enabled: false,
   volume: 0.85,
   speed: 1,
   voiceId: 'dealer',
