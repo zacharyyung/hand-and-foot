@@ -1229,9 +1229,11 @@
     --book-mini-h: 2.55rem;
   }
 
-  /* Clip stack-layer offsets so tiles never paint onto the brown rail. */
+  /* Clip stack-layer offsets so tiles never paint onto the brown rail.
+     Status chips sit inside the card face, so this won't cut C/D marks. */
   .table-book-zone-side {
     overflow: hidden;
+    padding-block: 0.15rem;
   }
 
   .round-table-books {
@@ -1245,13 +1247,13 @@
     overflow: visible;
   }
 
-  /* Nudge N/S bands off the overflow edge so corner C/D chips stay fully visible. */
+  /* Keep N/S bands clear of the overflow edge so corner C/D chips stay visible. */
   .table-book-zone-north {
-    padding-top: 1px;
+    padding-top: 0.2rem;
   }
 
   .table-book-zone-south {
-    padding-bottom: 1px;
+    padding-bottom: 0.2rem;
   }
 
   .table-book-zone .book-mini-layer--1 {
@@ -1755,20 +1757,21 @@
     border-right-color: rgba(0, 0, 0, 0.12);
   }
 
-  /* Keep C/D marks inside the tile — negative offsets get clipped by
-     .round-table-books overflow on the north/south felt edge. */
+  /* Keep C/D marks fully inside the card face — hanging outside the tile
+     gets clipped by .round-table-books overflow on the felt edges. */
   .book-mini-status {
     position: absolute;
-    top: 0;
-    right: 0;
+    top: 0.1rem;
+    right: 0.1rem;
     z-index: 4;
-    padding: 0 0.15rem;
-    border-radius: 0 0.2rem 0 0.2rem;
-    background: rgba(0, 0, 0, 0.72);
+    padding: 0 0.12rem;
+    border-radius: 0.15rem;
+    background: rgba(0, 0, 0, 0.78);
     font-family: var(--font-display);
-    font-size: 0.5rem;
+    font-size: 0.45rem;
     font-weight: 700;
-    line-height: 1.3;
+    line-height: 1.15;
+    pointer-events: none;
   }
 
   .book-mini-status-clean {

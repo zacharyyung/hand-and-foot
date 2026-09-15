@@ -83,6 +83,14 @@ export function BookMini({
           >
             <Card card={face} micro={micro} tiny={tiny} small={small && !tiny} />
           </AnimatedCardShell>
+          {completed && (
+            <span
+              className={`book-mini-status ${clean ? 'book-mini-status-clean' : 'book-mini-status-dirty'}`}
+              title={clean ? 'Clean book' : 'Dirty book'}
+            >
+              {clean ? 'C' : 'D'}
+            </span>
+          )}
         </div>
       </div>
 
@@ -102,15 +110,6 @@ export function BookMini({
           {cards.length}
         </span>
       </div>
-
-      {completed && (
-        <span
-          className={`book-mini-status ${clean ? 'book-mini-status-clean' : 'book-mini-status-dirty'}`}
-          title={clean ? 'Clean book' : 'Dirty book'}
-        >
-          {clean ? 'C' : 'D'}
-        </span>
-      )}
     </div>
   )
 }
