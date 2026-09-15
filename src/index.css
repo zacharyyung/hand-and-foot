@@ -1245,6 +1245,15 @@
     overflow: visible;
   }
 
+  /* Nudge N/S bands off the overflow edge so corner C/D chips stay fully visible. */
+  .table-book-zone-north {
+    padding-top: 1px;
+  }
+
+  .table-book-zone-south {
+    padding-bottom: 1px;
+  }
+
   .table-book-zone .book-mini-layer--1 {
     transform: translate(1px, 1px);
   }
@@ -1746,13 +1755,15 @@
     border-right-color: rgba(0, 0, 0, 0.12);
   }
 
+  /* Keep C/D marks inside the tile — negative offsets get clipped by
+     .round-table-books overflow on the north/south felt edge. */
   .book-mini-status {
     position: absolute;
-    top: -0.15rem;
-    right: -0.3rem;
+    top: 0;
+    right: 0;
     z-index: 4;
     padding: 0 0.15rem;
-    border-radius: 0.2rem;
+    border-radius: 0 0.2rem 0 0.2rem;
     background: rgba(0, 0, 0, 0.72);
     font-family: var(--font-display);
     font-size: 0.5rem;
