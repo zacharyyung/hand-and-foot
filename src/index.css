@@ -1268,10 +1268,10 @@
     max-width: 100%;
   }
 
-  /* Shrink-wrap N/S clusters; cap at 3 tiles wide (9 → clean 3×3). */
+  /* Shrink-wrap N/S clusters; cap at 5 tiles wide (10 → clean 2×5). */
   .table-book-ns-grid {
     width: fit-content;
-    max-width: min(100%, calc(3 * var(--book-mini-w) + 2 * 0.25rem));
+    max-width: min(100%, calc(5 * var(--book-mini-w) + 4 * 0.25rem));
     margin-inline: auto;
   }
 

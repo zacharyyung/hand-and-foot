@@ -345,7 +345,8 @@ function tableBookDensityClass(bookCount: number): string {
  * On-felt book bands — shrink-wrapped clusters owned by each seat.
  * Zones sit inside `.round-table-books` (already inset from the brown rail),
  * so percentages are felt-inner — never shell-relative. Parent overflow clips
- * any spill. Up to 9 BookMini tiles: 3×3 north/south; 2×5 or 3×3 on sides.
+ * any spill. Up to 10 BookMini tiles: 2×5 north/south (wide felt edge);
+ * 2×5 or 3×3 on sides.
  */
 function tableBookZoneClass(
   side: CompassSide,
@@ -360,9 +361,9 @@ function tableBookZoneClass(
     /* Positions relative to the inset books frame — flush to its edges is OK. */
     switch (side) {
       case 'north':
-        return `table-book-zone table-book-zone-north left-1/2 top-0 w-fit max-w-[min(92%,16rem)] -translate-x-1/2${dense}`
+        return `table-book-zone table-book-zone-north left-1/2 top-0 w-fit max-w-[min(94%,20rem)] -translate-x-1/2${dense}`
       case 'south':
-        return `table-book-zone table-book-zone-south bottom-0 left-1/2 w-fit max-w-[min(92%,16rem)] -translate-x-1/2${dense}`
+        return `table-book-zone table-book-zone-south bottom-0 left-1/2 w-fit max-w-[min(94%,20rem)] -translate-x-1/2${dense}`
       case 'west':
         return `table-book-zone table-book-zone-side table-book-zone-west left-0 top-1/2 ${sideW} max-h-[72%] -translate-y-1/2${dense}`
       case 'east':
@@ -376,16 +377,16 @@ function tableBookZoneClass(
       case 'se':
         return `table-book-zone table-book-zone-side table-book-zone-east right-0 bottom-[8%] ${sideW}${dense}`
       default:
-        return `table-book-zone table-book-zone-north left-1/2 top-0 w-fit max-w-[min(92%,16rem)] -translate-x-1/2${dense}`
+        return `table-book-zone table-book-zone-north left-1/2 top-0 w-fit max-w-[min(94%,20rem)] -translate-x-1/2${dense}`
     }
   }
 
   const deskSideW = sideWide ? 'w-[min(9.25rem,24%)]' : 'w-[min(6.75rem,20%)]'
   switch (side) {
     case 'north':
-      return `table-book-zone table-book-zone-north left-1/2 top-0 w-fit max-w-[min(84%,32rem)] -translate-x-1/2${dense}`
+      return `table-book-zone table-book-zone-north left-1/2 top-0 w-fit max-w-[min(90%,36rem)] -translate-x-1/2${dense}`
     case 'south':
-      return `table-book-zone table-book-zone-south bottom-0 left-1/2 w-fit max-w-[min(84%,32rem)] -translate-x-1/2${dense}`
+      return `table-book-zone table-book-zone-south bottom-0 left-1/2 w-fit max-w-[min(90%,36rem)] -translate-x-1/2${dense}`
     case 'west':
       return `table-book-zone table-book-zone-side table-book-zone-west left-0 top-1/2 ${deskSideW} max-h-[70%] -translate-y-1/2${dense}`
     case 'east':
@@ -399,7 +400,7 @@ function tableBookZoneClass(
     case 'se':
       return `table-book-zone table-book-zone-side table-book-zone-east right-0 bottom-[6%] ${deskSideW}${dense}`
     default:
-      return `table-book-zone table-book-zone-north left-1/2 top-0 w-fit max-w-[min(84%,32rem)] -translate-x-1/2${dense}`
+      return `table-book-zone table-book-zone-north left-1/2 top-0 w-fit max-w-[min(90%,36rem)] -translate-x-1/2${dense}`
   }
 }
 
@@ -430,10 +431,10 @@ function tableBookFlexClass(
   }
 
   /*
-   * North/south: shrink-wrapped flex for ≤3 books; 4–9 use a 3-column grid
-   * so tiles never pile into one overlapping row.
+   * North/south: stretch along the felt edge — single-row flex for ≤5 books;
+   * 6–10 use a 2×5 grid so the periphery stays wide and shallow.
    */
-  if (bookCount <= 3) {
+  if (bookCount <= 5) {
     switch (side) {
       case 'north':
         return `table-book-grid table-book-ns-grid flex w-fit flex-row flex-wrap items-end justify-center ${gap}`
@@ -444,5 +445,5 @@ function tableBookFlexClass(
     }
   }
 
-  return `table-book-grid table-book-ns-grid grid grid-cols-3 ${gap} justify-items-center content-start`
+  return `table-book-grid table-book-ns-grid grid grid-cols-5 ${gap} justify-items-center content-start`
 }
