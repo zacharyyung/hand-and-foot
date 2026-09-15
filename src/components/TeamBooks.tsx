@@ -231,7 +231,7 @@ export function TeamBooks({
   }
 
   if (compact) {
-    /* On-felt books always use BookMini tiles so up to 10 fit without fan overlap. */
+    /* On-felt books always use BookMini tiles so up to 9 fit without fan overlap. */
     return (
       <>
         {teamBooks.map((book) => (
