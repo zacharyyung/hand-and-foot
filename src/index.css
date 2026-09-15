@@ -1182,20 +1182,51 @@
   }
 
   /*
-   * On-felt books match south-hand card size:
-   *   mobile → tiny (2.5 × 3.75rem)
-   *   desktop → small at sm+ (2.75 × 4rem = w-11 / h-16)
-   * Density class names remain for gap tuning in TS only.
+   * On-felt books stay smaller than the south hand so 9 tiles per seat
+   * don't crowd stock/discard or seat chips:
+   *   default → micro (1.875 × 2.875rem)
+   *   desktop → slightly larger chip, still below hand `small`
+   * Density tiers shrink further when a seat is crowded.
    */
   .table-book-zone {
-    --book-mini-w: 2.5rem;
-    --book-mini-h: 3.75rem;
+    --book-mini-w: 1.875rem;
+    --book-mini-h: 2.875rem;
     pointer-events: none;
   }
 
   .game-play-shell:not([data-layout='mobile']) .table-book-zone {
-    --book-mini-w: 2.75rem;
-    --book-mini-h: 4rem;
+    --book-mini-w: 2.125rem;
+    --book-mini-h: 3.25rem;
+  }
+
+  .table-book-zone-compact {
+    --book-mini-w: 1.7rem;
+    --book-mini-h: 2.6rem;
+  }
+
+  .table-book-zone-dense {
+    --book-mini-w: 1.55rem;
+    --book-mini-h: 2.375rem;
+  }
+
+  .table-book-zone-xdense {
+    --book-mini-w: 1.4rem;
+    --book-mini-h: 2.15rem;
+  }
+
+  .game-play-shell:not([data-layout='mobile']) .table-book-zone-compact {
+    --book-mini-w: 1.95rem;
+    --book-mini-h: 3rem;
+  }
+
+  .game-play-shell:not([data-layout='mobile']) .table-book-zone-dense {
+    --book-mini-w: 1.8rem;
+    --book-mini-h: 2.75rem;
+  }
+
+  .game-play-shell:not([data-layout='mobile']) .table-book-zone-xdense {
+    --book-mini-w: 1.65rem;
+    --book-mini-h: 2.55rem;
   }
 
   /* Clip stack-layer offsets so tiles never paint onto the brown rail. */
@@ -1367,7 +1398,7 @@
   }
 
   .game-play-shell[data-layout='compact'] .round-table-board {
-    inset: 16% 11% !important;
+    inset: 12% 6% !important;
   }
 
   .game-play-shell[data-layout='compact'] .btn-table,
@@ -1401,7 +1432,7 @@
   }
 
   .game-play-shell[data-layout='tight'] .round-table-board {
-    inset: 18% 12% !important;
+    inset: 13% 6.5% !important;
   }
 
   .game-play-shell[data-layout='tight'] .dock-control {
@@ -1497,12 +1528,14 @@
   }
 
   /*
-   * Side gutters must fit abbreviated seat chips outside the brown rail
-   * (~3.6rem wide). 15% of a ~390px phone ≈ 58px — clears chips + a hairline.
+   * Side gutters only need a slim lane for abbreviated seat chips (~2.85rem).
+   * Prior 18%/15% left a cavernous gap and shoved west/east books into stock.
+   * ~8% of a 390px phone ≈ 31px — chips sit on the outer rail with a hair of
+   * overlap on the brown edge (z-25 keeps them readable).
    */
   .game-play-shell[data-layout='mobile'] .round-table-board {
-    inset: 18% 15% !important;
-    border-radius: 1.25rem !important;
+    inset: 11% 8% !important;
+    border-radius: 1.35rem !important;
   }
 
   /* Mobile books frame — clear the inner face of the ~9–11px wood rail. */

@@ -27,7 +27,7 @@ function flightCardTier(flight: ActiveCardFlight, mobile: boolean): FlightCardTi
         : ''
 
   if (target.startsWith('staging-')) return 'micro'
-  if (target.startsWith('book-')) return 'tiny'
+  if (target.startsWith('book-')) return 'micro'
   if (
     target.startsWith('hand-') ||
     target === 'stock' ||
